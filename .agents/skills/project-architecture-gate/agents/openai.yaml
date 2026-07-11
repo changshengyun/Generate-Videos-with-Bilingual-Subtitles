@@ -1,0 +1,6 @@
+interface:
+  display_name: "Project Architecture Gate"
+  short_description: "Validate requirements, environment, architecture, and spikes before coding"
+  default_prompt: "Apply the project architecture gate to this request. Do not begin substantial production implementation."
+policy:
+  allow_implicit_invocation: true

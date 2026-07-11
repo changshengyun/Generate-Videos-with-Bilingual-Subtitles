@@ -1,0 +1,6 @@
+interface:
+  display_name: "Evidence-First Debugging"
+  short_description: "Diagnose failures with evidence before changing architecture"
+  default_prompt: "Pause feature work and diagnose this failure using evidence-first debugging."
+policy:
+  allow_implicit_invocation: true
