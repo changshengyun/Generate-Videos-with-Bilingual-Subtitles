@@ -1,0 +1,22 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+app/build/
+
+# Local installers and machine-only tools
+*.msi
+*.msix
+
+# Large local speech models must not be committed or pushed
+models/
+app/src/main/assets/models/
+ggml-*.bin
+*.gguf
+
+# Downloaded native dependency; restore with tools/setup-whisper-native.ps1
+third_party/whisper.cpp/
+.cxx/
+.tool-downloads/

@@ -1,0 +1,12 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 592
+PlayResY: 1280
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Bilingual,Microsoft YaHei,30,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,2,2,30,30,120,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+Dialogue: 0,0:00:00.00,0:00:18.00,Bilingual,,0,0,0,,I stopped CPR, after all, it's no use\N我终止了心肺复苏，毕竟它终究无用。
