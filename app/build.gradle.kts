@@ -27,9 +27,10 @@ android {
                     cppFlags += listOf("-std=c++17", "-O3")
                 }
             }
-            ndk {
-                abiFilters += listOf("arm64-v8a", "x86_64")
-            }
+        }
+        ndk {
+            // The checked-in FFmpegKit AAR is verified for both the ARM64 target and the x86_64 emulator.
+            abiFilters += listOf("arm64-v8a", "x86_64")
         }
     }
 
@@ -67,6 +68,8 @@ android {
 }
 
 dependencies {
+    implementation(files("libs/ffmpeg-kit-lts-minimal-gpl-16kb-6.1.4.aar"))
+    implementation("com.arthenica:smart-exception-java:0.2.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))

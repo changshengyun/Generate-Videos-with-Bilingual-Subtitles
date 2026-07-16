@@ -2,6 +2,7 @@ package com.example.lyriccaptioner.processing
 
 import android.content.Context
 import android.net.Uri
+import com.example.lyriccaptioner.model.SpeechMode
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -19,18 +20,7 @@ class WhisperModelStore(
     fun status(): WhisperRuntimeStatus {
         val installed = modelFile.isFile && modelFile.length() >= MIN_MODEL_BYTES
         val nativeReady = WhisperNativeBridge.isAvailable
-        val detail = when {
-            installed && nativeReady -> "Local Whisper recognition is ready."
-            installed -> "Demo recognition active: model installed, but Whisper JNI is missing."
-            nativeReady -> "Demo recognition active: import a multilingual Whisper model."
-            else -> "Demo recognition active: Whisper model and JNI library are missing."
-        }
-        return WhisperRuntimeStatus(
-            modelInstalled = installed,
-            nativeLibraryReady = nativeReady,
-            localRecognitionReady = installed && nativeReady,
-            detail = detail,
-        )
+        return WhisperRuntimeStatusResolver.resolve(installed, nativeReady)
     }
 
     suspend fun install(sourceUri: Uri): WhisperRuntimeStatus = withContext(Dispatchers.IO) {
@@ -87,5 +77,38 @@ data class WhisperRuntimeStatus(
     val modelInstalled: Boolean,
     val nativeLibraryReady: Boolean,
     val localRecognitionReady: Boolean,
+    val mode: SpeechMode,
     val detail: String,
 )
+
+object WhisperRuntimeStatusResolver {
+    fun resolve(
+        modelInstalled: Boolean,
+        nativeLibraryReady: Boolean,
+        demoAvailable: Boolean = true,
+    ): WhisperRuntimeStatus {
+        val localReady = modelInstalled && nativeLibraryReady
+        val reason = when {
+            !modelInstalled && !nativeLibraryReady -> "Whisper model and JNI library are missing."
+            !modelInstalled -> "A compatible Whisper model has not been imported."
+            else -> "Whisper JNI library is missing; build with enableWhisperNative."
+        }
+        val mode = when {
+            localReady -> SpeechMode.LOCAL
+            demoAvailable -> SpeechMode.DEMO
+            else -> SpeechMode.UNAVAILABLE
+        }
+        val detail = when (mode) {
+            SpeechMode.LOCAL -> "Local Whisper JNI is ready."
+            SpeechMode.DEMO -> "Demo ASR is active. Local unavailable: $reason"
+            SpeechMode.UNAVAILABLE -> "ASR unavailable: $reason"
+        }
+        return WhisperRuntimeStatus(
+            modelInstalled = modelInstalled,
+            nativeLibraryReady = nativeLibraryReady,
+            localRecognitionReady = localReady,
+            mode = mode,
+            detail = detail,
+        )
+    }
+}

@@ -1,54 +1,40 @@
 package com.example.lyriccaptioner.processing
 
 import android.content.Context
-
-enum class PipelineMode {
-    Demo,
-    Local,
-}
+import com.example.lyriccaptioner.model.SpeechMode
 
 object AppPipelineFactory {
     fun createDefault(context: Context): CaptionPipeline {
-        val modelFile = WhisperModelStore(context).modelFile
-        return if (WhisperModelStore(context).status().localRecognitionReady) {
-            createLocal(context, modelFile.absolutePath)
-        } else {
-            createDemo(context)
+        return CaptionPipeline(exportEngine = FfmpegKitSubtitleExporter(context))
+    }
+
+    fun createAsrDefault(context: Context): AsrModule {
+        val store = WhisperModelStore(context)
+        val status = store.status()
+        return when (status.mode) {
+            SpeechMode.LOCAL -> createLocalAsr(
+                context = context,
+                whisperModelPath = store.modelFile.absolutePath,
+                runtimeStatus = status,
+            )
+            SpeechMode.DEMO -> WhisperAsrModule(
+                runtimeStatus = status,
+                audioExtractor = DemoAudioExtractor(),
+                speechRecognizer = DemoSpeechRecognizer(),
+            )
+            SpeechMode.UNAVAILABLE -> UnavailableAsrModule(status)
         }
     }
 
-    fun createDemo(context: Context): CaptionPipeline {
-        return CaptionPipeline(
-            audioExtractor = DemoAudioExtractor(),
-            speechRecognizer = DemoSpeechRecognizer(),
-            corrector = DemoCaptionCorrector(),
-            translator = DemoTranslator(),
-            exportEngine = Media3SubtitleExporter(context),
-        )
-    }
-
-    fun createLocal(
+    fun createLocalAsr(
         context: Context,
         whisperModelPath: String,
-    ): CaptionPipeline {
-        return createLocal(
+        runtimeStatus: WhisperRuntimeStatus = WhisperRuntimeStatusResolver.resolve(true, true),
+    ): AsrModule {
+        return WhisperAsrModule(
+            runtimeStatus = runtimeStatus,
             audioExtractor = AndroidAudioExtractor(context),
-            whisperModelPath = whisperModelPath,
-            exportEngine = Media3SubtitleExporter(context),
-        )
-    }
-
-    fun createLocal(
-        audioExtractor: AudioExtractor,
-        whisperModelPath: String,
-        exportEngine: ExportEngine,
-    ): CaptionPipeline {
-        return CaptionPipeline(
-            audioExtractor = audioExtractor,
             speechRecognizer = WhisperLocalSpeechRecognizer(modelPath = whisperModelPath),
-            corrector = DemoCaptionCorrector(),
-            translator = MlKitLocalTranslator(),
-            exportEngine = exportEngine,
         )
     }
 }

@@ -15,6 +15,7 @@ import android.text.style.AlignmentSpan
 import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
 import android.text.style.UpdateAppearance
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -119,6 +120,21 @@ class Media3SubtitleExporter(
                     exportResult: Media3ExportResult,
                     exportException: ExportException,
                 ) {
+                    Log.e(
+                        LOG_TAG,
+                        "event=media3_export_error " +
+                            "errorCode=${exportException.errorCode} " +
+                            "errorCodeName=${exportException.errorCodeName} " +
+                            "exceptionClass=${exportException.javaClass.name} " +
+                            "exceptionMessage=\"${sanitizeMedia3DiagnosticMessage(exportException.message)}\" " +
+                            "approximateDurationMs=${exportResult.approximateDurationMs} " +
+                            "fileSizeBytes=${exportResult.fileSizeBytes} " +
+                            "videoFrameCount=${exportResult.videoFrameCount} " +
+                            "width=${exportResult.width} height=${exportResult.height} " +
+                            "audioConversionProcess=${exportResult.audioConversionProcess} " +
+                            "videoConversionProcess=${exportResult.videoConversionProcess}",
+                        exportException,
+                    )
                     outputFile.delete()
                     deleteDestination(destinationUri)
                     if (continuation.isActive) {
@@ -224,9 +240,58 @@ class Media3SubtitleExporter(
     }
 
     private companion object {
+        const val LOG_TAG = "Media3SubtitleExporter"
         const val MIN_VALID_OUTPUT_BYTES = 1_024L
     }
 }
+
+internal fun sanitizeMedia3DiagnosticMessage(message: String?): String {
+    if (message == null) return "<none>"
+    val controlsNormalized = buildString(message.length) {
+        message.forEach { character ->
+            append(if (character.code < 0x20) ' ' else character)
+        }
+    }
+    val escaped = controlsNormalized
+        .replace(QUOTED_SENSITIVE_PATH, "<redacted-path>")
+        .replace(UNQUOTED_URI_WITH_COMMON_ROOT, "<redacted-uri>")
+        .replace(URI_WITH_SPACES, "<redacted-uri>")
+        .replace(URI, "<redacted-uri>")
+        .replace(WINDOWS_FILE_PATH, "<redacted-path>")
+        .replace(UNC_FILE_PATH, "<redacted-path>")
+        .replace(UNIX_FILE_PATH, "<redacted-path>")
+        .replace(UNQUOTED_PATH_WITH_COMMON_ROOT, "<redacted-path>")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+    return escaped
+        .take(MAX_DIAGNOSTIC_MESSAGE_LENGTH)
+        .trimEnd('\\')
+}
+
+private const val MAX_DIAGNOSTIC_MESSAGE_LENGTH = 256
+
+private val QUOTED_SENSITIVE_PATH = Regex(
+    """(?i)(?:\"(?:[A-Za-z][A-Za-z0-9+.-]*://|[A-Z]:[\\/]|\\\\|/)[^\"\r\n]*\"|'(?:[A-Za-z][A-Za-z0-9+.-]*://|[A-Z]:[\\/]|\\\\|/)[^'\r\n]*')""",
+)
+private val URI_WITH_SPACES = Regex(
+    """(?i)\b[A-Za-z][A-Za-z0-9+.-]*://[^"']+?\.[A-Za-z0-9]{1,8}(?=$|[\s,;.)\]}])""",
+)
+private val UNQUOTED_URI_WITH_COMMON_ROOT = Regex(
+    """(?i)\b[A-Za-z][A-Za-z0-9+.-]*://[^"']+?(?=\s+(?:at|or|and|because|from|to|in)\b|[\],;)]|$)""",
+)
+private val URI = Regex("""(?i)\b[A-Za-z][A-Za-z0-9+.-]*://\S+""")
+private val WINDOWS_FILE_PATH = Regex(
+    """(?i)(?<![A-Za-z0-9])(?:[A-Z]:[\\/])(?:[^\\/:\"'\r\n]+[\\/])+?[^\\/:\"'\r\n]+(?:\.[A-Za-z0-9]{1,8})(?=$|[\s,;.)\]}])""",
+)
+private val UNC_FILE_PATH = Regex(
+    """(?i)(?<![A-Za-z0-9])\\\\(?:[^\\/\"'\r\n]+\\)+?[^\\/\"'\r\n]+(?:\.[A-Za-z0-9]{1,8})(?=$|[\s,;.)\]}])""",
+)
+private val UNIX_FILE_PATH = Regex(
+    """(?i)(?<![A-Za-z0-9])/(?:[^/:\"'\r\n]+/)+?[^/:\"'\r\n]+(?:\.[A-Za-z0-9]{1,8})(?=$|[\s,;.)\]}])""",
+)
+private val UNQUOTED_PATH_WITH_COMMON_ROOT = Regex(
+    """(?i)(?<![A-Za-z0-9])(?:[A-Z]:[\\/]|/(?:storage|data|sdcard|mnt|tmp|var|home|Users)[\\/]|\\\\)[^\"']+?(?=\s+(?:at|or|and|because|from|to|in)\b|[\],;.)]|$)""",
+)
 
 @OptIn(markerClass = [UnstableApi::class])
 private class TimedBilingualTextOverlay(

@@ -2,6 +2,8 @@ package com.example.lyriccaptioner
 
 import android.net.Uri
 import android.content.Context
+import android.util.Log
+import android.provider.DocumentsContract
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -10,25 +12,38 @@ import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.EditorState
+import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ProjectSnapshot
+import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.processing.AsrModule
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
 import com.example.lyriccaptioner.processing.MlKitLocalTranslator
+import com.example.lyriccaptioner.processing.WhisperRuntimeStatus
 import com.example.lyriccaptioner.processing.WhisperModelStore
-import com.example.lyriccaptioner.project.ProjectArchive
+import com.example.lyriccaptioner.project.AndroidProjectRepository
+import com.example.lyriccaptioner.project.MediaAccessResult
+import com.example.lyriccaptioner.project.ProjectLoadResult
+import com.example.lyriccaptioner.project.ProjectRepository
+import com.example.lyriccaptioner.project.ProjectSaveResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainViewModel(
     context: Context,
     private var pipeline: CaptionPipeline,
     private val srtParser: SrtParser = SrtParser(),
-    private val projectArchive: ProjectArchive = ProjectArchive(),
+    private val projectRepository: ProjectRepository = AndroidProjectRepository(context),
+    private var asrModule: AsrModule = AppPipelineFactory.createAsrDefault(context),
     private val timingEditor: CaptionTimingEditor = CaptionTimingEditor(),
     private val lyricLineAligner: LyricLineAligner = LyricLineAligner(),
 ) : ViewModel() {
@@ -37,30 +52,55 @@ class MainViewModel(
     private val manualTranslator = MlKitLocalTranslator()
     private val mutableState = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = mutableState.asStateFlow()
+    private var exportJob: Job? = null
+    private var asrJob: Job? = null
 
     init {
         refreshSpeechRuntimeStatus()
     }
 
-    fun importVideo(uri: Uri, durationMs: Long?) {
-        val maxDurationMs = state.value.modelState.maxVideoDurationMs
-        if (durationMs != null && durationMs > maxDurationMs) {
+    fun importVideo(uri: Uri) {
+        mutableState.update { it.copy(isWorking = true, status = "Checking video access...") }
+        viewModelScope.launch {
+            val access = withContext(Dispatchers.IO) { projectRepository.retainMediaReadAccess(uri) }
+            if (access is MediaAccessResult.Unavailable) {
+                Log.w(LOG_TAG, "event=video_import_failed reason=${access.reason}")
+                mutableState.update { it.copy(isWorking = false, status = "Could not import video: ${access.reason}") }
+                return@launch
+            }
+            val wasRelink = state.value.mediaState == MediaState.UNAVAILABLE && state.value.captions.isNotEmpty()
+            val status = when (access) {
+                is MediaAccessResult.Persisted -> if (wasRelink) "Video re-associated and persisted." else "Video imported with persistent access."
+                is MediaAccessResult.SessionOnly -> "Video imported for this session only: ${access.reason}"
+                is MediaAccessResult.ProviderUnsupported -> "Video imported: ${access.reason}"
+                is MediaAccessResult.Unavailable -> access.reason
+            }
+            val maxDurationMs = state.value.modelState.maxVideoDurationMs
+            val durationMs = access.durationMs
+            if (durationMs != null && durationMs > maxDurationMs) {
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        status = "Video is longer than 5 minutes. Please import a shorter clip.",
+                    )
+                }
+                return@launch
+            }
+
             mutableState.update {
                 it.copy(
-                    status = "Video is longer than 5 minutes. Please import a shorter clip.",
+                    isWorking = false,
+                    videoUri = uri,
+                    videoDurationMs = durationMs,
+                    mediaState = access.toEditorMediaState(),
+                    status = status,
+                    exportUri = null,
+                    pendingSidecarSrt = null,
                 )
             }
-            return
-        }
-
-        mutableState.update {
-            it.copy(
-                videoUri = uri,
-                videoDurationMs = durationMs,
-                status = "Video imported. Ready to generate subtitles.",
-                exportUri = null,
-                pendingSidecarSrt = null,
-                pendingProjectArchive = null,
+            Log.i(
+                LOG_TAG,
+                "event=video_import_completed mediaState=${access::class.simpleName} durationMs=$durationMs captionCount=${state.value.captions.size}",
             )
         }
     }
@@ -77,7 +117,6 @@ class MainViewModel(
                     "Imported ${cues.size} subtitle cues from SRT."
                 },
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
             )
         }
     }
@@ -106,7 +145,6 @@ class MainViewModel(
                 captions = updated,
                 status = "Matched ${matches.size} lyric lines. Review the suggested corrections.",
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
             )
         }
     }
@@ -144,7 +182,6 @@ class MainViewModel(
                 selectedCaptionId = cues.firstOrNull()?.id,
                 exportUri = null,
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
                 status = "Created ${cues.size} lyric captions. Adjust timing as needed.",
             )
         }
@@ -175,7 +212,6 @@ class MainViewModel(
                         },
                         exportUri = null,
                         pendingSidecarSrt = null,
-                        pendingProjectArchive = null,
                         status = "Translated ${translations.size} captions to Chinese.",
                     )
                 }
@@ -191,30 +227,60 @@ class MainViewModel(
     }
 
     fun generateCaptions() {
-        val uri = state.value.videoUri ?: return
-        viewModelScope.launch {
-            mutableState.update { it.copy(isWorking = true, status = "Extracting audio...") }
-            runCatching {
-                pipeline.generateDraft(uri) { status ->
+        val current = state.value
+        val uri = current.videoUri ?: return
+        val module = asrModule
+        if (module.runtimeStatus.mode == SpeechMode.UNAVAILABLE) {
+            mutableState.update { it.copy(status = module.runtimeStatus.detail) }
+            Log.w(LOG_TAG, "event=asr_unavailable reason=${module.runtimeStatus.detail}")
+            return
+        }
+        Log.i(LOG_TAG, "event=asr_started mode=${module.runtimeStatus.mode}")
+        asrJob = viewModelScope.launch {
+            mutableState.update { it.copy(isWorking = true, asrRunning = true, status = module.runtimeStatus.detail) }
+            try {
+                val cues = module.recognize(uri) { status ->
                     mutableState.update { it.copy(status = status) }
                 }
-            }.onSuccess { cues ->
+                val mode = module.runtimeStatus.mode
                 mutableState.update {
                     it.copy(
                         isWorking = false,
+                        asrRunning = false,
                         captions = cues,
                         selectedCaptionId = cues.firstOrNull()?.id,
-                        status = "Draft subtitles generated. Review highlighted low-confidence lines.",
+                        status = when (mode) {
+                            SpeechMode.LOCAL -> "Local Whisper JNI generated ${cues.size} English captions."
+                            SpeechMode.DEMO -> "Demo ASR generated ${cues.size} English captions; Local was not used."
+                            SpeechMode.UNAVAILABLE -> module.runtimeStatus.detail
+                        },
                     )
                 }
-            }.onFailure { error ->
+                Log.i(LOG_TAG, "event=asr_completed mode=$mode captionCount=${cues.size}")
+            } catch (error: CancellationException) {
+                mutableState.update {
+                    it.copy(isWorking = false, asrRunning = false, status = "ASR cancelled; temporary audio was cleaned.")
+                }
+                Log.i(LOG_TAG, "event=asr_cancelled mode=${module.runtimeStatus.mode}")
+            } catch (error: Throwable) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
-                        status = "Caption generation failed: ${error.message ?: "unknown error"}",
+                        asrRunning = false,
+                        status = "ASR failed (${module.runtimeStatus.mode}): ${error.message ?: "unknown error"}",
                     )
                 }
+                Log.e(LOG_TAG, "event=asr_failed mode=${module.runtimeStatus.mode}", error)
+            } finally {
+                asrJob = null
             }
+        }
+    }
+
+    fun cancelGenerateCaptions() {
+        if (asrJob?.isActive == true) {
+            Log.i(LOG_TAG, "event=asr_cancel_requested")
+            asrJob?.cancel()
         }
     }
 
@@ -227,6 +293,7 @@ class MainViewModel(
                 whisperModelStore.install(uri)
             }.onSuccess { runtime ->
                 pipeline = AppPipelineFactory.createDefault(appContext)
+                asrModule = AppPipelineFactory.createAsrDefault(appContext)
                 updateSpeechRuntime(runtime)
                 mutableState.update {
                     it.copy(
@@ -276,7 +343,6 @@ class MainViewModel(
                 selectedCaptionId = cue.id,
                 exportUri = null,
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
                 status = "Added a caption. Edit its text and timing.",
             )
         }
@@ -347,7 +413,6 @@ class MainViewModel(
                 selectedCaptionId = remaining.firstOrNull()?.id,
                 exportUri = null,
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
                 status = "Caption removed.",
             )
         }
@@ -355,13 +420,29 @@ class MainViewModel(
 
     fun exportVideo(destinationUri: Uri) {
         val current = state.value
-        val uri = current.videoUri ?: return
-        viewModelScope.launch {
-            mutableState.update { it.copy(isWorking = true, status = "Rendering burned-in subtitles...") }
-            // The API 36.1 emulator releases PlayerView's decoder surface asynchronously.
-            // Wait for that release before Transformer opens a second video decoder.
-            delay(PREVIEW_RELEASE_DELAY_MS)
-            runCatching {
+        val rejection = when {
+            current.videoUri == null -> "no_video" to "No video selected. Import a video before exporting."
+            current.captions.isEmpty() -> "no_captions" to "No subtitles available. Import or create subtitles before exporting."
+            else -> null
+        }
+        if (rejection != null) {
+            val destinationDeleted = deleteExportDestination(destinationUri)
+            Log.w(
+                LOG_TAG,
+                "event=export_rejected reason=${rejection.first} destinationDeleted=$destinationDeleted",
+            )
+            mutableState.update { it.copy(status = rejection.second) }
+            return
+        }
+
+        val uri = checkNotNull(current.videoUri)
+        Log.i(LOG_TAG, "event=export_started captionCount=${current.captions.size}")
+        exportJob = viewModelScope.launch {
+            try {
+                mutableState.update { it.copy(isWorking = true, status = "Rendering burned-in subtitles...") }
+                // The API 36.1 emulator releases PlayerView's decoder surface asynchronously.
+                // Wait for that release before Transformer opens a second video decoder.
+                delay(PREVIEW_RELEASE_DELAY_MS)
                 pipeline.export(
                     uri,
                     destinationUri,
@@ -369,23 +450,54 @@ class MainViewModel(
                     current.exportProfile,
                 ) { status ->
                     mutableState.update { it.copy(status = status) }
+                }.also { exportUri ->
+                    mutableState.update {
+                        it.copy(
+                            isWorking = false,
+                            exportUri = exportUri,
+                            status = "Export complete: $exportUri",
+                        )
+                    }
                 }
-            }.onSuccess { exportUri ->
+            } catch (error: CancellationException) {
+                deleteExportDestination(destinationUri)
                 mutableState.update {
                     it.copy(
                         isWorking = false,
-                        exportUri = exportUri,
-                        status = "Export complete: $exportUri",
+                        status = "Video export cancelled.",
                     )
                 }
-            }.onFailure { error ->
+                throw error
+            } catch (error: Throwable) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
                         status = "Video export failed: ${error.message ?: "unknown error"}",
                     )
                 }
+            } finally {
+                exportJob = null
             }
+        }
+    }
+
+    fun cancelExport() {
+        if (exportJob?.isActive == true) {
+            Log.i(LOG_TAG, "event=export_cancel_requested")
+            exportJob?.cancel()
+        }
+    }
+
+    private fun deleteExportDestination(destinationUri: Uri): Boolean {
+        val deletedByDocumentApi = runCatching {
+            DocumentsContract.deleteDocument(appContext.contentResolver, destinationUri)
+        }.getOrDefault(false)
+        if (deletedByDocumentApi) return true
+        return runCatching {
+            appContext.contentResolver.delete(destinationUri, null, null) > 0
+        }.getOrElse { error ->
+            Log.w(LOG_TAG, "event=export_destination_cleanup_failed", error)
+            false
         }
     }
 
@@ -395,7 +507,6 @@ class MainViewModel(
             it.copy(
                 status = "SRT sidecar is ready to save.",
                 pendingSidecarSrt = srt,
-                pendingProjectArchive = null,
             )
         }
     }
@@ -405,7 +516,6 @@ class MainViewModel(
             it.copy(
                 status = "SRT sidecar saved: $uri",
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
             )
         }
     }
@@ -440,51 +550,73 @@ class MainViewModel(
         updateSubtitleStyle { style -> style.copy(outlineColorHex = colorHex) }
     }
 
-    fun exportProjectArchive(): String {
-        val archive = projectArchive.write(currentSnapshot())
-        mutableState.update {
-            it.copy(
-                status = "Project archive is ready to save.",
-                pendingProjectArchive = archive,
-                pendingSidecarSrt = null,
-            )
-        }
-        return archive
-    }
-
-    fun importProjectArchive(raw: String) {
-        val snapshot = runCatching { projectArchive.read(raw) }.getOrElse { error ->
-            mutableState.update { it.copy(status = "Could not import project: ${error.message}") }
-            return
-        }
-
-        mutableState.update {
-            it.copy(
-                videoUri = snapshot.videoUri?.let(Uri::parse),
-                videoDurationMs = snapshot.videoDurationMs,
-                captions = snapshot.captions,
-                selectedCaptionId = snapshot.captions.firstOrNull()?.id,
-                exportProfile = snapshot.exportProfile,
-                status = "Project archive imported.",
-                pendingSidecarSrt = null,
-                pendingProjectArchive = null,
-            )
+    fun saveProjectArchive(destinationUri: Uri) {
+        val snapshot = currentSnapshot()
+        viewModelScope.launch {
+            mutableState.update { it.copy(isWorking = true, status = "Saving project archive...") }
+            when (val result = projectRepository.save(snapshot, destinationUri)) {
+                is ProjectSaveResult.Success -> mutableState.update {
+                    Log.i(LOG_TAG, "event=project_save_completed captionCount=${snapshot.captions.size}")
+                    it.copy(isWorking = false, status = "Project archive saved: ${result.destinationUri}")
+                }
+                is ProjectSaveResult.Failure -> mutableState.update {
+                    Log.w(LOG_TAG, "event=project_save_failed kind=${result.error.kind}")
+                    it.copy(isWorking = false, status = "Could not save project: ${result.error.message}")
+                }
+            }
         }
     }
 
-    fun projectArchiveSaved(uri: Uri) {
-        mutableState.update {
-            it.copy(
-                status = "Project archive saved: $uri",
-                pendingProjectArchive = null,
-            )
+    fun importProjectArchive(sourceUri: Uri) {
+        viewModelScope.launch {
+            mutableState.update { it.copy(isWorking = true, status = "Opening project archive...") }
+            when (val result = projectRepository.load(sourceUri)) {
+                is ProjectLoadResult.Success -> {
+                   val snapshot = result.snapshot
+                    val mediaState = if (snapshot.videoUri.isNullOrBlank()) {
+                        MediaState.NONE
+                    } else {
+                        result.mediaAccess.toEditorMediaState()
+                    }
+                    val status = if (snapshot.videoUri.isNullOrBlank()) {
+                        "Project restored without a video. Select a video to associate it."
+                    } else when (result.mediaAccess) {
+                        is MediaAccessResult.Persisted -> "Project restored with persistent video access."
+                        is MediaAccessResult.SessionOnly -> "Project restored; video access is session-only."
+                        is MediaAccessResult.ProviderUnsupported -> "Project restored; provider cannot persist video access."
+                        is MediaAccessResult.Unavailable -> "Project restored; video is unavailable. Select a new video to re-associate it."
+                    }
+                    mutableState.update {
+                        Log.i(
+                            LOG_TAG,
+                            "event=project_load_completed mediaState=$mediaState captionCount=${snapshot.captions.size}",
+                        )
+                        it.copy(
+                            isWorking = false,
+                            videoUri = snapshot.videoUri?.let(Uri::parse),
+                            videoDurationMs = snapshot.videoDurationMs ?: result.mediaAccess.durationMs,
+                            mediaState = mediaState,
+                            captions = snapshot.captions,
+                            selectedCaptionId = snapshot.captions.firstOrNull()?.id,
+                            exportProfile = snapshot.exportProfile,
+                            status = status,
+                            pendingSidecarSrt = null,
+                        )
+                    }
+                }
+                is ProjectLoadResult.Failure -> mutableState.update {
+                    Log.w(LOG_TAG, "event=project_load_failed kind=${result.error.kind}")
+                    it.copy(isWorking = false, status = "Could not import project: ${result.error.message}")
+                }
+            }
         }
     }
 
-    fun projectArchiveSaveFailed(message: String) {
-        mutableState.update {
-            it.copy(status = "Could not save project archive: $message")
-        }
+    private fun MediaAccessResult.toEditorMediaState(): MediaState = when (this) {
+        is MediaAccessResult.Persisted -> MediaState.PERSISTED
+        is MediaAccessResult.SessionOnly -> MediaState.SESSION_ONLY
+        is MediaAccessResult.ProviderUnsupported -> MediaState.PROVIDER_UNSUPPORTED
+        is MediaAccessResult.Unavailable -> MediaState.UNAVAILABLE
     }
 
     private fun updateCue(cueId: String, transform: (CaptionCue) -> CaptionCue) {
@@ -495,22 +627,22 @@ class MainViewModel(
                 },
                 exportUri = null,
                 pendingSidecarSrt = null,
-                pendingProjectArchive = null,
             )
         }
     }
 
     private fun refreshSpeechRuntimeStatus() {
-        updateSpeechRuntime(whisperModelStore.status())
+        updateSpeechRuntime(asrModule.runtimeStatus)
     }
 
-    private fun updateSpeechRuntime(runtime: com.example.lyriccaptioner.processing.WhisperRuntimeStatus) {
+    private fun updateSpeechRuntime(runtime: WhisperRuntimeStatus) {
         mutableState.update { current ->
             current.copy(
                 modelState = current.modelState.copy(
                     speechModelReady = runtime.localRecognitionReady,
                     speechModelInstalled = runtime.modelInstalled,
                     speechNativeLibraryReady = runtime.nativeLibraryReady,
+                    speechMode = runtime.mode,
                     speechRuntimeDetail = runtime.detail,
                 ),
             )
@@ -548,6 +680,7 @@ class MainViewModel(
     }
 
     private companion object {
+        const val LOG_TAG = "MainViewModel"
         const val DEFAULT_CAPTION_DURATION_MS = 2_000L
         const val MIN_CAPTION_DURATION_MS = 100L
         const val PREVIEW_RELEASE_DELAY_MS = 1_500L

@@ -1,78 +1,33 @@
 # LyricCaptioner Android
 
-Local-first Android MVP for importing short videos, generating bilingual subtitles,
-editing caption timing/text, and exporting a captioned MP4.
+这是一个本地优先的 Android 双语字幕工具。用户可以导入不超过 5 分钟的视频，使用 SRT、歌词、人工字幕或真实本地语音识别生成英文字幕，编辑中英文内容和时间，预览后导出带双语字幕的 MP4。
 
-Chinese usage, architecture, FAQ, and current progress:
-[`docs/中文使用说明与开发进度.md`](docs/中文使用说明与开发进度.md)
+## 当前状态
 
-## Product defaults
+当前项目处于 `EXP-001` 可靠字幕烧录导出模块的路线决策阶段。
 
-- Android only.
-- Personal-use tool, optimized for strong local capability and stability.
-- Video duration target: 5 minutes or less.
-- Processing mode: local first.
-- First version supports manual lyric import/alignment as the reliable path for
-  English songs. Fully automatic original-lyric recovery is treated as a best
-  effort, not a guarantee.
+- 当前门禁：`BLOCKED / EXPORT_ROUTE_DECISION_REQUIRED`
+- Media3：继续负责播放和预览。
+- 字幕烧录：现有实现仍存在设备原生加载或导出阻断，尚未完成产品验收。
+- 编译通过、组件测试通过和模拟结果都不能代替目标设备上的真实 MP4 验收。
 
-## Implementation plan
+## 当前使用的三份项目文档
 
-- Kotlin + Jetpack Compose for the app shell and editor UI.
-- Media3 for preview and future Transformer-based MP4 export.
-- whisper.cpp integration point for local English ASR.
-- ML Kit Translate integration point for offline English-to-Chinese subtitles.
-- Confidence-first correction flow so uncertain lyrics are highlighted instead
-  of silently overwritten.
+- [长期开发路线](docs/DEVELOPMENT_ROADMAP.md)：模块顺序、模块边界、接口、测试和完成标准。
+- [当前任务](docs/CURRENT_TASK.md)：当前唯一活动任务、允许范围和人工决策门。
+- [项目状态](docs/PROJECT_STATE.md)：当前门禁、已确认事实、风险和下一允许动作。
 
-## Current state
+## 文档备份
 
-This repository contains the Android project skeleton, UI flow, subtitle state
-model, SRT import/export, lyric-to-timeline correction, project archive
-import/export, per-cue timing controls, explicit lyric-correction candidates,
-subtitle style settings, and local-processing interfaces with demo
-implementations. Timing edits enforce minimum cue duration, neighboring cue
-boundaries, and the known video duration. The video preview now displays the
-active bilingual cue using the same font size, colors, and bottom margin used
-for export.
+原有 `docs` 目录没有删除，已完整备份为 `docs-BK`。备份内容只用于追溯，不作为当前执行队列。需要恢复旧证据时，先依据当前三份文档和人工决策确定范围。
 
-The app currently uses demo recognition data so the editor flow stays usable
-while the native ASR runtime is wired. Video export is no longer a demo: it
-uses Media3 Transformer to burn time-synchronized bilingual text into an
-H.264/AAC MP4 selected through Android's document save dialog.
+## 技术边界
 
-The Gradle 8.9 wrapper, JDK 17 toolchain, and Android SDK 35 build path are
-verified. Debug APK and unit-test builds pass. Runtime behavior still requires
-validation on a connected Android device or emulator.
+- Android-only，当前配置 `minSdk 26`、`targetSdk 35`。
+- Kotlin、Jetpack Compose、Media3、Android MediaCodec、whisper.cpp JNI 和 ML Kit 是当前技术基础。
+- 核心媒体处理以本地优先为原则，不把用户媒体强制上传到云端。
+- 不保证自动还原原歌词；低置信度结果必须允许人工修正。
 
-The local pipeline now includes a real Android `MediaExtractor`/`MediaCodec`
-audio extractor. It streams decoded PCM through channel downmixing and linear
-resampling into a temporary 16 kHz mono PCM16 WAV, then deletes the WAV after
-recognition. The default pipeline enables this path automatically when both the
-Whisper JNI library and `files/models/ggml-base.en.bin` are available.
+## 开发规则
 
-The JNI bridge and CMake integration target official whisper.cpp `v1.9.1`.
-Run `tools/setup-whisper-native.ps1`, install Android NDK `27.3.13750724` and
-CMake `3.22.1`, then build with `-PenableWhisperNative=true`. The native build
-was verified on 2026-07-10: the Debug APK includes
-`liblyriccaptioner_whisper.so` for `arm64-v8a` and `x86_64`. Downloaded
-whisper.cpp sources and all model files remain local and are ignored by Git.
-
-## Next engineering steps
-
-1. Install the Debug APK on a device and validate import, preview, project
-   save/open, subtitle editing, and error recovery.
-2. Validate the JNI bridge and local ASR on an ARM64 Android device.
-3. Add model import/download UI and expose local-model readiness in the editor.
-4. Validate Media3 subtitle placement, encoder compatibility, and exported
-   playback on representative Android devices.
-5. Move project archives from document import/export into app-private automatic
-   persistence when the editor lifecycle is finalized.
-
-## Native ASR boundary
-
-`WhisperLocalSpeechRecognizer` is present but feature-gated by native library
-availability. The native Debug build packages `lyriccaptioner_whisper` through
-`externalNativeBuild`; the audio extractor writes a local PCM/WAV file path for
-native code. Passing `content://` URIs directly to native Whisper is
-intentionally rejected.
+一次只推进一个完整模块。普通编译错误、局部逻辑错误和测试修复可以在已批准范围内自行处理；路线、依赖、原生工具链、架构、环境、破坏性操作、设备验证和范围扩大必须先进行人工决策。

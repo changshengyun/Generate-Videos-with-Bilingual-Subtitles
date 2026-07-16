@@ -6,11 +6,13 @@ import kotlinx.coroutines.withContext
 
 class WhisperLocalSpeechRecognizer(
     private val modelPath: String,
-    private val bridge: WhisperNativeBridge = WhisperNativeBridge,
+    private val bridge: WhisperNativeClient = WhisperNativeBridge,
 ) : LocalSpeechRecognizer {
     override suspend fun recognize(audio: ExtractedAudio): List<CaptionCue> = withContext(Dispatchers.Default) {
-        check(bridge.isAvailable) {
-            "Whisper native library is not available. Install packaged JNI libraries before using local ASR."
+        if (!bridge.isAvailable) {
+            throw WhisperJniUnavailableException(
+                "Whisper native library is not available. Build with enableWhisperNative before using local ASR.",
+            )
         }
         val audioPath = requireNotNull(audio.filePath) {
             "Whisper requires extracted audio as a readable local file path, not a content URI."
@@ -20,19 +22,19 @@ class WhisperLocalSpeechRecognizer(
             audioPath = audioPath,
             sampleRate = audio.sampleRate,
             channels = audio.channels,
-        ).mapIndexed { index, segment ->
-            CaptionCue(
-                id = "whisper-$index-${segment.startMs}",
-                startMs = segment.startMs,
-                endMs = segment.endMs,
-                english = segment.text,
-                chinese = "",
-                confidence = segment.confidence,
-                correctionCandidates = emptyList(),
-                confirmed = false,
-            )
-        }
+        ).let(WhisperSegmentConverter::toCaptions)
     }
+}
+
+interface WhisperNativeClient {
+    val isAvailable: Boolean
+
+    fun transcribe(
+        modelPath: String,
+        audioPath: String,
+        sampleRate: Int,
+        channels: Int,
+    ): List<WhisperSegment>
 }
 
 data class WhisperSegment(
@@ -42,8 +44,8 @@ data class WhisperSegment(
     val confidence: Float,
 )
 
-object WhisperNativeBridge {
-    val isAvailable: Boolean
+object WhisperNativeBridge : WhisperNativeClient {
+    override val isAvailable: Boolean
 
     init {
         isAvailable = runCatching {
@@ -51,7 +53,7 @@ object WhisperNativeBridge {
         }.isSuccess
     }
 
-    fun transcribe(
+    override fun transcribe(
         modelPath: String,
         audioPath: String,
         sampleRate: Int,
@@ -66,6 +68,27 @@ object WhisperNativeBridge {
         sampleRate: Int,
         channels: Int,
     ): Array<WhisperSegment>
+}
+
+class WhisperJniUnavailableException(message: String) : IllegalStateException(message)
+
+object WhisperSegmentConverter {
+    fun toCaptions(segments: List<WhisperSegment>): List<CaptionCue> {
+        return AsrCaptionValidator.validate(
+            segments.mapIndexed { index, segment ->
+                CaptionCue(
+                    id = "whisper-$index-${segment.startMs}",
+                    startMs = segment.startMs,
+                    endMs = segment.endMs,
+                    english = segment.text,
+                    chinese = "",
+                    confidence = segment.confidence,
+                    correctionCandidates = emptyList(),
+                    confirmed = false,
+                )
+            },
+        )
+    }
 }
 
 class AudioChunker(

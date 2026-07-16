@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <android/log.h>
 
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,8 @@
 #include "whisper.h"
 
 namespace {
+
+constexpr const char * kLogTag = "WhisperJNI";
 
 struct WavAudio {
     int sample_rate = 0;
@@ -238,6 +241,7 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
     env->ReleaseStringUTFChars(audio_path_value, audio_chars);
 
     try {
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "event=whisper_jni_transcribe_started");
         WavAudio audio = read_pcm16_wav(audio_path);
 
         whisper_context_params context_params = whisper_context_default_params();
@@ -315,8 +319,14 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
         }
 
         env->DeleteLocalRef(segment_class);
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_jni_transcribe_completed segmentCount=%d",
+            segment_count);
         return result;
     } catch (const std::exception & error) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "event=whisper_jni_transcribe_failed");
         throw_java(env, "java/lang/IllegalStateException", error.what());
         return nullptr;
     }

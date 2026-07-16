@@ -1,87 +1,62 @@
-# LyricCaptioner Project State / 迁移后基线状态
+# 项目当前状态
 
-## Current gate / 当前门禁
+## 一、当前门禁
 
-`POST_MIGRATION_CLEANUP`
+`ASR-001 / COMPONENT_VERIFIED / HUMAN_DECISION`
 
-- 当前阶段：`POST_MIGRATION_CLEANUP`（baseline checkpoint 已完成）
-- 当前 Gate：`SPIKE_READY`
-- 下一阶段：`SPIKE_READY` 下的已批准技术探针；尚未批准执行
-- 架构分类保持：**C — 存在明确实现故障，但架构尚未被否定**。本轮不重新选型。
+- 项目根目录：`D:\DevEnv\Projects\lyric-captioner-android`
+- 当前阶段：真实本地 Whisper ASR
+- 当前任务：`ASR-001`，修订号 `1`
+- 当前状态：`COMPONENT_VERIFIED / HUMAN_DECISION`
+- 验收设备：既有 `Pixel_8`，ADB `emulator-5554`，只使用模拟器 display 2
 
-## Audit baseline / 审计基准
+## 二、已确认事实
 
-- Git root：`D:\DevEnv\Projects\lyric-captioner-android`
-- Branch：`migration/lyric-captioner-history`
-- 当前 HEAD（baseline commit 前）：`05dbae7a2134de5e8af4765654586921a9ee9779`（`chore: capture current project state`）
-- 独立仓库边界已完成；`health-assistant` 和中央 debug log 不在本仓库范围。
-- 主应用源码相对迁移快照 HEAD 无文本修改。本次 baseline commit 收录项目治理、权威文档与迁移后状态。
-- `third_party/ffmpeg-kit` 保持 dirty detached 隔离状态；完整分析与恢复证据见 `docs/FFMPEG_KIT_CHANGE_ANALYSIS.md`。
+- 归档边界统一为 `ProjectRepository`；Android 实现集中处理 SAF 读写和媒体访问。
+- `ProjectArchive` 写入 `# LyricCaptionerProject v2`，字段使用安全编码；读取兼容 v1。
+- 归档保存视频 URI、视频时长、字幕 cue（含候选和确认状态）、样式及导出配置；不复制媒体字节。
+- 视频选择使用 `OpenDocument`，并尝试 `takePersistableUriPermission`。
+- 媒体访问分类：`Persisted`、`SessionOnly`、`ProviderUnsupported`、`Unavailable`。
+- 失效视频 URI 保留在已恢复项目中，但预览不会把失效 URI 交给 Media3；界面提供 `Relink Video`。
+- 归档读写错误按输入、读取、写入、格式、权限、媒体和未知错误分类，并转换为用户可见状态。
+- JVM 回归测试共 44 项通过；`assembleDebug` 通过；最终 Debug APK 已安装到既有模拟器。
 
-## Canonical documents / 权威文档
+## 三、模拟器验收记录
 
-- `docs/PROJECT_BRIEF.md`
-- `docs/REQUIREMENTS.md`
-- `docs/ENVIRONMENT_REPORT.md`
-- `docs/CURRENT_SYSTEM_MAP.md`
-- `docs/CURRENT_TECH_STACK.md`
-- `docs/FEATURE_STATUS.md`
-- `docs/MID_PROJECT_AUDIT.md`
-- `docs/NEXT_TASK.md`
-- `docs/handoffs/AUDIT_HANDOFF.md`
-- `docs/POST_MIGRATION_AUDIT.md`
-- `docs/BASELINE_CHECK.md`
-- `docs/FFMPEG_KIT_CHANGE_ANALYSIS.md`
+| 场景 | 结果 | 证据 |
+|---|---|---|
+| SAF 视频导入 | 通过 | `video_import_completed mediaState=Persisted durationMs=4000` |
+| 双语 SRT 导入并保存 | 通过 | `project_save_completed captionCount=2` |
+| 强制停止/重启后打开归档 | 通过 | `project_load_completed mediaState=PERSISTED captionCount=2` |
+| 失效媒体恢复 | 通过 | `project_load_completed mediaState=UNAVAILABLE captionCount=1`，UI 显示 `Relink Video` |
+| 腐坏归档 | 通过 | `project_load_failed kind=FORMAT`，原项目状态仍保留 |
+| 失效媒体重绑 | 通过 | `video_import_completed mediaState=Persisted durationMs=4000 captionCount=1` |
 
-`lyric-captioner-android/docs/handoffs/LEGACY_HANDOFF.md` 仅为调查线索；项目内旧中文说明中的“已完成”声明不覆盖本审计。
+## 四、边界与风险
 
-## Verified facts / 已验证事实
+- 当前结果是模拟器验证，不代表真实 ARM64 设备验证，也不代表产品发布接受。
+- `SessionOnly` 和 `ProviderUnsupported` 的出现取决于具体文档提供器；分类和提示路径已实现，但本轮固定输入命中了 `Persisted`。
+- 归档只保存 URI 引用，不保存媒体内容；媒体提供器撤销授权或删除源文件后必须走重绑。
+- EXP-001 的导出/AAR 结果属于已完成历史事实；本轮未修改该路线。
 
-- 生效栈为 Kotlin/Compose/Media3/Android MediaCodec/ML Kit/可选 whisper.cpp JNI；FFmpegKit 未接入 app。
-- JDK 17.0.19、Gradle 8.9、Android SDK 可用。
-- 2026-07-11 迁移前审计记录 Debug 24/24、Release 24/24 单测强制重跑通过，普通与 native Debug 构建成功；本轮未重跑，不将其升级为当前 HEAD 验证事实。
-- native APK 含 ARM64/x86_64 的 `liblyriccaptioner_whisper.so`。
-- 模型或 JNI 未同时就绪时，默认生成路径使用固定 Demo ASR；Local 管线的 corrector 仍为原样返回的 Demo 实现。
-- 当前 ADB 设备列表为空。
+## 五、ASR-001 初始盘点
 
-## Confirmed failure and evidence boundary / 已确认故障与证据边界
+- 已存在 `AndroidAudioExtractor`、`LocalSpeechRecognizer`、`WhisperLocalSpeechRecognizer`、`WhisperModelStore` 和 `whisper_jni.cpp`，本任务应在其上收敛稳定 ASR 边界。
+- 当前 `AppPipelineFactory.createDefault()` 在 Local 不可用时直接选择 Demo；`EditorScreen` 因此允许按钮显示 `Generate Demo`，但生成状态没有完整记录路由。
+- 当前 `CaptionPipeline.generateDraft()` 还串联 Demo 校正器和 ML Kit 翻译，不符合 ASR 只生成英文字幕的边界。
+- 当前 `WhisperModelStore` 的不可用提示使用“Demo recognition active”，但没有独立的 `Local/Demo/Unavailable` 模式模型。
+- 当前 Native JNI 已有 `nativeTranscribe`，但需要补充可审计的 JNI 路由/完成日志、单元测试和 Native APK ABI 检查。
 
-- 历史指定 Pixel_8 API 36.1 x86_64 模拟器上，当前集成的 `Media3SubtitleExporter` 在真实保存流程中重复报 `Video frame processing error`，输出保持 0 bytes。该事实由项目内当前交接和项目状态文件记录，但本轮因无设备未重新采集 logcat。
-- 仓库的 `final-bilingual-subtitle.mp4` 没有证据链证明由 Android App/当前 exporter 生成，不能抵消上述失败。
-- 最早已定位边界为视频 frame-processing/设备兼容集成层；具体 codec、Surface、OpenGL 或输入因素仍未知。
+## 六、ASR-001 验证事实
 
-## Why C / 分类依据
+- ASR 组件已收敛为稳定接口，复用现有音频提取、LocalSpeechRecognizer 和 Whisper JNI；音频临时文件在成功、失败和取消路径执行清理。
+- ASR 只输出英文字幕 cue，转换层校验非空文本、非负且有序时间戳、置信度范围，并拒绝无效结果。
+- 模型状态与路由显式区分 `LOCAL`、`DEMO`、`UNAVAILABLE`；Local 不可用时显示具体原因，Demo 结果不会标记为 Local。
+- 代码与全量 JVM 单测通过：51 项通过，0 失败、0 错误、0 跳过；普通 Debug 与 Native Debug 均组装通过。
+- Native APK 已确认包含 arm64-v8a 的 `liblyriccaptioner_whisper.so`；JNI 源码记录 transcribe 开始、完成和失败事件。
 
-- 不选 A/B：核心硬边界 MP4 烧录在约定运行环境已有明确实现失败，不只是证据缺失。
-- 选择 C：构建、组件测试、导入/预览部分证据和正式 exporter 代码均存在；失败尚未被定位到不可修复的架构能力缺失。
-- 不选 D：尚无证据证明 Media3 或当前整体架构在所有约定 Android 目标上无法满足硬边界。
+## 七、当前阻断与下一步
 
-## Primary blocker / 当前首要阻断
-
-当前集成的 Media3 字幕烧录无法在历史指定模拟器完成；同时本轮没有连接该模拟器或 ARM64 真机，无法以新 logcat 定位最早失败原因或验证设备差异。
-
-## Major evidence gaps / 主要证据缺口
-
-- 当前 APK 在同一模拟器上的完整 Transformer/codec/Surface logcat。
-- ARM64 真机 Media3 导出和真实 Whisper 推理。
-- ML Kit 首次下载/离线复用、SAF 跨重启、5 分钟资源基线、许可审计。
-- 仓库样例 MP4 的生成命令、来源和与 App 版本绑定关系。
-
-## Current risks / 当前风险
-
-- `third_party/ffmpeg-kit` 的 5 个修改尚未形成嵌套仓库提交，其中 versionCode 修改意图未知；当前仅通过主仓库文档冻结完整 diff。
-- 主仓库无 remote，异机恢复和远端审查能力缺失。
-- Media3 指定模拟器导出存在历史已知失败；当前没有新设备证据。
-- 真机 Whisper、ML Kit 离线、SAF、5 分钟资源和许可仍未验证。
-- 已跟踪的 `.kotlin/errors` 和历史媒体/截图属于迁移快照遗留，本轮不删除。
-
-## Next phase / 下一阶段
-
-baseline commit 已完成，主仓库仅剩已记录、已隔离的 `ffmpeg-kit` dirty 状态，工程 Gate 标记为 `SPIKE_READY`。这只表示具备探针准备条件，不等于已批准或已执行 Spike。
-
-实际执行前仍需用户批准 `docs/NEXT_TASK.md`。获批后使用 `evidence-first-debugging`，只复现一次指定模拟器 Media3 导出并冻结完整证据；不修复、不换栈、不继续 FFmpegKit、不继续功能开发。
-
-## Last updated
-
-- Date: 2026-07-12
-- Pre-baseline HEAD: `05dbae7a2134de5e8af4765654586921a9ee9779`
+- 当前 ADB 只有 x86_64 模拟器 `emulator-5554`，没有授权 ARM64 真机；项目内也没有获授权的兼容 Whisper 模型，因此尚未执行真实 Local 识别。
+- 需要提供/授权 ARM64 设备、兼容模型和固定测试媒体后，继续验收真实 JNI 加载、Local 路由、非空英文字幕、时间戳顺序及成功/失败/取消清理。
+- 当前最终状态：`COMPONENT_VERIFIED / HUMAN_DECISION`。

@@ -2,7 +2,6 @@ package com.example.lyriccaptioner.ui
 
 import android.content.Context
 import android.content.Intent
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -63,6 +62,8 @@ import androidx.media3.ui.PlayerView
 import com.example.lyriccaptioner.MainViewModel
 import com.example.lyriccaptioner.captions.CaptionTimeline
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.MediaState
+import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -76,7 +77,7 @@ fun EditorScreen(viewModel: MainViewModel) {
     var pastedLyrics by remember { mutableStateOf("") }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            viewModel.importVideo(uri, readVideoDurationMs(context, uri))
+            viewModel.importVideo(uri)
         }
     }
     val srtPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -89,9 +90,9 @@ fun EditorScreen(viewModel: MainViewModel) {
             viewModel.applyLyricText(readText(context, uri))
         }
     }
-    val projectPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    val projectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            viewModel.importProjectArchive(readText(context, uri))
+            viewModel.importProjectArchive(uri)
         }
     }
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -116,20 +117,9 @@ fun EditorScreen(viewModel: MainViewModel) {
         }
     }
     val projectCreator = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/plain"),
+        ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri: Uri? ->
-        val archive = state.pendingProjectArchive
-        if (uri != null && archive != null) {
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { output ->
-                    output.write(archive.toByteArray(Charsets.UTF_8))
-                } ?: error("No output stream")
-            }.onSuccess {
-                viewModel.projectArchiveSaved(uri)
-            }.onFailure { error ->
-                viewModel.projectArchiveSaveFailed(error.message ?: "unknown error")
-            }
-        }
+        if (uri != null) viewModel.saveProjectArchive(uri)
     }
     val videoCreator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("video/mp4"),
@@ -142,11 +132,6 @@ fun EditorScreen(viewModel: MainViewModel) {
     LaunchedEffect(state.pendingSidecarSrt) {
         if (state.pendingSidecarSrt != null) {
             srtCreator.launch("lyric-captioner.srt")
-        }
-    }
-    LaunchedEffect(state.pendingProjectArchive) {
-        if (state.pendingProjectArchive != null) {
-            projectCreator.launch("lyric-captioner-project.txt")
         }
     }
 
@@ -187,7 +172,7 @@ fun EditorScreen(viewModel: MainViewModel) {
         ) {
             Header()
             VideoPreview(
-                videoUri = state.videoUri,
+                videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
                 captions = state.captions,
                 selectedCaptionId = state.selectedCaptionId,
                 subtitleStyle = state.exportProfile.subtitleStyle,
@@ -197,6 +182,7 @@ fun EditorScreen(viewModel: MainViewModel) {
             SpeechRuntimeStatus(
                 modelInstalled = state.modelState.speechModelInstalled,
                 nativeReady = state.modelState.speechNativeLibraryReady,
+                mode = state.modelState.speechMode,
                 detail = state.modelState.speechRuntimeDetail,
             )
             FlowRow(
@@ -207,7 +193,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     enabled = !state.isWorking,
                     onClick = { videoPicker.launch(arrayOf("video/*")) },
                 ) {
-                    Text("Import")
+                    Text(if (state.mediaState == com.example.lyriccaptioner.model.MediaState.UNAVAILABLE) "Relink Video" else "Import")
                 }
                 TextButton(
                     enabled = !state.isWorking,
@@ -217,7 +203,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                 }
                 TextButton(
                     enabled = !state.isWorking,
-                    onClick = { projectPicker.launch("text/*") },
+                    onClick = { projectPicker.launch(arrayOf("application/octet-stream", "text/plain")) },
                 ) {
                     Text("Open Project")
                 }
@@ -252,24 +238,35 @@ fun EditorScreen(viewModel: MainViewModel) {
                     Text("Add Caption")
                 }
                 Button(
-                    enabled = state.videoUri != null && !state.isWorking,
+                    enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode != SpeechMode.UNAVAILABLE,
                     onClick = viewModel::generateCaptions,
                 ) {
                     Text(
-                        if (state.modelState.speechModelReady) {
-                            "Generate Local"
-                        } else {
-                            "Generate Demo"
+                        when (state.modelState.speechMode) {
+                            SpeechMode.LOCAL -> "Generate Local"
+                            SpeechMode.DEMO -> "Generate Demo"
+                            SpeechMode.UNAVAILABLE -> "ASR Unavailable"
                         },
                     )
                 }
+                if (state.asrRunning) {
+                    TextButton(onClick = viewModel::cancelGenerateCaptions) {
+                        Text("Cancel ASR")
+                    }
+                }
                 Button(
-                    enabled = state.captions.isNotEmpty() && !state.isWorking,
+                    enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
                     onClick = {
                         videoCreator.launch(state.exportProfile.outputName)
                     },
                 ) {
                     Text("Export")
+                }
+                TextButton(
+                    enabled = state.isWorking,
+                    onClick = viewModel::cancelExport,
+                ) {
+                    Text("Cancel")
                 }
                 TextButton(
                     enabled = state.exportUri != null && !state.isWorking,
@@ -287,7 +284,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                 }
                 TextButton(
                     enabled = state.captions.isNotEmpty() && !state.isWorking,
-                    onClick = { viewModel.exportProjectArchive() },
+                    onClick = { projectCreator.launch("lyric-captioner-project.lcp") },
                 ) {
                     Text("Save Project")
                 }
@@ -327,6 +324,7 @@ fun EditorScreen(viewModel: MainViewModel) {
 private fun SpeechRuntimeStatus(
     modelInstalled: Boolean,
     nativeReady: Boolean,
+    mode: SpeechMode,
     detail: String,
 ) {
     Row(
@@ -334,6 +332,14 @@ private fun SpeechRuntimeStatus(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Text(
+            text = "ASR: ${mode.name}",
+            style = MaterialTheme.typography.labelMedium,
+            color = when (mode) {
+                SpeechMode.LOCAL -> Color(0xFF176B3A)
+                SpeechMode.DEMO, SpeechMode.UNAVAILABLE -> MaterialTheme.colorScheme.error
+            },
+        )
         Text(
             text = if (modelInstalled) "Model: ready" else "Model: missing",
             style = MaterialTheme.typography.labelMedium,
@@ -460,18 +466,6 @@ private fun shareExportedVideo(context: Context, uri: Uri) {
     context.startActivity(Intent.createChooser(shareIntent, "Share captioned video"))
 }
 
-private fun readVideoDurationMs(context: Context, uri: Uri): Long? {
-    val retriever = MediaMetadataRetriever()
-    return try {
-        retriever.setDataSource(context, uri)
-        val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-        duration?.toLongOrNull()
-    } catch (_: RuntimeException) {
-        null
-    } finally {
-        retriever.release()
-    }
-}
 
 @Composable
 private fun Header() {
