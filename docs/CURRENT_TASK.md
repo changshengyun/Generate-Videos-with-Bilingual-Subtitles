@@ -52,6 +52,6 @@
 - 普通 Debug：`:app:assembleDebug` 通过。
 - Native Debug：`:app:assembleDebug -PenableWhisperNative=true` 通过；APK 包含 `lib/arm64-v8a/liblyriccaptioner_whisper.so` 和 `lib/x86_64/liblyriccaptioner_whisper.so`。构建仅有 Android SDK XML v4 与当前 CMake 版本的兼容性警告。
 - 路由：`WhisperRuntimeStatusResolver`、`AsrModuleTest` 和界面状态明确区分 Local、Demo、Unavailable；Local 不可用时保留具体原因，Demo 成功提示明确写为 Demo，不能伪装为 Local。
-- JNI：Native Debug 已打包真实 `whisper_jni.cpp` 产物并加入可审计的开始、完成、失败日志；尚未在 ARM64 设备上执行运行时 JNI 识别。
-- 设备与模型：ADB 当前仅有 x86_64 模拟器 `emulator-5554`，没有可用 ARM64 真机；项目内没有获授权的兼容 Whisper 模型。`third_party/whisper.cpp/models` 中的测试占位文件不作为模型使用或提交。
-- 未完成：需要产品方提供/授权 ARM64 设备、兼容模型和固定测试媒体，才能完成真实 Local 识别、英文字幕非空、时间戳顺序及成功/失败/取消清理的设备验收。
+- JNI：Native Debug 已打包真实 `whisper_jni.cpp` 产物并加入可审计的开始、完成、失败日志；ARM64 设备安装后 UI 显示 `JNI: ready`，证明库已加载，但尚未执行 transcribe 调用。
+- 设备与模型：已连接 ARM64 设备 `fcf4b0cb`（`25098PN5AC`，Android 16），Native APK 已通过 `pm install` 安装；固定媒体已存在于 `/sdcard/Download/source-test-video.mp4`。设备共享存储、应用目录和当前项目均未找到兼容 Whisper 模型。`third_party/whisper.cpp/models` 中的测试占位文件不作为模型使用或提交。
+- 未完成：需要产品方提供/授权兼容 Whisper 模型，才能完成真实 Local 识别、英文字幕非空、时间戳顺序及成功/失败/取消清理的设备验收；当前无模型时 UI 明确显示 `ASR: DEMO` 及 Local 不可用原因，未将 Demo 结果报告为 Local。

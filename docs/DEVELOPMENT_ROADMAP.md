@@ -49,4 +49,5 @@
 - 交付了统一 ASR 模块，覆盖模型状态、音频提取、Whisper JNI、英文 cue 转换、取消和临时音频清理。
 - 51 项全量 JVM 单测通过；普通 Debug 和 `enableWhisperNative` Native Debug 均通过，Native APK 包含 arm64-v8a Whisper JNI。
 - Local、Demo、Unavailable 路由均有明确状态和原因；本轮没有把 Demo 结果作为 Local 成功报告。
-- 当前没有授权 ARM64 真机和兼容模型，未完成真实 Local 识别，因此保持 `COMPONENT_VERIFIED / HUMAN_DECISION`，不宣称 ARM64_DEVICE_VERIFIED。
+- ARM64 设备 `fcf4b0cb`（`25098PN5AC`，Android 16）已接入，Native APK 已安装，UI 显示 `JNI: ready`；固定媒体已在设备上准备好。
+- 设备和项目均没有兼容 Whisper 模型，尚未执行真实 Local transcribe，因此保持 `COMPONENT_VERIFIED / HUMAN_DECISION`，不宣称 `ARM64_DEVICE_VERIFIED`；提供模型后继续完成真实字幕与清理验收。

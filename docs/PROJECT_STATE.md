@@ -8,7 +8,7 @@
 - 当前阶段：真实本地 Whisper ASR
 - 当前任务：`ASR-001`，修订号 `1`
 - 当前状态：`COMPONENT_VERIFIED / HUMAN_DECISION`
-- 验收设备：既有 `Pixel_8`，ADB `emulator-5554`，只使用模拟器 display 2
+- 验收设备：ARM64 `25098PN5AC`（ADB `fcf4b0cb`）；既有 x86_64 模拟器 `emulator-5554` 仅保留为历史验证设备
 
 ## 二、已确认事实
 
@@ -34,7 +34,7 @@
 
 ## 四、边界与风险
 
-- 当前结果是模拟器验证，不代表真实 ARM64 设备验证，也不代表产品发布接受。
+- ARC-001 的既有结果是模拟器验证，不代表产品发布接受；ASR-001 已连接 ARM64 设备但尚未完成真实模型推理验收。
 - `SessionOnly` 和 `ProviderUnsupported` 的出现取决于具体文档提供器；分类和提示路径已实现，但本轮固定输入命中了 `Persisted`。
 - 归档只保存 URI 引用，不保存媒体内容；媒体提供器撤销授权或删除源文件后必须走重绑。
 - EXP-001 的导出/AAR 结果属于已完成历史事实；本轮未修改该路线。
@@ -57,6 +57,6 @@
 
 ## 七、当前阻断与下一步
 
-- 当前 ADB 只有 x86_64 模拟器 `emulator-5554`，没有授权 ARM64 真机；项目内也没有获授权的兼容 Whisper 模型，因此尚未执行真实 Local 识别。
-- 需要提供/授权 ARM64 设备、兼容模型和固定测试媒体后，继续验收真实 JNI 加载、Local 路由、非空英文字幕、时间戳顺序及成功/失败/取消清理。
+- ARM64 设备 `fcf4b0cb` 已连接，Native APK 已安装，UI 显示 `JNI: ready`；固定媒体 `/sdcard/Download/source-test-video.mp4` 已存在。
+- 设备共享存储、应用目录和当前项目均没有兼容 Whisper 模型；需要提供/授权模型后，继续验收真实 JNI transcribe、Local 路由、非空英文字幕、时间戳顺序及成功/失败/取消清理。
 - 当前最终状态：`COMPONENT_VERIFIED / HUMAN_DECISION`。
