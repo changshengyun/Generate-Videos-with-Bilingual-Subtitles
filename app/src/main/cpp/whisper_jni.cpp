@@ -257,7 +257,7 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
             whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
         params.language = "auto";
         params.translate = false;
-        params.detect_language = true;
+        params.detect_language = false;
         params.no_context = false;
         params.single_segment = false;
         params.print_progress = false;

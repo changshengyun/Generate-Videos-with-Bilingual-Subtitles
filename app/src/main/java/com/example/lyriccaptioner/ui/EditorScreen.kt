@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -65,6 +67,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.processing.TranslationModelState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -170,8 +173,15 @@ fun EditorScreen(viewModel: MainViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Header()
-            VideoPreview(
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.55f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Header()
+                VideoPreview(
                 videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
                 captions = state.captions,
                 selectedCaptionId = state.selectedCaptionId,
@@ -179,13 +189,14 @@ fun EditorScreen(viewModel: MainViewModel) {
                 status = state.status,
                 isWorking = state.isWorking,
             )
-            SpeechRuntimeStatus(
+                SpeechRuntimeStatus(
                 modelInstalled = state.modelState.speechModelInstalled,
                 nativeReady = state.modelState.speechNativeLibraryReady,
                 mode = state.modelState.speechMode,
                 detail = state.modelState.speechRuntimeDetail,
             )
-            FlowRow(
+                TranslationRuntimeStatus(state.modelState.translationModelState)
+                FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -231,6 +242,11 @@ fun EditorScreen(viewModel: MainViewModel) {
                 ) {
                     Text("Translate")
                 }
+                if (state.translationRunning) {
+                    TextButton(onClick = viewModel::cancelTranslation) {
+                        Text("Cancel Translation")
+                    }
+                }
                 TextButton(
                     enabled = state.videoUri != null && !state.isWorking,
                     onClick = viewModel::addCaption,
@@ -263,7 +279,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     Text("Export")
                 }
                 TextButton(
-                    enabled = state.isWorking,
+                    enabled = state.isWorking && !state.translationRunning && !state.asrRunning,
                     onClick = viewModel::cancelExport,
                 ) {
                     Text("Cancel")
@@ -289,7 +305,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     Text("Save Project")
                 }
             }
-            SubtitleStyleControls(
+                SubtitleStyleControls(
                 fontSizeSp = state.exportProfile.subtitleStyle.fontSizeSp,
                 bottomMarginPercent = state.exportProfile.subtitleStyle.bottomMarginPercent,
                 onFontSmaller = { viewModel.updateFontSize(-2) },
@@ -303,6 +319,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                 onChineseColorChanged = viewModel::updateChineseColor,
                 onOutlineColorChanged = viewModel::updateOutlineColor,
             )
+            }
             CaptionList(
                 captions = state.captions,
                 selectedId = state.selectedCaptionId,
@@ -314,10 +331,25 @@ fun EditorScreen(viewModel: MainViewModel) {
                 onShiftEnd = viewModel::shiftCueEnd,
                 onDelete = viewModel::deleteCaption,
                 onConfirm = viewModel::confirmCue,
-                modifier = Modifier.weight(1f),
+                enabled = !state.isWorking,
+                modifier = Modifier.weight(0.45f),
             )
         }
     }
+}
+
+@Composable
+private fun TranslationRuntimeStatus(state: TranslationModelState) {
+    Text(
+        text = "Translation model: ${state.name}",
+        style = MaterialTheme.typography.labelMedium,
+        color = when (state) {
+            TranslationModelState.READY -> Color(0xFF176B3A)
+            TranslationModelState.PREPARING -> MaterialTheme.colorScheme.primary
+            TranslationModelState.NEEDS_DOWNLOAD, TranslationModelState.FAILED ->
+                MaterialTheme.colorScheme.error
+        },
+    )
 }
 
 @Composable
@@ -662,6 +694,7 @@ private fun CaptionList(
     onShiftEnd: (String, Long) -> Unit,
     onDelete: (String) -> Unit,
     onConfirm: (String) -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (captions.isEmpty()) {
@@ -679,6 +712,7 @@ private fun CaptionList(
             CaptionCard(
                 cue = cue,
                 selected = cue.id == selectedId,
+                enabled = enabled,
                 onSelect = { onSelect(cue.id) },
                 onEnglishChanged = { onEnglishChanged(cue.id, it) },
                 onChineseChanged = { onChineseChanged(cue.id, it) },
@@ -697,6 +731,7 @@ private fun CaptionList(
 private fun CaptionCard(
     cue: CaptionCue,
     selected: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
     onEnglishChanged: (String) -> Unit,
     onChineseChanged: (String) -> Unit,
@@ -716,7 +751,7 @@ private fun CaptionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onSelect),
+            .clickable(enabled = enabled, onClick = onSelect),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
@@ -741,11 +776,13 @@ private fun CaptionCard(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TimingControl(
                     label = "Start",
+                    enabled = enabled,
                     onEarlier = { onShiftStart(-100L) },
                     onLater = { onShiftStart(100L) },
                 )
                 TimingControl(
                     label = "End",
+                    enabled = enabled,
                     onEarlier = { onShiftEnd(-100L) },
                     onLater = { onShiftEnd(100L) },
                 )
@@ -754,6 +791,7 @@ private fun CaptionCard(
                 modifier = Modifier.fillMaxWidth(),
                 value = cue.english,
                 onValueChange = onEnglishChanged,
+                enabled = enabled,
                 label = { Text("English") },
                 singleLine = false,
             )
@@ -768,7 +806,10 @@ private fun CaptionCard(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     cue.correctionCandidates.forEach { candidate ->
-                        TextButton(onClick = { onApplyCandidate(candidate) }) {
+                        TextButton(
+                            enabled = enabled,
+                            onClick = { onApplyCandidate(candidate) },
+                        ) {
                             Text(candidate)
                         }
                     }
@@ -778,6 +819,7 @@ private fun CaptionCard(
                 modifier = Modifier.fillMaxWidth(),
                 value = cue.chinese,
                 onValueChange = onChineseChanged,
+                enabled = enabled,
                 label = { Text("Chinese") },
                 singleLine = false,
             )
@@ -794,10 +836,13 @@ private fun CaptionCard(
                     },
                     style = MaterialTheme.typography.labelMedium,
                 )
-                TextButton(onClick = onConfirm) {
+                TextButton(
+                    enabled = enabled && cue.canConfirm && !cue.confirmed,
+                    onClick = onConfirm,
+                ) {
                     Text(if (cue.confirmed) "Confirmed" else "Confirm")
                 }
-                TextButton(onClick = onDelete) {
+                TextButton(enabled = enabled, onClick = onDelete) {
                     Text("Delete")
                 }
             }
@@ -808,6 +853,7 @@ private fun CaptionCard(
 @Composable
 private fun TimingControl(
     label: String,
+    enabled: Boolean,
     onEarlier: () -> Unit,
     onLater: () -> Unit,
 ) {
@@ -821,7 +867,7 @@ private fun TimingControl(
             text = label,
             style = MaterialTheme.typography.labelMedium,
         )
-        TextButton(onClick = onEarlier) { Text("-0.1s") }
-        TextButton(onClick = onLater) { Text("+0.1s") }
+        TextButton(enabled = enabled, onClick = onEarlier) { Text("-0.1s") }
+        TextButton(enabled = enabled, onClick = onLater) { Text("+0.1s") }
     }
 }

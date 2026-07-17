@@ -119,7 +119,7 @@ captions=
                 chinese = "第一行\n第二行",
                 confidence = 0.73f,
                 correctionCandidates = listOf("candidate,one", "候选二"),
-                confirmed = false,
+                confirmed = true,
             ),
         ),
         exportProfile = ExportProfile(

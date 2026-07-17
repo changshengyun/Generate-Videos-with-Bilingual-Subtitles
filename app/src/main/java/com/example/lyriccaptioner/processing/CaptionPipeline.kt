@@ -53,6 +53,7 @@ interface CaptionCorrector {
 }
 
 interface LocalTranslator {
+    suspend fun isModelReady(): Boolean = false
     suspend fun prepareBatch() = Unit
     suspend fun translateEnglishToChinese(text: String): String
 }

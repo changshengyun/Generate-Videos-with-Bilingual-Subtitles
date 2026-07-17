@@ -6,6 +6,8 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 
@@ -17,6 +19,13 @@ class MlKitLocalTranslator : LocalTranslator {
     private val translator = Translation.getClient(options)
     private var prepared = false
 
+    override suspend fun isModelReady(): Boolean {
+        val downloaded = RemoteModelManager.getInstance()
+            .getDownloadedModels(TranslateRemoteModel::class.java)
+            .await()
+        return downloaded.contains(englishModel) && downloaded.contains(chineseModel)
+    }
+
     override suspend fun prepareBatch() {
         if (prepared) return
         try {
@@ -24,9 +33,16 @@ class MlKitLocalTranslator : LocalTranslator {
                 translator.downloadModelIfNeeded(downloadConditions()).await()
             }
             prepared = true
+        } catch (error: TimeoutCancellationException) {
+            throw IllegalStateException(
+                "Chinese translation model preparation timed out. Check the network and retry.",
+                error,
+            )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             throw IllegalStateException(
-                "Chinese translation model download failed. Check the emulator network and try Translate again.",
+                "Chinese translation model preparation failed. Check the network and retry.",
                 error,
             )
         }
@@ -44,6 +60,8 @@ class MlKitLocalTranslator : LocalTranslator {
 
     private companion object {
         const val MODEL_DOWNLOAD_TIMEOUT_MS = 90_000L
+        val englishModel = TranslateRemoteModel.Builder(TranslateLanguage.ENGLISH).build()
+        val chineseModel = TranslateRemoteModel.Builder(TranslateLanguage.CHINESE).build()
     }
 }
 

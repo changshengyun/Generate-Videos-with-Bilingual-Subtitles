@@ -20,3 +20,17 @@ ggml-*.bin
 third_party/whisper.cpp/
 .cxx/
 .tool-downloads/
+
+# Local Gradle caches
+.gradle-app/
+.gradle-ffmpeg/
+
+# Kotlin compiler error logs
+.kotlin/errors/
+
+# Temporary AAR verification
+.aar-verify-*/
+.aar-verify-*.zip
+
+# Local documentation backups
+docs-BK/

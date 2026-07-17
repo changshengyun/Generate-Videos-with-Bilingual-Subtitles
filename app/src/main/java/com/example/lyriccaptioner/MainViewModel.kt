@@ -11,6 +11,7 @@ import com.example.lyriccaptioner.captions.CaptionTimingEditor
 import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CueEditingPolicy
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ProjectSnapshot
@@ -20,6 +21,10 @@ import com.example.lyriccaptioner.processing.AsrModule
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
 import com.example.lyriccaptioner.processing.MlKitLocalTranslator
+import com.example.lyriccaptioner.processing.TranslationBatchException
+import com.example.lyriccaptioner.processing.TranslationModelState
+import com.example.lyriccaptioner.processing.TranslationModule
+import com.example.lyriccaptioner.processing.TranslationStage
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatus
 import com.example.lyriccaptioner.processing.WhisperModelStore
 import com.example.lyriccaptioner.project.AndroidProjectRepository
@@ -46,17 +51,19 @@ class MainViewModel(
     private var asrModule: AsrModule = AppPipelineFactory.createAsrDefault(context),
     private val timingEditor: CaptionTimingEditor = CaptionTimingEditor(),
     private val lyricLineAligner: LyricLineAligner = LyricLineAligner(),
+    private val translationModule: TranslationModule = TranslationModule(MlKitLocalTranslator()),
 ) : ViewModel() {
     private val appContext = context.applicationContext
     private val whisperModelStore = WhisperModelStore(appContext)
-    private val manualTranslator = MlKitLocalTranslator()
     private val mutableState = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = mutableState.asStateFlow()
     private var exportJob: Job? = null
     private var asrJob: Job? = null
+    private var translationJob: Job? = null
 
     init {
         refreshSpeechRuntimeStatus()
+        refreshTranslationModelState()
     }
 
     fun importVideo(uri: Uri) {
@@ -194,35 +201,102 @@ class MainViewModel(
             mutableState.update { it.copy(status = "All English captions already have Chinese text.") }
             return
         }
-        viewModelScope.launch {
-            mutableState.update { it.copy(isWorking = true, status = "Downloading translation model if needed...") }
-            runCatching {
-                manualTranslator.prepareBatch()
-                targets.associate { cue ->
-                    cue.id to manualTranslator.translateEnglishToChinese(cue.english)
-                }
-            }.onSuccess { translations ->
+        val startedAtMs = elapsedRealtimeMs()
+        Log.i(LOG_TAG, "event=translation_started targetCount=${targets.size}")
+        translationJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    isWorking = true,
+                    translationRunning = true,
+                    status = "Preparing English-to-Chinese translation model...",
+                )
+            }
+            try {
+                val result = translationModule.translateMissingChinese(
+                    captions = snapshot.captions,
+                    onStateChanged = ::updateTranslationModelState,
+                    onStageChanged = { stage ->
+                        mutableState.update {
+                            it.copy(
+                                status = when (stage) {
+                                    TranslationStage.MODEL_PREPARATION ->
+                                        "Preparing English-to-Chinese translation model..."
+                                    TranslationStage.TRANSLATING ->
+                                        "Translating ${targets.size} captions locally..."
+                                    TranslationStage.COMMITTING ->
+                                        "Applying translated captions..."
+                                },
+                            )
+                        }
+                        Log.i(
+                            LOG_TAG,
+                            "event=translation_stage stage=$stage targetCount=${targets.size}",
+                        )
+                    },
+                )
+                var committed = false
                 mutableState.update { current ->
-                    current.copy(
-                        isWorking = false,
-                        captions = current.captions.map { cue ->
-                            translations[cue.id]?.let { chinese ->
-                                cue.copy(chinese = chinese, confirmed = false)
-                            } ?: cue
-                        },
-                        exportUri = null,
-                        pendingSidecarSrt = null,
-                        status = "Translated ${translations.size} captions to Chinese.",
-                    )
+                    if (current.captions != snapshot.captions) {
+                        current.copy(
+                            isWorking = false,
+                            translationRunning = false,
+                            status = "Translation was not applied because captions changed. Retry.",
+                        )
+                    } else {
+                        committed = true
+                        current.copy(
+                            isWorking = false,
+                            translationRunning = false,
+                            captions = result.captions,
+                            exportUri = null,
+                            pendingSidecarSrt = null,
+                            status = "Translated ${result.translatedCount} captions to Chinese.",
+                        )
+                    }
                 }
-            }.onFailure { error ->
+                Log.i(
+                    LOG_TAG,
+                    "event=translation_completed targetCount=${targets.size} " +
+                        "translatedCount=${result.translatedCount} committed=$committed " +
+                        "elapsedMs=${elapsedRealtimeMs() - startedAtMs}",
+                )
+            } catch (error: CancellationException) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
-                        status = "Chinese translation failed: ${error.message ?: "unknown error"}",
+                        translationRunning = false,
+                        status = "Translation cancelled. No translated captions were applied.",
                     )
                 }
+                Log.i(
+                    LOG_TAG,
+                    "event=translation_cancelled targetCount=${targets.size} " +
+                        "elapsedMs=${elapsedRealtimeMs() - startedAtMs}",
+                )
+            } catch (error: TranslationBatchException) {
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        translationRunning = false,
+                        status = "Chinese translation failed during ${error.stage.name.lowercase()}. Retry.",
+                    )
+                }
+                Log.w(
+                    LOG_TAG,
+                    "event=translation_failed stage=${error.stage} targetCount=${targets.size} " +
+                        "elapsedMs=${elapsedRealtimeMs() - startedAtMs} " +
+                        "errorType=${error.cause?.javaClass?.simpleName ?: error.javaClass.simpleName}",
+                )
+            } finally {
+                translationJob = null
             }
+        }
+    }
+
+    fun cancelTranslation() {
+        if (translationJob?.isActive == true) {
+            Log.i(LOG_TAG, "event=translation_cancel_requested")
+            translationJob?.cancel()
         }
     }
 
@@ -349,35 +423,38 @@ class MainViewModel(
     }
 
     fun updateEnglishText(cueId: String, text: String) {
-        updateCue(cueId) {
-            it.copy(
-                english = text,
-                correctionCandidates = emptyList(),
-                confirmed = false,
-            )
-        }
+        updateCue(cueId) { CueEditingPolicy.updateEnglish(it, text) }
     }
 
     fun updateChineseText(cueId: String, text: String) {
-        updateCue(cueId) { it.copy(chinese = text, confirmed = false) }
+        updateCue(cueId) { CueEditingPolicy.updateChinese(it, text) }
     }
 
     fun confirmCue(cueId: String) {
-        updateCue(cueId) { it.copy(confirmed = true) }
-    }
-
-    fun applyCorrectionCandidate(cueId: String, candidate: String) {
-        updateCue(cueId) { cue ->
-            if (candidate !in cue.correctionCandidates) {
-                cue
+        mutableState.update { current ->
+            val cue = current.captions.firstOrNull { it.id == cueId } ?: return@update current
+            if (!cue.canConfirm) {
+                current.copy(
+                    captions = current.captions.map {
+                        if (it.id == cueId) CueEditingPolicy.confirm(it) else it
+                    },
+                    status = "Both English and Chinese text are required before confirmation.",
+                )
             } else {
-                cue.copy(
-                    english = candidate,
-                    correctionCandidates = emptyList(),
-                    confirmed = false,
+                current.copy(
+                    captions = current.captions.map {
+                        if (it.id == cueId) CueEditingPolicy.confirm(it) else it
+                    },
+                    exportUri = null,
+                    pendingSidecarSrt = null,
+                    status = "Caption confirmed.",
                 )
             }
         }
+    }
+
+    fun applyCorrectionCandidate(cueId: String, candidate: String) {
+        updateCue(cueId) { CueEditingPolicy.applyEnglishCorrection(it, candidate) }
     }
 
     fun shiftCueStart(cueId: String, deltaMs: Long) {
@@ -386,7 +463,10 @@ class MainViewModel(
         if (index < 0) return
         val earliestStartMs = captions.getOrNull(index - 1)?.endMs ?: 0L
         updateCue(cueId) {
-            timingEditor.shiftStart(it, deltaMs, earliestStartMs).copy(confirmed = false)
+            CueEditingPolicy.updateTiming(
+                it,
+                timingEditor.shiftStart(it, deltaMs, earliestStartMs),
+            )
         }
     }
 
@@ -396,8 +476,10 @@ class MainViewModel(
         if (index < 0) return
         val latestEndMs = current.captions.getOrNull(index + 1)?.startMs
         updateCue(cueId) {
-            timingEditor.shiftEnd(it, deltaMs, current.videoDurationMs, latestEndMs)
-                .copy(confirmed = false)
+            CueEditingPolicy.updateTiming(
+                it,
+                timingEditor.shiftEnd(it, deltaMs, current.videoDurationMs, latestEndMs),
+            )
         }
     }
 
@@ -635,6 +717,21 @@ class MainViewModel(
         updateSpeechRuntime(asrModule.runtimeStatus)
     }
 
+    private fun refreshTranslationModelState() {
+        viewModelScope.launch {
+            translationModule.refreshModelState(::updateTranslationModelState)
+        }
+    }
+
+    private fun updateTranslationModelState(modelState: TranslationModelState) {
+        mutableState.update { current ->
+            current.copy(
+                modelState = current.modelState.copy(translationModelState = modelState),
+            )
+        }
+        Log.i(LOG_TAG, "event=translation_model_state state=$modelState")
+    }
+
     private fun updateSpeechRuntime(runtime: WhisperRuntimeStatus) {
         mutableState.update { current ->
             current.copy(
@@ -668,6 +765,8 @@ class MainViewModel(
             exportProfile = current.exportProfile,
         )
     }
+
+    private fun elapsedRealtimeMs(): Long = System.nanoTime() / 1_000_000L
 
     class Factory(
         private val context: Context,

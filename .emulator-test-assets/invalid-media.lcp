@@ -1,0 +1,15 @@
+# LyricCaptionerProject v1
+videoUri=content://invalid.provider/not-found
+videoDurationMs=4000
+outputName=invalid-media.mp4
+burnInSubtitles=true
+fontSizeSp=24
+bottomMarginPercent=12
+primaryColorHex=#FFFFFF
+secondaryColorHex=#00E5FF
+outlineColorHex=#000000
+
+1
+00:00:00,000 --> 00:00:02,000
+Hello archive
+你好归档

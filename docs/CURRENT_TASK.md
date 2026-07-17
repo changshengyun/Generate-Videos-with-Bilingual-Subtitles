@@ -1,57 +1,57 @@
 # 当前任务
 
-- 任务编号：`ASR-001`
+- 任务编号：`TRN-001`
 - 修订号：`1`
-- 任务名称：真实本地 Whisper ASR
-- 工作状态：`COMPONENT_VERIFIED / HUMAN_DECISION`
-- 产品门禁：`ASR-001 / COMPONENT_VERIFIED / HUMAN_DECISION`
-- 负责范围：音频提取、模型检查、Whisper JNI、英文字幕转换、取消与清理
+- 任务名称：翻译与人工校正
+- 工作状态：`COMPONENT_VERIFIED`
+- 产品门禁：`TRN-001 / COMPONENT_VERIFIED`
+- 负责范围：ML Kit 模型准备、离线复用、原子批量翻译、人工编辑确认、双语一致性与归档恢复
 
 ## 一、交付目标
 
-在不改变 FFmpeg/AAR、字幕烧录、Media3 或 ARC-001 逻辑的前提下，完成真实本地 Whisper ASR 闭环：
-
-1. 复用现有 `AndroidAudioExtractor`、`LocalSpeechRecognizer` 和 Whisper JNI，不创建平行音频或推理架构。
-2. 对外提供稳定 ASR 接口，封装音频提取、模型检查、JNI 调用、英文 cue 转换、取消和临时音频清理。
-3. 显式区分 `Local`、`Demo`、`Unavailable`；Demo 结果不得伪装为 Local 成功。
-4. 支持用户导入兼容模型；不自动下载、不提交模型或构建产物。
-5. 普通 Debug 可构建；`enableWhisperNative` Native Debug 必须打入 Whisper JNI。
-6. ASR 只生成英文带时间戳字幕，不承担 TRN-001 翻译。
+1. 基于现有 `LocalTranslator` 和 ML Kit 建立统一 `TranslationModule`。
+2. 显式提供 `NEEDS_DOWNLOAD`、`PREPARING`、`READY`、`FAILED` 模型状态。
+3. 只翻译英文非空且中文为空的 cue，不覆盖人工中文，并保持 ID、顺序和时间戳不变。
+4. 批量失败或取消时零写入；成功后整批一次提交，自动翻译保持未确认。
+5. 只有英文、中文均非空时允许确认；英文变化清除旧中文，任一文本或时间变化取消确认。
+6. 中文和确认状态经保存、重启、重新打开后保持；归档继续兼容 v1/v2。
+7. 日志只记录模型状态、数量、阶段、耗时和错误类型，不记录字幕正文。
 
 ## 二、允许修改范围
 
 - `app/src/main/java/com/example/lyriccaptioner/processing/`
 - `app/src/main/java/com/example/lyriccaptioner/MainViewModel.kt`
-- `app/src/main/java/com/example/lyriccaptioner/model/EditorState.kt`
+- `app/src/main/java/com/example/lyriccaptioner/model/`
 - `app/src/main/java/com/example/lyriccaptioner/ui/EditorScreen.kt`
-- 对应 `app/src/test/` 测试及必要的固定测试输入
+- 对应 `app/src/test/` 测试
 - 本任务活动文档：`CURRENT_TASK.md`、`DEVELOPMENT_ROADMAP.md`、`PROJECT_STATE.md`
 
 ## 三、明确不包含
 
-- 不修改 FFmpegKit/AAR、字幕烧录路线、Media3 或 ARC-001 归档逻辑。
-- 不自动下载或提交 Whisper 模型；不提交构建产物。
-- 不卸载应用，不清除数据，不重置或删除 AVD。
-- 不修改 `docs-BK`，不修改全局环境、工具链或 Git 历史。
+- 不修改 Whisper JNI、FFmpegKit/AAR、Media3、字幕导出路线或全局工具链。
+- 不下载 ML Kit 官方英中模型之外的依赖，不删除 Whisper 或 ML Kit 模型。
+- 不卸载 App、不清除数据，不修改 `docs-BK`、Git 历史或 GitHub。
 
 ## 四、验收门槛
 
-- 模型状态、模式选择、JNI 错误、字幕转换、取消和失败清理单测通过。
-- 模块完成后全量 `:app:testDebugUnitTest` 通过。
-- 普通 `:app:assembleDebug` 与 `:app:assembleDebug -PenableWhisperNative=true` 分别通过。
-- Native APK 至少包含 `arm64-v8a/lib/arm64-v8a/liblyriccaptioner_whisper.so`。
-- 若获得授权 ARM64 设备、兼容模型和固定媒体，执行一次真实 Local 识别并记录 JNI、字幕、时间戳和清理证据。
+- 模型状态、首次准备、离线复用、批量原子性、跳过人工中文、失败、取消、重试、确认规则和双语一致性单测通过。
+- 全量 `:app:testDebugUnitTest` 通过。
+- 普通 `:app:assembleDebug` 与 `:app:assembleDebug -PenableWhisperNative=true` 通过。
+- ARM64 设备 `fcf4b0cb / 25098PN5AC` 完成联网准备、三条字幕翻译、人工修改确认、保存重启恢复、断网复用和失败/取消/重试检查。
 
-## 五、后续门禁
+## 五、最终门禁
 
-最终状态只能是 `COMPONENT_VERIFIED / HUMAN_DECISION`、`ARM64_DEVICE_VERIFIED` 或 `BLOCKED`。
+`COMPONENT_VERIFIED`
 
 ## 六、本轮验收结果
 
-- 单元测试：全量 `:app:testDebugUnitTest` 共 51 项，Failures=0、Errors=0、Skipped=0；ASR-001 定向测试 7 项通过。
-- 普通 Debug：`:app:assembleDebug` 通过。
-- Native Debug：`:app:assembleDebug -PenableWhisperNative=true` 通过；APK 包含 `lib/arm64-v8a/liblyriccaptioner_whisper.so` 和 `lib/x86_64/liblyriccaptioner_whisper.so`。构建仅有 Android SDK XML v4 与当前 CMake 版本的兼容性警告。
-- 路由：`WhisperRuntimeStatusResolver`、`AsrModuleTest` 和界面状态明确区分 Local、Demo、Unavailable；Local 不可用时保留具体原因，Demo 成功提示明确写为 Demo，不能伪装为 Local。
-- JNI：Native Debug 已打包真实 `whisper_jni.cpp` 产物并加入可审计的开始、完成、失败日志；ARM64 设备安装后 UI 显示 `JNI: ready`，证明库已加载，但尚未执行 transcribe 调用。
-- 设备与模型：已连接 ARM64 设备 `fcf4b0cb`（`25098PN5AC`，Android 16），Native APK 已通过 `pm install` 安装；固定媒体已存在于 `/sdcard/Download/source-test-video.mp4`。设备共享存储、应用目录和当前项目均未找到兼容 Whisper 模型。`third_party/whisper.cpp/models` 中的测试占位文件不作为模型使用或提交。
-- 未完成：需要产品方提供/授权兼容 Whisper 模型，才能完成真实 Local 识别、英文字幕非空、时间戳顺序及成功/失败/取消清理的设备验收；当前无模型时 UI 明确显示 `ASR: DEMO` 及 Local 不可用原因，未将 Demo 结果报告为 Local。
+- 统一 TranslationModule 与 `NEEDS_DOWNLOAD / PREPARING / READY / FAILED` 状态机已完成；仅处理英文非空、中文为空的 cue，批量成功后一次提交。
+- 全量 `:app:testDebugUnitTest` 共 68 项，Failures=0、Errors=0、Skipped=0；TRN-001 新增 17 项测试。
+- 普通 `:app:assembleDebug` 与 Native `:app:assembleDebug -PenableWhisperNative=true` 均通过。
+- 首次设备准备：模型从 `NEEDS_DOWNLOAD` 经 `PREPARING` 到 `READY`，耗时 11.857 秒；ML Kit 记录英中模型 hash。
+- 3 条 Local ASR 英文字幕均获得非空中文；ID、顺序和时间戳保持，自动翻译后仍未确认。
+- 第一条中文人工追加 `!` 后确认；保存项目、force-stop、重启并 Open Project 后，3 条双语 cue、人工修改和 `Confirmed` 状态恢复。
+- Wi-Fi 与双卡移动数据关闭后，重启 App 仍为 `READY`；固定英文 `Offline model reuse works` 在 253 ms 内得到非空中文，结束后网络恢复到原状态。
+- 30 条批次取消于翻译阶段，状态显示未应用任何翻译，首条中文为空；直接重试完成 30/30。
+- 下载准备失败、翻译中途失败、空翻译、取消和重试的零部分写入由单测验证。真机首次下载完成后，边界禁止删除模型；有效超长输入也未触发真实翻译失败，因此下载失败和翻译失败未取得真机证据。
+- 最终状态：`COMPONENT_VERIFIED`，未伪造 `ARM64_DEVICE_VERIFIED`。
