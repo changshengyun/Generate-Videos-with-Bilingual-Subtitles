@@ -19,8 +19,8 @@
 | `ARC-001` | 项目归档与 SAF 恢复 | 保存、重启恢复、权限分类、失效媒体保留与重绑 | `SIMULATOR_VERIFIED` |
 | `ASR-001` | 真实本地语音识别 | 组件化真实 Whisper JNI 路由、英文时间戳字幕与 ARM64 设备验收 | `ARM64_DEVICE_VERIFIED` |
 | `TRN-001` | 翻译与人工校正 | 验证翻译准备、离线复用、确认与双语一致性 | `COMPONENT_VERIFIED` |
-| `E2E-001` | 端到端设备与性能 | 建立设备矩阵和 5 分钟资源基线 | 待排期 |
-| `REL-001` | 兼容性与发布合规 | API、ABI、依赖许可、SBOM 和发布检查 | 待排期 |
+| `E2E-001` | 端到端设备与性能 | 建立个人 ARM64 设备的 5 分钟完整流程与资源基线 | `ARM64_E2E_VERIFIED` |
+| `REL-001` | 兼容性与发布合规 | API、ABI、依赖许可、SBOM 和发布检查 | 未来公开分发时启用 |
 
 ## 四、ARC-001 已交付内容
 
@@ -31,10 +31,10 @@
 - 重启恢复、失效媒体提示、字幕/样式保留和视频重绑已在既有 Pixel_8 模拟器上验证。
 - 归档格式、仓储契约和全量 JVM 回归测试已通过；Debug APK 已组装并安装验证。
 
-## 五、当前禁止事项
+## 五、个人自用稳定版边界
 
 - 不把 `SIMULATOR_VERIFIED` 写成真实 ARM64 设备验证或产品发布接受。
-- 未取得新任务授权前，不扩展到真实设备、Whisper/ML Kit、导出路线或性能基线。
+- 当前版本仅冻结为个人自用，不视为公开发布接受。
 - 不卸载应用、清除数据、重置/删除 AVD，不修改 Git 历史或全局工具链。
 
 ## 六、ASR-001 验收边界
@@ -68,3 +68,39 @@
 - 关闭 Wi-Fi 和双卡移动数据后，App 重启仍显示模型 `READY`；固定英文 cue 在 253 ms 内离线翻译成功，随后恢复原网络状态。
 - 30 条批次在真机翻译阶段取消后零写入，直接重试在 720 ms 内完成 30/30；下载准备失败、翻译中途失败和取消后的原子性由单测覆盖。
 - 因首次模型已真实下载，且边界禁止删除 ML Kit 模型或注入伪失败，真机无法再真实重现下载失败；有效超长输入也未触发真实翻译失败。未将这些场景伪报为设备通过，最终状态为 `COMPONENT_VERIFIED`。
+
+## 九、E2E-001 当前边界
+
+- 用户已接受 TRN-001 的单元测试失败证据并放行下一阶段；TRN-001 保持 `COMPONENT_VERIFIED`，不再补真机下载或翻译失败注入。
+- 在个人 ARM64 设备 `fcf4b0cb / 25098PN5AC` 上只执行一次最终约 5 分钟完整成功验收，流程为视频导入、Local ASR、离线翻译、人工确认、预览、保存重启恢复、字幕烧录导出和 Media3 回放。
+- 只建立素材、阶段耗时、总耗时、峰值 RSS、输出大小、温度和存储变化基线，不预设性能阈值。
+- 不扩展多厂商矩阵，不重复既有失败/取消注入，不修改 FFmpeg AAR、Whisper、ML Kit 依赖、Media3 或全局工具链。
+- 当前状态：`E2E-001 / ARM64_E2E_VERIFIED`。
+# E2E-001 revision 2 evidence (2026-07-18)
+
+- Correctness gate completed before device continuation: explicit video import mode, bilingual SRT confirmation, derived-output invalidation, and approved Whisper model integrity/atomic import.
+- Regression gate: 77 unit tests passed; lintDebug, ordinary Debug, and Native Debug builds passed.
+- ARM64 device fcf4b0cb / 25098PN5AC was updated once and reported ASR: LOCAL with Model/JNI ready and cached translation READY.
+- The final revision-2 five-minute E2E was not completed because the MIUI picker/Media3 UI became non-idle (`could not get idle state`) after media import. Existing prior accepted output evidence is retained but is not counted as a new revision-2 export.
+- Gate result: PARTIAL_PASS; no Git commit or GitHub sync.
+
+# E2E-001 revision 3 result (2026-07-18)
+
+- 修订 3 不改变产品代码，采用 adb 截图/定向输入、阶段 logcat、dumpsys 和文件/媒体元数据推进；不依赖 uiautomator idle 或 dump 成功。MIUI 残留文件选择器仅关闭其进程，未清除 App 数据。
+- 设备验收 `fcf4b0cb / 25098PN5AC`，1220x2656 portrait rotation 0。固定五分钟素材时长 299.247733 秒，SHA-256 `FFBF914C7F46A67CA50488285899B86F2A2E928E58BC5999A0A26FD43059933F`。
+- 本轮真实闭环完成：SAF 导入、Local Whisper JNI ASR、缓存模型离线翻译、人工编辑确认、预览、项目保存、force-stop/重启/Open Project 恢复、字幕烧录和 Media3 回放。日志确认 `asr_completed mode=LOCAL captionCount=48`、翻译 48/48 committed、`project_load_completed captionCount=48` 和 FFmpeg `returnCode=0`。
+- 人工确认与一致性：保存归档 48 条 cue；人工修改后的中文和 `confirmed=true` 重启后恢复，其他自动翻译 cue 仍未确认；时间戳、ID、顺序未改变。
+- 新结果必须与旧输出区分：`lyric-captioner-output (2).mp4`，设备时间戳 16:43，46,277,905 字节，SHA-256 `D309B177569F638D7427D34ED96F2F9A4CDB8D1EF5EAB0527E2D130B241DD789`，H.264/AAC，592x1280，299.791667 秒。10 秒抽帧可见双语字幕；App 预览和 Media3 初始化/回放通过。旧 46,279,071 字节文件未计入。
+- 基线：ASR 52.044 秒，离线翻译 1.573 秒，FFmpeg 回调约 9.375 秒；记录墙钟间隔约 33 分 40.204 秒。采样峰值 RSS 418,604 kB（ASR），导出阶段 335,684 kB；结束温度 battery 32.7 C、CPU0 45.9 C、CPU7 44.9 C、skin 33.35 C；可用存储记录为 137,660,528 -> 137,611,676 kB。FFmpeg 工作目录为空。
+- 离线阶段 Wi-Fi/mobile_data 为 0/0，结束恢复为 1/0；未删除 Whisper 或 ML Kit 模型。既有 77 单测、lintDebug、普通 Debug 与 Native Debug 证据沿用，未因无代码变化重复。
+- Gate result: `ARM64_E2E_VERIFIED`; no Git commit or GitHub sync.
+
+## 十、CLS-001 个人自用稳定版收口
+
+- 当前状态：`PERSONAL_USE_ACCEPTED`。E2E-001 的 `ARM64_E2E_VERIFIED` 证据冻结为个人自用稳定基线，不扩展为公开发布合规结论。
+- 差异审计只保留 E2E revision 2 正确性修复、对应测试和三个活动文档；`third_party/ffmpeg-kit` 既有 dirty 状态保持不变，未修改、未暂存、未清理。
+- Native Debug APK 为 `app/build/outputs/apk/debug/app-debug.apk`，SHA-256 `BA54697CD204D8334A5DD7484E4EC517D90EB5E144AD1A60F3182E213B225DBE`，applicationId `com.example.lyriccaptioner`，versionCode `1`，versionName `0.1.0`，ABI 为 `arm64-v8a` 与 `x86_64`。
+- 本地与设备已安装 APK 的完整 SHA-256 及签名证书 SHA-256 `a51e9235816b2f34195a459764ff7155958e3a5c503aa782d125a000c0817528` 一致；未重新安装，未输出或复制私钥。
+- `git diff --check` 通过；既有 77 项单测、lintDebug、普通 Debug 和 Native Debug 证据沿用，不重复执行。
+- 模型、测试视频、输出 MP4、日志和构建产物均在已忽略的证据/生成目录中，未进入 Git 未跟踪集合；未发现仓库外密钥候选。REL-001 仅在未来公开分发时启用。
+- 收口判断：`READY_FOR_CHECKPOINT`；不提交 Git，不同步 GitHub。

@@ -33,7 +33,7 @@ class SrtParser {
             english = english,
             chinese = chinese,
             confidence = 1.0f,
-            confirmed = true,
+            confirmed = english.isNotBlank() && chinese.isNotBlank(),
         )
     }
 

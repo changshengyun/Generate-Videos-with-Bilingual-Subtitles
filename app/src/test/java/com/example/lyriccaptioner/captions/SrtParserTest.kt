@@ -1,6 +1,8 @@
 package com.example.lyriccaptioner.captions
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SrtParserTest {
@@ -25,5 +27,30 @@ class SrtParserTest {
         assertEquals(3_000L, cues[0].endMs)
         assertEquals("I found a love for me", cues[0].english)
         assertEquals("\u6211\u627e\u5230\u4e86\u5c5e\u4e8e\u6211\u7684\u7231", cues[0].chinese)
+        assertTrue(cues.all { it.confirmed })
+    }
+
+    @Test
+    fun parsesEnglishOnlyCuesAsUnconfirmed() {
+        val raw = """
+            1
+            00:00:01,500 --> 00:00:03,000
+            English only
+        """.trimIndent()
+
+        val cue = SrtParser().parse(raw).single()
+
+        assertFalse(cue.confirmed)
+    }
+
+    @Test
+    fun emptyTextBlocksDoNotBecomeConfirmedCues() {
+        val raw = """
+            1
+            00:00:01,500 --> 00:00:03,000
+
+        """.trimIndent()
+
+        assertTrue(SrtParser().parse(raw).isEmpty())
     }
 }

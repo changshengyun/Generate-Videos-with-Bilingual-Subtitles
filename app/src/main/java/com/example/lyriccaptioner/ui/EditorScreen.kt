@@ -67,6 +67,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.VideoImportMode
 import com.example.lyriccaptioner.processing.TranslationModelState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -78,9 +79,10 @@ fun EditorScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     var showPasteLyrics by remember { mutableStateOf(false) }
     var pastedLyrics by remember { mutableStateOf("") }
+    var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            viewModel.importVideo(uri)
+            viewModel.importVideo(uri, videoImportMode)
         }
     }
     val srtPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -202,7 +204,14 @@ fun EditorScreen(viewModel: MainViewModel) {
             ) {
                 Button(
                     enabled = !state.isWorking,
-                    onClick = { videoPicker.launch(arrayOf("video/*")) },
+                    onClick = {
+                        videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) {
+                            VideoImportMode.RELINK
+                        } else {
+                            VideoImportMode.NEW_VIDEO
+                        }
+                        videoPicker.launch(arrayOf("video/*"))
+                    },
                 ) {
                     Text(if (state.mediaState == com.example.lyriccaptioner.model.MediaState.UNAVAILABLE) "Relink Video" else "Import")
                 }

@@ -12,11 +12,14 @@ import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CueEditingPolicy
+import com.example.lyriccaptioner.model.DerivedOutputPolicy
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.VideoImportMode
+import com.example.lyriccaptioner.model.VideoImportPolicy
 import com.example.lyriccaptioner.processing.AsrModule
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
@@ -66,7 +69,7 @@ class MainViewModel(
         refreshTranslationModelState()
     }
 
-    fun importVideo(uri: Uri) {
+    fun importVideo(uri: Uri, mode: VideoImportMode = VideoImportMode.NEW_VIDEO) {
         mutableState.update { it.copy(isWorking = true, status = "Checking video access...") }
         viewModelScope.launch {
             val access = withContext(Dispatchers.IO) { projectRepository.retainMediaReadAccess(uri) }
@@ -75,9 +78,12 @@ class MainViewModel(
                 mutableState.update { it.copy(isWorking = false, status = "Could not import video: ${access.reason}") }
                 return@launch
             }
-            val wasRelink = state.value.mediaState == MediaState.UNAVAILABLE && state.value.captions.isNotEmpty()
             val status = when (access) {
-                is MediaAccessResult.Persisted -> if (wasRelink) "Video re-associated and persisted." else "Video imported with persistent access."
+                is MediaAccessResult.Persisted -> if (mode == VideoImportMode.RELINK) {
+                    "Video re-associated and persisted."
+                } else {
+                    "Video imported with persistent access."
+                }
                 is MediaAccessResult.SessionOnly -> "Video imported for this session only: ${access.reason}"
                 is MediaAccessResult.ProviderUnsupported -> "Video imported: ${access.reason}"
                 is MediaAccessResult.Unavailable -> access.reason
@@ -95,14 +101,13 @@ class MainViewModel(
             }
 
             mutableState.update {
-                it.copy(
-                    isWorking = false,
-                    videoUri = uri,
-                    videoDurationMs = durationMs,
+                VideoImportPolicy.apply(
+                    current = it.copy(isWorking = false),
+                    uri = uri,
+                    durationMs = durationMs,
                     mediaState = access.toEditorMediaState(),
+                    mode = mode,
                     status = status,
-                    exportUri = null,
-                    pendingSidecarSrt = null,
                 )
             }
             Log.i(
@@ -115,7 +120,7 @@ class MainViewModel(
     fun importSrt(raw: String) {
         val cues = srtParser.parse(raw)
         mutableState.update {
-            it.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(it.copy(
                 captions = cues,
                 selectedCaptionId = cues.firstOrNull()?.id,
                 status = if (cues.isEmpty()) {
@@ -123,8 +128,7 @@ class MainViewModel(
                 } else {
                     "Imported ${cues.size} subtitle cues from SRT."
                 },
-                pendingSidecarSrt = null,
-            )
+            ))
         }
     }
 
@@ -148,11 +152,10 @@ class MainViewModel(
                     )
                 }
             }
-            current.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                 captions = updated,
                 status = "Matched ${matches.size} lyric lines. Review the suggested corrections.",
-                pendingSidecarSrt = null,
-            )
+            ))
         }
     }
 
@@ -184,13 +187,11 @@ class MainViewModel(
             )
         }
         mutableState.update {
-            it.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(it.copy(
                 captions = cues,
                 selectedCaptionId = cues.firstOrNull()?.id,
-                exportUri = null,
-                pendingSidecarSrt = null,
                 status = "Created ${cues.size} lyric captions. Adjust timing as needed.",
-            )
+            ))
         }
     }
 
@@ -244,14 +245,12 @@ class MainViewModel(
                         )
                     } else {
                         committed = true
-                        current.copy(
+                        DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                             isWorking = false,
                             translationRunning = false,
                             captions = result.captions,
-                            exportUri = null,
-                            pendingSidecarSrt = null,
                             status = "Translated ${result.translatedCount} captions to Chinese.",
-                        )
+                        ))
                     }
                 }
                 Log.i(
@@ -318,7 +317,7 @@ class MainViewModel(
                 }
                 val mode = module.runtimeStatus.mode
                 mutableState.update {
-                    it.copy(
+                    DerivedOutputPolicy.invalidateDerivedOutputs(it.copy(
                         isWorking = false,
                         asrRunning = false,
                         captions = cues,
@@ -328,7 +327,7 @@ class MainViewModel(
                             SpeechMode.DEMO -> "Demo ASR generated ${cues.size} English captions; Local was not used."
                             SpeechMode.UNAVAILABLE -> module.runtimeStatus.detail
                         },
-                    )
+                    ))
                 }
                 Log.i(LOG_TAG, "event=asr_completed mode=$mode captionCount=${cues.size}")
             } catch (error: CancellationException) {
@@ -412,13 +411,11 @@ class MainViewModel(
                 confidence = 1f,
                 confirmed = false,
             )
-            current.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                 captions = current.captions + cue,
                 selectedCaptionId = cue.id,
-                exportUri = null,
-                pendingSidecarSrt = null,
                 status = "Added a caption. Edit its text and timing.",
-            )
+            ))
         }
     }
 
@@ -445,10 +442,8 @@ class MainViewModel(
                     captions = current.captions.map {
                         if (it.id == cueId) CueEditingPolicy.confirm(it) else it
                     },
-                    exportUri = null,
-                    pendingSidecarSrt = null,
                     status = "Caption confirmed.",
-                )
+                ).let(DerivedOutputPolicy::invalidateDerivedOutputs)
             }
         }
     }
@@ -490,13 +485,11 @@ class MainViewModel(
     fun deleteCaption(cueId: String) {
         mutableState.update { current ->
             val remaining = current.captions.filterNot { it.id == cueId }
-            current.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                 captions = remaining,
                 selectedCaptionId = remaining.firstOrNull()?.id,
-                exportUri = null,
-                pendingSidecarSrt = null,
                 status = "Caption removed.",
-            )
+            ))
         }
     }
 
@@ -673,7 +666,7 @@ class MainViewModel(
                             LOG_TAG,
                             "event=project_load_completed mediaState=$mediaState captionCount=${snapshot.captions.size}",
                         )
-                        it.copy(
+                        DerivedOutputPolicy.invalidateDerivedOutputs(it.copy(
                             isWorking = false,
                             videoUri = snapshot.videoUri?.let(Uri::parse),
                             videoDurationMs = snapshot.videoDurationMs ?: result.mediaAccess.durationMs,
@@ -682,8 +675,7 @@ class MainViewModel(
                             selectedCaptionId = snapshot.captions.firstOrNull()?.id,
                             exportProfile = snapshot.exportProfile,
                             status = status,
-                            pendingSidecarSrt = null,
-                        )
+                        ))
                     }
                 }
                 is ProjectLoadResult.Failure -> mutableState.update {
@@ -703,13 +695,11 @@ class MainViewModel(
 
     private fun updateCue(cueId: String, transform: (CaptionCue) -> CaptionCue) {
         mutableState.update { current ->
-            current.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                 captions = current.captions.map { cue ->
                     if (cue.id == cueId) transform(cue) else cue
                 },
-                exportUri = null,
-                pendingSidecarSrt = null,
-            )
+            ))
         }
     }
 
@@ -748,11 +738,11 @@ class MainViewModel(
 
     private fun updateSubtitleStyle(transform: (SubtitleStyle) -> SubtitleStyle) {
         mutableState.update { current ->
-            current.copy(
+            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                 exportProfile = current.exportProfile.copy(
                     subtitleStyle = transform(current.exportProfile.subtitleStyle),
                 ),
-            )
+            ))
         }
     }
 

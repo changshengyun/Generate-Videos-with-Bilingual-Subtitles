@@ -1,57 +1,78 @@
 # 当前任务
 
-- 任务编号：`TRN-001`
+- 任务编号：`CLS-001`
 - 修订号：`1`
-- 任务名称：翻译与人工校正
-- 工作状态：`COMPONENT_VERIFIED`
-- 产品门禁：`TRN-001 / COMPONENT_VERIFIED`
-- 负责范围：ML Kit 模型准备、离线复用、原子批量翻译、人工编辑确认、双语一致性与归档恢复
+- 任务名称：个人自用稳定版收口
+- 工作状态：`PERSONAL_USE_ACCEPTED`
+- 产品门禁：`PERSONAL_USE_ACCEPTED`
+- 验收设备：`fcf4b0cb / 25098PN5AC`
 
-## 一、交付目标
+## 一、已接受前置证据
 
-1. 基于现有 `LocalTranslator` 和 ML Kit 建立统一 `TranslationModule`。
-2. 显式提供 `NEEDS_DOWNLOAD`、`PREPARING`、`READY`、`FAILED` 模型状态。
-3. 只翻译英文非空且中文为空的 cue，不覆盖人工中文，并保持 ID、顺序和时间戳不变。
-4. 批量失败或取消时零写入；成功后整批一次提交，自动翻译保持未确认。
-5. 只有英文、中文均非空时允许确认；英文变化清除旧中文，任一文本或时间变化取消确认。
-6. 中文和确认状态经保存、重启、重新打开后保持；归档继续兼容 v1/v2。
-7. 日志只记录模型状态、数量、阶段、耗时和错误类型，不记录字幕正文。
+- `TRN-001` 保持 `COMPONENT_VERIFIED`。
+- 用户已接受下载准备失败和翻译失败的单元测试证据并放行 E2E-001，不再补真机失败注入。
+- ASR、翻译、归档与导出沿用既有实现和失败/取消证据，本轮不重复无价值故障注入。
 
-## 二、允许修改范围
+## 二、交付目标
 
-- `app/src/main/java/com/example/lyriccaptioner/processing/`
-- `app/src/main/java/com/example/lyriccaptioner/MainViewModel.kt`
-- `app/src/main/java/com/example/lyriccaptioner/model/`
-- `app/src/main/java/com/example/lyriccaptioner/ui/EditorScreen.kt`
-- 对应 `app/src/test/` 测试
-- 本任务活动文档：`CURRENT_TASK.md`、`DEVELOPMENT_ROADMAP.md`、`PROJECT_STATE.md`
+在个人 ARM64 设备上对约 5 分钟固定素材只执行一次最终完整成功验收：
 
-## 三、明确不包含
+1. 视频通过 App SAF 导入。
+2. 全程保持 `ASR: LOCAL`，完成真实 Whisper JNI 识别。
+3. 关闭 Wi-Fi 与移动数据，使用已缓存 ML Kit 英中模型完成离线翻译。
+4. 验证双语字幕、时间戳、人工确认、预览及保存重启恢复。
+5. 完成字幕烧录导出，验证非零 MP4、H.264/AAC、合理时长、关键字幕可见和 Media3 可播放。
+6. 记录来源、SHA-256、各阶段/总耗时、峰值 RSS、输出大小、临时文件、设备温度与存储变化。
 
-- 不修改 Whisper JNI、FFmpegKit/AAR、Media3、字幕导出路线或全局工具链。
-- 不下载 ML Kit 官方英中模型之外的依赖，不删除 Whisper 或 ML Kit 模型。
-- 不卸载 App、不清除数据，不修改 `docs-BK`、Git 历史或 GitHub。
+## 三、验收与测试
 
-## 四、验收门槛
+- 全量 `:app:testDebugUnitTest`。
+- 普通 `:app:assembleDebug` 与 `:app:assembleDebug -PenableWhisperNative=true`。
+- 若修改代码，只安装更新 APK 一次。
+- 当前收口状态只能是 `PERSONAL_USE_ACCEPTED` 或 `BLOCKED`。
 
-- 模型状态、首次准备、离线复用、批量原子性、跳过人工中文、失败、取消、重试、确认规则和双语一致性单测通过。
-- 全量 `:app:testDebugUnitTest` 通过。
-- 普通 `:app:assembleDebug` 与 `:app:assembleDebug -PenableWhisperNative=true` 通过。
-- ARM64 设备 `fcf4b0cb / 25098PN5AC` 完成联网准备、三条字幕翻译、人工修改确认、保存重启恢复、断网复用和失败/取消/重试检查。
+## 四、边界
 
-## 五、最终门禁
+- 不卸载、不清除 App 数据、不删除 Whisper 或 ML Kit 模型。
+- 不修改 FFmpeg AAR、Whisper 版本、ML Kit 依赖、Media3、导出路线或全局工具链。
+- 不模拟低存储，不执行破坏性设备操作，不扩展多厂商矩阵。
+- 不提交 Git，不同步 GitHub。
 
-`COMPONENT_VERIFIED`
+## 五、当前进度
 
-## 六、本轮验收结果
+- 已读取活动文档并确认用户接受 TRN-001 证据。
+- E2E-001 revision 3 已完成设备闭环与资源基线采集；CLS-001 正在冻结个人自用稳定版，当前状态为 `PERSONAL_USE_ACCEPTED`。
 
-- 统一 TranslationModule 与 `NEEDS_DOWNLOAD / PREPARING / READY / FAILED` 状态机已完成；仅处理英文非空、中文为空的 cue，批量成功后一次提交。
-- 全量 `:app:testDebugUnitTest` 共 68 项，Failures=0、Errors=0、Skipped=0；TRN-001 新增 17 项测试。
-- 普通 `:app:assembleDebug` 与 Native `:app:assembleDebug -PenableWhisperNative=true` 均通过。
-- 首次设备准备：模型从 `NEEDS_DOWNLOAD` 经 `PREPARING` 到 `READY`，耗时 11.857 秒；ML Kit 记录英中模型 hash。
-- 3 条 Local ASR 英文字幕均获得非空中文；ID、顺序和时间戳保持，自动翻译后仍未确认。
-- 第一条中文人工追加 `!` 后确认；保存项目、force-stop、重启并 Open Project 后，3 条双语 cue、人工修改和 `Confirmed` 状态恢复。
-- Wi-Fi 与双卡移动数据关闭后，重启 App 仍为 `READY`；固定英文 `Offline model reuse works` 在 253 ms 内得到非空中文，结束后网络恢复到原状态。
-- 30 条批次取消于翻译阶段，状态显示未应用任何翻译，首条中文为空；直接重试完成 30/30。
-- 下载准备失败、翻译中途失败、空翻译、取消和重试的零部分写入由单测验证。真机首次下载完成后，边界禁止删除模型；有效超长输入也未触发真实翻译失败，因此下载失败和翻译失败未取得真机证据。
-- 最终状态：`COMPONENT_VERIFIED`，未伪造 `ARM64_DEVICE_VERIFIED`。
+# E2E-001 revision 3 completion (2026-07-18)
+
+- 已绕过 MIUI/Media3 的 idle 前提：使用 `adb screencap -d`、定向 `input`、logcat、dumpsys 和文件/媒体元数据确认；未以 `uiautomator waitForIdle` 或 dump 成功作为前提。
+- 设备 `fcf4b0cb / 25098PN5AC`：1220x2656，portrait，rotation 0。残留文件选择器由 force-stop 关闭后，App 主窗口重新成为 control target。
+- 固定素材：`.tool-downloads/e2e-001/e2e-5min-source.mp4`，299.247733 秒，SHA-256 `FFBF914C7F46A67CA50488285899B86F2A2E928E58BC5999A0A26FD43059933F`；未提交素材。
+- 真实流程通过：视频导入 -> `ASR: LOCAL`（Model/JNI ready，48 条英文 cue）-> 缓存 ML Kit 离线英中翻译（48/48，`READY`）-> 人工修改并确认 -> 预览 -> 保存 -> force-stop/重启/Open Project 恢复 -> 新 MP4 导出 -> Media3 回放。
+- 阶段耗时：ASR 52.044 秒；离线翻译 1.573 秒；FFmpeg 导出回调约 9.375 秒（App export_started 到完成约 10.877 秒）；从本轮首个记录的导入完成事件到导出完成的可记录墙钟间隔约 33 分 40.204 秒。
+- 新输出：`/sdcard/Download/lyric-captioner-output (2).mp4`，设备时间戳 16:43，46,277,905 字节，SHA-256 `D309B177569F638D7427D34ED96F2F9A4CDB8D1EF5EAB0527E2D130B241DD789`；H.264 592x1280 + AAC，299.791667 秒。10 秒关键帧可见双语烧录字幕，App 预览显示 `Export complete`，Media3 `ExoPlayer Init` 无异常。
+- 保存归档 12,893 字节、48 条 cue；人工修改 cue 的中文与 `confirmed=true` 在重启后恢复。FFmpeg `cache/ffmpeg-exports` 由 `run-as` 核验为空。
+- 资源基线：ASR 采样峰值 RSS 418,604 kB、PSS 306,182 kB；导出采样峰值 RSS 335,684 kB；结束采样 RSS 325,960 kB、PSS 176,924 kB。结束采样温度：battery 32.7 C、CPU0 45.9 C、CPU7 44.9 C、skin 33.35 C。存储可用空间由记录的 137,660,528 kB 变为 137,611,676 kB。
+- 离线阶段记录 Wi-Fi=0、mobile_data=0；结束已恢复 Wi-Fi=1、mobile_data=0。VPN 是设备原有连接，未被修改。
+- 既有 77 项 `testDebugUnitTest`、lintDebug、普通 Debug 和 Native Debug 构建证据继续有效；本轮无代码变化，未重复执行。
+- 最终状态：`ARM64_E2E_VERIFIED`。
+
+# CLS-001 personal-use closeout (2026-07-18)
+
+- 当前冻结状态：`PERSONAL_USE_ACCEPTED`。本轮只审核差异、APK、签名和活动文档，不修改业务代码、构建工具链或设备数据。
+- 允许保留的差异：E2E revision 2 正确性修复、对应测试和三个活动文档；`third_party/ffmpeg-kit` 为既有 dirty 状态，未修改、未暂存、未清理。
+- Native Debug APK：`app/build/outputs/apk/debug/app-debug.apk`；SHA-256 `BA54697CD204D8334A5DD7484E4EC517D90EB5E144AD1A60F3182E213B225DBE`；applicationId `com.example.lyriccaptioner`；versionCode `1`；versionName `0.1.0`；ABI `arm64-v8a`, `x86_64`。
+- 签名证书 SHA-256：`a51e9235816b2f34195a459764ff7155958e3a5c503aa782d125a000c0817528`。设备已安装 APK 与本地 APK 的证书和完整 APK SHA-256 均一致，可直接更新安装；未输出或复制私钥，且本轮未安装。
+- `git diff --check` 通过。普通测试、构建和真机 E2E 沿用既有通过证据，本轮因无代码变化未重复。
+- 模型、测试视频、输出 MP4、日志和构建产物仅存在于已忽略的 `.tool-downloads` / Gradle 生成目录，不进入 Git 未跟踪集合；未发现仓库外的密钥文件候选。未清理既有证据或生成物。
+- `REL-001` 仅在未来需要公开分发时启用；本轮不执行许可证、商店、SBOM 或多设备矩阵工作。
+- 检查点条件：`READY_FOR_CHECKPOINT`；本轮不提交 Git、不同步 GitHub。
+# E2E-001 revision 2 evidence (2026-07-18)
+
+- Phase history: CORRECTNESS_FIXING -> DEVICE_REGRESSION -> PARTIAL_PASS.
+- Correctness fixes completed: explicit NEW_VIDEO/RELINK policy, SRT confirmation rule, centralized derived-output invalidation, and exact Whisper model validation with temporary-file validation and atomic replacement.
+- Validation gate passed: 77 testDebugUnitTest tests, lintDebug, assembleDebug, and assembleDebug -PenableWhisperNative=true.
+- Native APK was installed once with adb install -r; no uninstall, data clear, or model deletion.
+- Device startup verified ASR: LOCAL, Model: ready, JNI: ready, and Translation model: READY.
+- Final revision-2 5-minute E2E continuation was not claimed: after 5-minute media import, MIUI/Media3 kept uiautomator in "could not get idle state", so Local ASR, translation, save/restart, final export, and Media3 playback could not be reliably driven in this run.
+- Final status: PARTIAL_PASS.
