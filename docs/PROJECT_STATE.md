@@ -2,10 +2,10 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_ASR_FIXTURE_REQUIRED`
-- 当前任务：`V2-ASR-002 / FIXTURE_REQUIRED`
-- 当前目标：用固定英文歌曲语料比较 Whisper 候选模型并证明识别质量提升
-- 下一任务：准备至少 3 段 30-60 秒英文歌曲音频、人工准确歌词、时间范围和统一预处理条件
+- 当前阶段：`V2_UI_SIMULATOR_VERIFIED`
+- 当前任务：`V2-UI-001 / UI_SIMULATOR_VERIFIED`
+- 当前目标：在不改变底层产品链路的前提下完成中文界面和主流程层级整理
+- 下一任务：继续保持 ASR 质量门禁，准备至少 3 段 30-60 秒英文歌曲音频、人工准确歌词、时间范围和统一预处理条件
 
 ## 仓库快照
 
@@ -102,6 +102,16 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 ## 当前唯一下一步
 
 为 `V2-ASR-002` 准备固定英文歌曲质量评测 fixture：至少 3 段 30-60 秒英文歌曲音频、人工准确英文歌词、时间范围/裁剪方式和统一预处理条件。缺少这些 fixture 时，不能运行模型优选或安全切换。
+
+## V2-UI-001 verification snapshot (2026-07-31)
+
+- UI checkpoint: `30b4238`。
+- Production UI now uses a dark Material 3 editor surface, preview-first layout, four workflow panels, short Chinese labels with icon symbols, and separate runtime/subtitle/style cards. Existing processing callbacks and product routing are unchanged.
+- Pixel_8 `emulator-5554` passed the real UI smoke instrumentation: Compose root laid out, screenshot non-empty, window/screenshot `1080x2400`, and final focused activity `com.example.lyriccaptioner/.MainActivity`.
+- Review screenshots are outside the repository: `D:\DevEnv\Projects\lyric-captioner-ui-review.png`, `D:\DevEnv\Projects\ui-flow-scroll.png`, and `D:\DevEnv\Projects\documentsui-video-picker.png`.
+- Direct display-0 DocumentsUI verification opened the video picker and showed the emulator test videos; user source files were not modified. No true device was used.
+- Verification passed: 92 JVM tests, `lintDebug` 0 errors/0 warnings, normal Debug, Native Debug, and AndroidTest APK build. Existing local-AI chain instrumentation remains registered.
+- Final state: `UI_SIMULATOR_VERIFIED`.
 
 ## V2-LOCAL-AI-001 verification snapshot (2026-07-30)
 

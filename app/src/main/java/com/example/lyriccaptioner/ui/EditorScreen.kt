@@ -11,9 +11,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +35,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -143,13 +146,13 @@ fun EditorScreen(viewModel: MainViewModel) {
     if (showPasteLyrics) {
         AlertDialog(
             onDismissRequest = { showPasteLyrics = false },
-            title = { Text("Paste English lyrics") },
+            title = { Text("粘贴英文歌词") },
             text = {
                 OutlinedTextField(
                     modifier = Modifier.fillMaxWidth(),
                     value = pastedLyrics,
                     onValueChange = { pastedLyrics = it },
-                    label = { Text("One line per caption") },
+                    label = { Text("每行对应一条字幕") },
                     minLines = 8,
                     maxLines = 12,
                 )
@@ -160,174 +163,145 @@ fun EditorScreen(viewModel: MainViewModel) {
                         viewModel.createCaptionsFromLyrics(pastedLyrics)
                         showPasteLyrics = false
                     },
-                ) { Text("Create") }
+                ) { Text("生成字幕") }
             },
             dismissButton = {
-                TextButton(onClick = { showPasteLyrics = false }) { Text("Cancel") }
+                TextButton(onClick = { showPasteLyrics = false }) { Text("取消") }
             },
         )
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF0D0F12),
+        contentColor = Color(0xFFF4F5F7),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.55f)
+                    .weight(0.74f)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Header()
                 VideoPreview(
-                videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
-                captions = state.captions,
-                selectedCaptionId = state.selectedCaptionId,
-                subtitleStyle = state.exportProfile.subtitleStyle,
-                status = state.status,
-                isWorking = state.isWorking,
-            )
+                    videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
+                    captions = state.captions,
+                    selectedCaptionId = state.selectedCaptionId,
+                    subtitleStyle = state.exportProfile.subtitleStyle,
+                    status = state.status,
+                    isWorking = state.isWorking,
+                )
                 SpeechRuntimeStatus(
-                modelInstalled = state.modelState.speechModelInstalled,
-                nativeReady = state.modelState.speechNativeLibraryReady,
-                mode = state.modelState.speechMode,
-                detail = state.modelState.speechRuntimeDetail,
-            )
+                    modelInstalled = state.modelState.speechModelInstalled,
+                    nativeReady = state.modelState.speechNativeLibraryReady,
+                    mode = state.modelState.speechMode,
+                )
                 TranslationRuntimeStatus(state.modelState.translationModelState)
-                FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    enabled = !state.isWorking,
-                    onClick = {
-                        videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) {
-                            VideoImportMode.RELINK
-                        } else {
-                            VideoImportMode.NEW_VIDEO
-                        }
-                        videoPicker.launch(arrayOf("video/*"))
-                    },
-                ) {
-                    Text(if (state.mediaState == com.example.lyriccaptioner.model.MediaState.UNAVAILABLE) "Relink Video" else "Import")
-                }
-                TextButton(
-                    enabled = !state.isWorking,
-                    onClick = { srtPicker.launch("*/*") },
-                ) {
-                    Text("Import SRT")
-                }
-                TextButton(
-                    enabled = !state.isWorking,
-                    onClick = { projectPicker.launch(arrayOf("application/octet-stream", "text/plain")) },
-                ) {
-                    Text("Open Project")
-                }
-                TextButton(
-                    enabled = !state.isWorking,
-                    onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
-                ) {
-                    Text("Whisper Model")
-                }
-                TextButton(
-                    enabled = state.captions.isNotEmpty() && !state.isWorking,
-                    onClick = { lyricPicker.launch("text/*") },
-                ) {
-                    Text("Lyrics")
-                }
-                TextButton(
-                    enabled = state.videoUri != null && !state.isWorking,
-                    onClick = { showPasteLyrics = true },
-                ) {
-                    Text("Paste Lyrics")
-                }
-                TextButton(
-                    enabled = state.captions.any { it.english.isNotBlank() && it.chinese.isBlank() } && !state.isWorking,
-                    onClick = viewModel::translateMissingChinese,
-                ) {
-                    Text("Translate")
-                }
-                if (state.translationRunning) {
-                    TextButton(onClick = viewModel::cancelTranslation) {
-                        Text("Cancel Translation")
+                WorkflowPanel(title = "1  导入与项目", subtitle = "先选择视频，或打开已有项目") {
+                    ActionRow {
+                        ActionButton(
+                            icon = "＋",
+                            label = if (state.mediaState == MediaState.UNAVAILABLE) "重新绑定视频" else "导入视频",
+                            enabled = !state.isWorking,
+                            primary = true,
+                            onClick = {
+                                videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) {
+                                    VideoImportMode.RELINK
+                                } else {
+                                    VideoImportMode.NEW_VIDEO
+                                }
+                                videoPicker.launch(arrayOf("video/*"))
+                            },
+                        )
+                        ActionButton(
+                            icon = "▣",
+                            label = "打开项目",
+                            enabled = !state.isWorking,
+                            onClick = { projectPicker.launch(arrayOf("application/octet-stream", "text/plain")) },
+                        )
+                    }
+                    ActionRow {
+                        SecondaryAction("字幕 SRT", !state.isWorking) { srtPicker.launch("*/*") }
+                        SecondaryAction("Whisper 模型", !state.isWorking) { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                     }
                 }
-                TextButton(
-                    enabled = state.videoUri != null && !state.isWorking,
-                    onClick = viewModel::addCaption,
-                ) {
-                    Text("Add Caption")
+                WorkflowPanel(title = "2  识别与翻译", subtitle = "使用本地模型生成英文并翻译成中文") {
+                    ActionRow {
+                        ActionButton(
+                            icon = "▶",
+                            label = if (state.modelState.speechMode == SpeechMode.LOCAL) "生成字幕" else "识别不可用",
+                            enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode == SpeechMode.LOCAL,
+                            primary = true,
+                            onClick = viewModel::generateCaptions,
+                        )
+                        ActionButton(
+                            icon = "中",
+                            label = "翻译中文",
+                            enabled = state.captions.any { it.english.isNotBlank() && it.chinese.isBlank() } && !state.isWorking,
+                            onClick = viewModel::translateMissingChinese,
+                        )
+                    }
+                    if (state.asrRunning || state.translationRunning) {
+                        ActionRow {
+                            SecondaryAction("取消当前任务", true) {
+                                if (state.asrRunning) viewModel.cancelGenerateCaptions()
+                                if (state.translationRunning) viewModel.cancelTranslation()
+                            }
+                        }
+                    }
                 }
-                Button(
-                    enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode == SpeechMode.LOCAL,
-                    onClick = viewModel::generateCaptions,
-                ) {
-                    Text(
-                        if (state.modelState.speechMode == SpeechMode.LOCAL) {
-                            "Generate Local"
-                        } else {
-                            "ASR Unavailable"
-                        },
+                WorkflowPanel(title = "3  字幕编辑", subtitle = "检查文本、调整时间并确认字幕") {
+                    ActionRow {
+                        SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) { viewModel.addCaption() }
+                        SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
+                        SecondaryAction("粘贴歌词", state.videoUri != null && !state.isWorking) { showPasteLyrics = true }
+                    }
+                    SubtitleStyleControls(
+                        fontSizeSp = state.exportProfile.subtitleStyle.fontSizeSp,
+                        bottomMarginPercent = state.exportProfile.subtitleStyle.bottomMarginPercent,
+                        onFontSmaller = { viewModel.updateFontSize(-2) },
+                        onFontLarger = { viewModel.updateFontSize(2) },
+                        onMarginLower = { viewModel.updateBottomMargin(-2) },
+                        onMarginHigher = { viewModel.updateBottomMargin(2) },
+                        primaryColorHex = state.exportProfile.subtitleStyle.primaryColorHex,
+                        secondaryColorHex = state.exportProfile.subtitleStyle.secondaryColorHex,
+                        outlineColorHex = state.exportProfile.subtitleStyle.outlineColorHex,
+                        onEnglishColorChanged = viewModel::updateEnglishColor,
+                        onChineseColorChanged = viewModel::updateChineseColor,
+                        onOutlineColorChanged = viewModel::updateOutlineColor,
                     )
                 }
-                if (state.asrRunning) {
-                    TextButton(onClick = viewModel::cancelGenerateCaptions) {
-                        Text("Cancel ASR")
+                WorkflowPanel(title = "4  导出与分享", subtitle = "保存项目、导出视频或分享成品") {
+                    ActionRow {
+                        ActionButton(
+                            icon = "⇩",
+                            label = "导出视频",
+                            enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
+                            primary = true,
+                            onClick = { videoCreator.launch(state.exportProfile.outputName) },
+                        )
+                        ActionButton(
+                            icon = "↗",
+                            label = "分享视频",
+                            enabled = state.exportUri != null && !state.isWorking,
+                            onClick = { state.exportUri?.let { shareExportedVideo(context, it) } },
+                        )
+                    }
+                    ActionRow {
+                        SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking) { projectCreator.launch("lyric-captioner-project.lcp") }
+                        SecondaryAction("导出 SRT", state.captions.isNotEmpty() && !state.isWorking) { viewModel.exportSidecarSrt() }
+                        if (state.isWorking && !state.translationRunning && !state.asrRunning) {
+                            SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)
+                        }
                     }
                 }
-                Button(
-                    enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
-                    onClick = {
-                        videoCreator.launch(state.exportProfile.outputName)
-                    },
-                ) {
-                    Text("Export")
-                }
-                TextButton(
-                    enabled = state.isWorking && !state.translationRunning && !state.asrRunning,
-                    onClick = viewModel::cancelExport,
-                ) {
-                    Text("Cancel")
-                }
-                TextButton(
-                    enabled = state.exportUri != null && !state.isWorking,
-                    onClick = {
-                        state.exportUri?.let { shareExportedVideo(context, it) }
-                    },
-                ) {
-                    Text("Share")
-                }
-                TextButton(
-                    enabled = state.captions.isNotEmpty() && !state.isWorking,
-                    onClick = viewModel::exportSidecarSrt,
-                ) {
-                    Text("SRT")
-                }
-                TextButton(
-                    enabled = state.captions.isNotEmpty() && !state.isWorking,
-                    onClick = { projectCreator.launch("lyric-captioner-project.lcp") },
-                ) {
-                    Text("Save Project")
-                }
-            }
-                SubtitleStyleControls(
-                fontSizeSp = state.exportProfile.subtitleStyle.fontSizeSp,
-                bottomMarginPercent = state.exportProfile.subtitleStyle.bottomMarginPercent,
-                onFontSmaller = { viewModel.updateFontSize(-2) },
-                onFontLarger = { viewModel.updateFontSize(2) },
-                onMarginLower = { viewModel.updateBottomMargin(-2) },
-                onMarginHigher = { viewModel.updateBottomMargin(2) },
-                primaryColorHex = state.exportProfile.subtitleStyle.primaryColorHex,
-                secondaryColorHex = state.exportProfile.subtitleStyle.secondaryColorHex,
-                outlineColorHex = state.exportProfile.subtitleStyle.outlineColorHex,
-                onEnglishColorChanged = viewModel::updateEnglishColor,
-                onChineseColorChanged = viewModel::updateChineseColor,
-                onOutlineColorChanged = viewModel::updateOutlineColor,
-            )
             }
             CaptionList(
                 captions = state.captions,
@@ -341,23 +315,115 @@ fun EditorScreen(viewModel: MainViewModel) {
                 onDelete = viewModel::deleteCaption,
                 onConfirm = viewModel::confirmCue,
                 enabled = !state.isWorking,
-                modifier = Modifier.weight(0.45f),
+                modifier = Modifier.weight(0.26f),
             )
         }
     }
 }
 
 @Composable
-private fun TranslationRuntimeStatus(state: TranslationModelState) {
-    Text(
-        text = "Translation model: ${state.name}",
-        style = MaterialTheme.typography.labelMedium,
-        color = when (state) {
-            TranslationModelState.READY -> Color(0xFF176B3A)
-            TranslationModelState.PREPARING -> MaterialTheme.colorScheme.primary
-            TranslationModelState.NEEDS_INSTALL, TranslationModelState.FAILED ->
-                MaterialTheme.colorScheme.error
+private fun WorkflowPanel(
+    title: String,
+    subtitle: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282D35)),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color(0xFF9EA5B1))
+                }
+                content()
+            },
+        )
+    }
+}
+
+@Composable
+private fun ActionRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+@Composable
+private fun RowScope.ActionButton(
+    icon: String,
+    label: String,
+    enabled: Boolean,
+    primary: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Button(
+        modifier = Modifier.weight(1f),
+        enabled = enabled,
+        onClick = onClick,
+        colors = if (primary) {
+            androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFB7F36B),
+                contentColor = Color(0xFF162000),
+                disabledContainerColor = Color(0xFF30352B),
+                disabledContentColor = Color(0xFF737B6A),
+            )
+        } else {
+            androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF2B3038),
+                contentColor = Color(0xFFF4F5F7),
+                disabledContainerColor = Color(0xFF202329),
+                disabledContentColor = Color(0xFF666C76),
+            )
         },
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Text(icon, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(6.dp))
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun RowScope.SecondaryAction(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        modifier = Modifier.weight(1f),
+        enabled = enabled,
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF454C57)),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+            contentColor = Color(0xFFD5DAE3),
+            disabledContentColor = Color(0xFF666C76),
+        ),
+    ) {
+        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun TranslationRuntimeStatus(state: TranslationModelState) {
+    RuntimeStatusCard(
+        label = "翻译",
+        value = "本地 OPUS-MT · ${when (state) {
+            TranslationModelState.READY -> "就绪"
+            TranslationModelState.PREPARING -> "准备中"
+            TranslationModelState.NEEDS_INSTALL -> "未安装"
+            TranslationModelState.FAILED -> "不可用"
+        }}",
+        healthy = state == TranslationModelState.READY,
     )
 }
 
@@ -366,38 +432,59 @@ private fun SpeechRuntimeStatus(
     modelInstalled: Boolean,
     nativeReady: Boolean,
     mode: SpeechMode,
-    detail: String,
 ) {
-    Row(
+    RuntimeStatusCard(
+        label = "识别",
+        value = if (mode == SpeechMode.LOCAL && modelInstalled && nativeReady) {
+            "本地 Whisper · 就绪"
+        } else {
+            "本地 Whisper · 不可用"
+        },
+        healthy = mode == SpeechMode.LOCAL && modelInstalled && nativeReady,
+        detail = if (mode == SpeechMode.LOCAL && modelInstalled && nativeReady) {
+            "本地 JNI 已就绪"
+        } else {
+            "请检查模型和 JNI"
+        },
+    )
+}
+
+@Composable
+private fun RuntimeStatusCard(
+    label: String,
+    value: String,
+    healthy: Boolean,
+    detail: String = "",
+) {
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
     ) {
-        Text(
-            text = "ASR: ${mode.name}",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (mode == SpeechMode.LOCAL) {
-                Color(0xFF176B3A)
-            } else {
-                MaterialTheme.colorScheme.error
-            },
-        )
-        Text(
-            text = if (modelInstalled) "Model: ready" else "Model: missing",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (modelInstalled) Color(0xFF176B3A) else MaterialTheme.colorScheme.error,
-        )
-        Text(
-            text = if (nativeReady) "JNI: ready" else "JNI: missing",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (nativeReady) Color(0xFF176B3A) else MaterialTheme.colorScheme.error,
-        )
-        Text(
-            modifier = Modifier.weight(1f),
-            text = detail,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (healthy) Color(0xFFB7F36B) else Color(0xFFFF7B78)),
+            )
+            Text(label, style = MaterialTheme.typography.labelMedium, color = Color(0xFF9EA5B1))
+            Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            if (detail.isNotBlank()) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = detail,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF9EA5B1),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -418,8 +505,8 @@ private fun SubtitleStyleControls(
     onOutlineColorChanged: (String) -> Unit,
 ) {
     Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -430,8 +517,8 @@ private fun SubtitleStyleControls(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text("Subtitle style", fontWeight = FontWeight.SemiBold)
-                Text("Font ${fontSizeSp}sp / Bottom ${bottomMarginPercent}%")
+                Text("字幕样式", fontWeight = FontWeight.SemiBold)
+                Text("字号 ${fontSizeSp}sp · 位置 ${bottomMarginPercent}%", color = Color(0xFF9EA5B1))
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -439,21 +526,21 @@ private fun SubtitleStyleControls(
             ) {
                 TextButton(onClick = onFontSmaller) { Text("A-") }
                 TextButton(onClick = onFontLarger) { Text("A+") }
-                TextButton(onClick = onMarginLower) { Text("Lower") }
-                TextButton(onClick = onMarginHigher) { Text("Higher") }
+                TextButton(onClick = onMarginLower) { Text("下移") }
+                TextButton(onClick = onMarginHigher) { Text("上移") }
             }
             SubtitleColorPalette(
-                label = "English",
+                label = "英文",
                 selectedColorHex = primaryColorHex,
                 onColorSelected = onEnglishColorChanged,
             )
             SubtitleColorPalette(
-                label = "Chinese",
+                label = "中文",
                 selectedColorHex = secondaryColorHex,
                 onColorSelected = onChineseColorChanged,
             )
             SubtitleColorPalette(
-                label = "Outline",
+                label = "描边",
                 selectedColorHex = outlineColorHex,
                 onColorSelected = onOutlineColorChanged,
             )
@@ -505,23 +592,52 @@ private fun shareExportedVideo(context: Context, uri: Uri) {
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(shareIntent, "Share captioned video"))
+    context.startActivity(Intent.createChooser(shareIntent, "分享双语视频"))
 }
 
 
 @Composable
 private fun Header() {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = "LyricCaptioner",
-            style = MaterialTheme.typography.headlineMedium,
+            text = "歌词字幕工作台",
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "Local-first bilingual subtitle editor for short videos.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "本地双语 · 轻量编辑",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF9EA5B1),
         )
+        }
+        Text("V2", style = MaterialTheme.typography.labelLarge, color = Color(0xFFB7F36B))
+    }
+}
+
+private fun localizeStatus(status: String): String {
+    return when {
+        status.isBlank() -> "等待操作"
+        status.startsWith("Import a video") -> "导入 5 分钟以内的视频开始编辑"
+        status.startsWith("Checking video access") -> "正在检查视频访问权限…"
+        status.startsWith("Video imported") -> "视频已导入，可继续识别或编辑"
+        status.startsWith("Video re-associated") -> "视频已重新绑定"
+        status.startsWith("Could not import video") -> "视频导入失败：${status.substringAfter(": ", "未知原因")}"
+        status.startsWith("Preparing") -> "正在准备本地翻译模型…"
+        status.startsWith("Translated") -> "中文翻译完成：${status.substringAfter("Translated ").substringBefore(" captions") } 条"
+        status.startsWith("Translation") -> "翻译状态：${status.substringAfter(": ", status)}"
+        status.startsWith("Created") -> "字幕已生成：${status.substringAfter("Created ").substringBefore(" lyric captions")} 条"
+        status.startsWith("Rendering") -> "正在渲染双语字幕…"
+        status.startsWith("Export complete") -> "视频导出完成"
+        status.startsWith("Video export") -> "导出状态：${status.substringAfter(": ", status)}"
+        status.startsWith("ASR") -> "识别状态：${status.substringAfter(": ", status)}"
+        status.startsWith("Project") -> "项目状态：${status.substringAfter(": ", status)}"
+        status.startsWith("SRT") -> "SRT 状态：${status.substringAfter(": ", status)}"
+        else -> status
     }
 }
 
@@ -535,28 +651,43 @@ private fun VideoPreview(
     isWorking: Boolean,
 ) {
     Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("视频预览", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (videoUri == null) "未导入" else "可编辑",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (videoUri == null) Color(0xFFFFB4AB) else Color(0xFFB7F36B),
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(190.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF171A1F)),
                 contentAlignment = Alignment.Center,
             ) {
                 if (videoUri == null) {
-                    Text(text = "No video selected", color = Color.White)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("＋", color = Color(0xFFB7F36B), fontSize = 28.sp)
+                        Text("导入视频开始编辑", color = Color.White)
+                    }
                 } else if (isWorking) {
                     // Removing PlayerView releases its decoder and Surface before Media3 starts exporting.
-                    Text(text = "Preview paused while processing", color = Color.White)
+                    Text(text = "处理中，预览暂时暂停", color = Color.White)
                 } else {
                     VideoPlayer(
                         uri = videoUri,
@@ -571,7 +702,13 @@ private fun VideoPreview(
                     CircularProgressIndicator(modifier = Modifier.width(22.dp), strokeWidth = 2.dp)
                     Spacer(modifier = Modifier.width(10.dp))
                 }
-                Text(text = status, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = localizeStatus(status),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFD5DAE3),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -708,30 +845,55 @@ private fun CaptionList(
     modifier: Modifier = Modifier,
 ) {
     if (captions.isEmpty()) {
-        Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text("Generated bilingual subtitles will appear here.")
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("字幕列表将在识别或导入后显示", color = Color(0xFF9EA5B1))
+            }
         }
         return
     }
 
-    LazyColumn(
+    Card(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
     ) {
-        items(captions, key = { it.id }) { cue ->
-            CaptionCard(
-                cue = cue,
-                selected = cue.id == selectedId,
-                enabled = enabled,
-                onSelect = { onSelect(cue.id) },
-                onEnglishChanged = { onEnglishChanged(cue.id, it) },
-                onChineseChanged = { onChineseChanged(cue.id, it) },
-                onApplyCandidate = { onApplyCandidate(cue.id, it) },
-                onShiftStart = { onShiftStart(cue.id, it) },
-                onShiftEnd = { onShiftEnd(cue.id, it) },
-                onDelete = { onDelete(cue.id) },
-                onConfirm = { onConfirm(cue.id) },
-            )
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("字幕列表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${captions.size} 条", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9EA5B1))
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(captions, key = { it.id }) { cue ->
+                    CaptionCard(
+                        cue = cue,
+                        selected = cue.id == selectedId,
+                        enabled = enabled,
+                        onSelect = { onSelect(cue.id) },
+                        onEnglishChanged = { onEnglishChanged(cue.id, it) },
+                        onChineseChanged = { onChineseChanged(cue.id, it) },
+                        onApplyCandidate = { onApplyCandidate(cue.id, it) },
+                        onShiftStart = { onShiftStart(cue.id, it) },
+                        onShiftEnd = { onShiftEnd(cue.id, it) },
+                        onDelete = { onDelete(cue.id) },
+                        onConfirm = { onConfirm(cue.id) },
+                    )
+                }
+            }
         }
     }
 }
@@ -752,10 +914,10 @@ private fun CaptionCard(
     onConfirm: () -> Unit,
 ) {
     val containerColor = when {
-        cue.confirmed -> Color(0xFFEAF7EF)
-        cue.needsReview -> Color(0xFFFFF4D8)
-        selected -> MaterialTheme.colorScheme.primaryContainer
-        else -> MaterialTheme.colorScheme.surface
+        cue.confirmed -> Color(0xFF1C3328)
+        cue.needsReview -> Color(0xFF3A3020)
+        selected -> Color(0xFF253A28)
+        else -> Color(0xFF1B1F25)
     }
 
     Card(
@@ -779,19 +941,19 @@ private fun CaptionCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
                 Text(
-                    text = "Confidence ${(cue.confidence * 100).toInt()}%",
+                    text = "置信度 ${(cue.confidence * 100).toInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TimingControl(
-                    label = "Start",
+                    label = "开始",
                     enabled = enabled,
                     onEarlier = { onShiftStart(-100L) },
                     onLater = { onShiftStart(100L) },
                 )
                 TimingControl(
-                    label = "End",
+                    label = "结束",
                     enabled = enabled,
                     onEarlier = { onShiftEnd(-100L) },
                     onLater = { onShiftEnd(100L) },
@@ -802,12 +964,12 @@ private fun CaptionCard(
                 value = cue.english,
                 onValueChange = onEnglishChanged,
                 enabled = enabled,
-                label = { Text("English") },
+                    label = { Text("英文字幕") },
                 singleLine = false,
             )
             if (cue.correctionCandidates.isNotEmpty()) {
                 Text(
-                    text = "Correction candidates",
+                    text = "纠错候选",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -830,7 +992,7 @@ private fun CaptionCard(
                 value = cue.chinese,
                 onValueChange = onChineseChanged,
                 enabled = enabled,
-                label = { Text("Chinese") },
+                    label = { Text("中文字幕") },
                 singleLine = false,
             )
             FlowRow(
@@ -840,9 +1002,9 @@ private fun CaptionCard(
             ) {
                 Text(
                     text = when {
-                        cue.confirmed -> "Confirmed"
-                        cue.needsReview -> "Review suggested"
-                        else -> "Needs confirmation"
+                        cue.confirmed -> "已确认"
+                        cue.needsReview -> "建议复核"
+                        else -> "待确认"
                     },
                     style = MaterialTheme.typography.labelMedium,
                 )
@@ -850,10 +1012,10 @@ private fun CaptionCard(
                     enabled = enabled && cue.canConfirm && !cue.confirmed,
                     onClick = onConfirm,
                 ) {
-                    Text(if (cue.confirmed) "Confirmed" else "Confirm")
+                    Text(if (cue.confirmed) "已确认" else "确认")
                 }
                 TextButton(enabled = enabled, onClick = onDelete) {
-                    Text("Delete")
+                    Text("删除")
                 }
             }
         }
@@ -873,11 +1035,11 @@ private fun TimingControl(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            modifier = Modifier.width(44.dp),
+            modifier = Modifier.width(48.dp),
             text = label,
             style = MaterialTheme.typography.labelMedium,
         )
-        TextButton(enabled = enabled, onClick = onEarlier) { Text("-0.1s") }
-        TextButton(enabled = enabled, onClick = onLater) { Text("+0.1s") }
+        TextButton(enabled = enabled, onClick = onEarlier) { Text("−0.1 秒") }
+        TextButton(enabled = enabled, onClick = onLater) { Text("＋0.1 秒") }
     }
 }

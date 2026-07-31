@@ -26,7 +26,7 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 | V2-LOCAL-AI-001 | `LOCAL_AI_SIMULATOR_VERIFIED` | 集成可手动准备的 Whisper 与 OPUS-MT ONNX 模型，移除产品运行时模型下载依赖 |
 | V2-ASR-002 | `FIXTURE_REQUIRED` | 使用固定英文歌曲语料比较候选模型，改善歌词和单词识别；当前缺人工准确歌曲 fixture |
 | V2-TRN-002 | `PLANNED` | 使用固定英中歌词语料评估并改善中文翻译 |
-| V2-UI-001 | `BACKLOG` | 中文化并整理主要界面 |
+| V2-UI-001 | `UI_SIMULATOR_VERIFIED` | 中文化并整理主要界面 |
 | V2-PREVIEW-001 | `BACKLOG` | 全屏播放和字幕位置、大小、字体、颜色编辑 |
 | V2-E2E-002 | `DEFERRED_DEVICE_GATE` | 用户重新授权真机测试后，在个人 ARM64 手机完成 V2 全流程最终验收 |
 
@@ -156,3 +156,14 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 - Verification passed: `python tools\asr_evaluate_test.py` and targeted Whisper model validator/importer unit tests.
 - Generated three simulator-only review MP4 files from user-provided source videos in `D:\DevEnv\Projects\sorce\` for manual viewing. Each ran through Local Whisper, local OPUS-MT, FFmpegKit export, and Media3 playback with network disabled. These outputs do not include reference lyrics, so they remain manual review artifacts and do not change the quality gate.
 - Final status: `FIXTURE_REQUIRED`.
+
+## V2-UI-001 execution record (2026-07-31)
+
+- Established checkpoint `30b4238` before UI work, preserving the prior local-AI/product-path changes and excluding models, media, generated files, `docs/archive/`, and the dirty `third_party/ffmpeg-kit` entry.
+- Reworked the Compose editor into four visible workflow panels: import/project, local recognition/translation, subtitle editing, and export/share. The video preview remains the primary visual region.
+- Changed the app theme to a dark Material 3 palette with neutral black/gray surfaces, white text, and a limited lime accent. User-visible labels and runtime states are Chinese; no new dependency or processing-path change was introduced.
+- Preserved the existing `LocalAiInstrumentation` chain and added a no-input production Activity UI smoke check for a laid-out Compose root and non-empty screenshot.
+- Pixel_8 / `emulator-5554` evidence: UI instrumentation passed with `1080x2400` window and screenshot; final activity focus was `com.example.lyriccaptioner/.MainActivity`; a display-0 DocumentsUI video picker opened and showed emulator test videos.
+- Review screenshots remain outside the repository at `D:\DevEnv\Projects\lyric-captioner-ui-review.png`, `D:\DevEnv\Projects\ui-flow-scroll.png`, and `D:\DevEnv\Projects\documentsui-video-picker.png`.
+- Verification passed: 92 JVM tests, `lintDebug` with 0 errors/0 warnings, normal Debug, Native Debug, and `assembleDebugAndroidTest`.
+- Final status: `UI_SIMULATOR_VERIFIED`.

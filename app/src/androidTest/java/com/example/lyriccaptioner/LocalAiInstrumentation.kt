@@ -2,11 +2,14 @@ package com.example.lyriccaptioner
 
 import android.app.Activity
 import android.app.Instrumentation
+import android.content.Intent
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -36,13 +39,51 @@ class LocalAiInstrumentation : Instrumentation() {
         super.onStart()
         val results = Bundle()
         runCatching {
-            runBlocking { runLocalAiChain(results) }
+            if (inputArguments.getString(ARG_INPUT).isNullOrBlank()) {
+                runUiSmoke(results)
+            } else {
+                runBlocking { runLocalAiChain(results) }
+            }
         }.onSuccess {
             finish(Activity.RESULT_OK, results)
         }.onFailure { error ->
             results.putString("failure", error.stackTraceToString())
             finish(Activity.RESULT_CANCELED, results)
         }
+    }
+
+    private fun runUiSmoke(results: Bundle) {
+        val activity = startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+        val root = activity.window.decorView
+        check(root.width > 0 && root.height > 0) {
+            "Production activity has no laid-out window: ${root.width}x${root.height}"
+        }
+        check(findComposeRoot(root)) { "Compose root was not found in the production activity." }
+        val screenshot = uiAutomation.takeScreenshot()
+        check(screenshot.width > 0 && screenshot.height > 0) {
+            "Production UI screenshot is empty: ${screenshot.width}x${screenshot.height}"
+        }
+        results.putInt("windowWidth", root.width)
+        results.putInt("windowHeight", root.height)
+        results.putInt("screenshotWidth", screenshot.width)
+        results.putInt("screenshotHeight", screenshot.height)
+        results.putString("rootClass", root.javaClass.name)
+        activity.finish()
+    }
+
+    private fun findComposeRoot(view: View): Boolean {
+        if (view.javaClass.name.contains("AndroidComposeView")) return true
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                if (findComposeRoot(view.getChildAt(index))) return true
+            }
+        }
+        return false
     }
 
     private suspend fun runLocalAiChain(results: Bundle) {
