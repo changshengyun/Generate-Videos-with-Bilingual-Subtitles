@@ -263,14 +263,14 @@ fun EditorScreen(viewModel: MainViewModel) {
                     Text("Add Caption")
                 }
                 Button(
-                    enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode != SpeechMode.UNAVAILABLE,
+                    enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode == SpeechMode.LOCAL,
                     onClick = viewModel::generateCaptions,
                 ) {
                     Text(
-                        when (state.modelState.speechMode) {
-                            SpeechMode.LOCAL -> "Generate Local"
-                            SpeechMode.DEMO -> "Generate Demo"
-                            SpeechMode.UNAVAILABLE -> "ASR Unavailable"
+                        if (state.modelState.speechMode == SpeechMode.LOCAL) {
+                            "Generate Local"
+                        } else {
+                            "ASR Unavailable"
                         },
                     )
                 }
@@ -355,7 +355,7 @@ private fun TranslationRuntimeStatus(state: TranslationModelState) {
         color = when (state) {
             TranslationModelState.READY -> Color(0xFF176B3A)
             TranslationModelState.PREPARING -> MaterialTheme.colorScheme.primary
-            TranslationModelState.NEEDS_DOWNLOAD, TranslationModelState.FAILED ->
+            TranslationModelState.NEEDS_INSTALL, TranslationModelState.FAILED ->
                 MaterialTheme.colorScheme.error
         },
     )
@@ -376,9 +376,10 @@ private fun SpeechRuntimeStatus(
         Text(
             text = "ASR: ${mode.name}",
             style = MaterialTheme.typography.labelMedium,
-            color = when (mode) {
-                SpeechMode.LOCAL -> Color(0xFF176B3A)
-                SpeechMode.DEMO, SpeechMode.UNAVAILABLE -> MaterialTheme.colorScheme.error
+            color = if (mode == SpeechMode.LOCAL) {
+                Color(0xFF176B3A)
+            } else {
+                MaterialTheme.colorScheme.error
             },
         )
         Text(

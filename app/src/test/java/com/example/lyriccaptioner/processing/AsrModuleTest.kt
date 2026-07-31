@@ -17,13 +17,13 @@ import org.junit.Test
 
 class AsrModuleTest {
     @Test
-    fun runtimeResolverSeparatesLocalDemoAndUnavailable() {
+    fun runtimeResolverSeparatesLocalAndUnavailable() {
         assertEquals(SpeechMode.LOCAL, WhisperRuntimeStatusResolver.resolve(true, true).mode)
-        assertEquals(SpeechMode.DEMO, WhisperRuntimeStatusResolver.resolve(false, true).mode)
-        assertEquals(SpeechMode.DEMO, WhisperRuntimeStatusResolver.resolve(true, false).mode)
+        assertEquals(SpeechMode.UNAVAILABLE, WhisperRuntimeStatusResolver.resolve(false, true).mode)
+        assertEquals(SpeechMode.UNAVAILABLE, WhisperRuntimeStatusResolver.resolve(true, false).mode)
         assertEquals(
             SpeechMode.UNAVAILABLE,
-            WhisperRuntimeStatusResolver.resolve(false, false, demoAvailable = false).mode,
+            WhisperRuntimeStatusResolver.resolve(false, false).mode,
         )
     }
 
@@ -102,11 +102,33 @@ class AsrModuleTest {
 
     @Test
     fun unavailableModuleNeverRunsRecognition() = runBlocking<Unit> {
-        val status = WhisperRuntimeStatusResolver.resolve(false, false, demoAvailable = false)
+        val status = WhisperRuntimeStatusResolver.resolve(false, false)
         val module = UnavailableAsrModule(status)
 
         assertThrows(AsrUnavailableException::class.java) {
             runBlocking { module.recognize(TestUri("content://video/unavailable")) }
+        }
+    }
+
+    @Test
+    fun productRouteUsesLocalOnlyAndFailsExplicitlyOtherwise() {
+        val local = object : AsrModule {
+            override val runtimeStatus = WhisperRuntimeStatusResolver.resolve(true, true)
+            override suspend fun recognize(
+                videoUri: android.net.Uri,
+                onStatus: (String) -> Unit,
+            ): List<CaptionCue> = emptyList()
+        }
+
+        assertEquals(
+            local,
+            AppPipelineFactory.routeAsr(local.runtimeStatus) { local },
+        )
+        listOf(
+            WhisperRuntimeStatusResolver.resolve(false, true),
+            WhisperRuntimeStatusResolver.resolve(false, false),
+        ).forEach { status ->
+            assertTrue(AppPipelineFactory.routeAsr(status) { local } is UnavailableAsrModule)
         }
     }
 

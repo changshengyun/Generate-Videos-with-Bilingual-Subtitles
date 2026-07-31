@@ -23,7 +23,6 @@ import com.example.lyriccaptioner.model.VideoImportPolicy
 import com.example.lyriccaptioner.processing.AsrModule
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
-import com.example.lyriccaptioner.processing.MlKitLocalTranslator
 import com.example.lyriccaptioner.processing.TranslationBatchException
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.TranslationModule
@@ -54,7 +53,9 @@ class MainViewModel(
     private var asrModule: AsrModule = AppPipelineFactory.createAsrDefault(context),
     private val timingEditor: CaptionTimingEditor = CaptionTimingEditor(),
     private val lyricLineAligner: LyricLineAligner = LyricLineAligner(),
-    private val translationModule: TranslationModule = TranslationModule(MlKitLocalTranslator()),
+    private val translationModule: TranslationModule = TranslationModule(
+        AppPipelineFactory.createTranslationDefault(context),
+    ),
 ) : ViewModel() {
     private val appContext = context.applicationContext
     private val whisperModelStore = WhisperModelStore(appContext)
@@ -322,10 +323,10 @@ class MainViewModel(
                         asrRunning = false,
                         captions = cues,
                         selectedCaptionId = cues.firstOrNull()?.id,
-                        status = when (mode) {
-                            SpeechMode.LOCAL -> "Local Whisper JNI generated ${cues.size} English captions."
-                            SpeechMode.DEMO -> "Demo ASR generated ${cues.size} English captions; Local was not used."
-                            SpeechMode.UNAVAILABLE -> module.runtimeStatus.detail
+                        status = if (mode == SpeechMode.LOCAL) {
+                            "Local Whisper JNI generated ${cues.size} English captions."
+                        } else {
+                            module.runtimeStatus.detail
                         },
                     ))
                 }
@@ -514,7 +515,13 @@ class MainViewModel(
         Log.i(LOG_TAG, "event=export_started captionCount=${current.captions.size}")
         exportJob = viewModelScope.launch {
             try {
-                mutableState.update { it.copy(isWorking = true, status = "Rendering burned-in subtitles...") }
+                mutableState.update {
+                    it.copy(
+                        isWorking = true,
+                        exportUri = null,
+                        status = "Rendering burned-in subtitles...",
+                    )
+                }
                 // The API 36.1 emulator releases PlayerView's decoder surface asynchronously.
                 // Wait for that release before Transformer opens a second video decoder.
                 delay(PREVIEW_RELEASE_DELAY_MS)
@@ -540,6 +547,7 @@ class MainViewModel(
                     it.copy(
                         isWorking = false,
                         status = "Video export cancelled.",
+                        exportUri = null,
                     )
                 }
                 throw error
@@ -548,6 +556,7 @@ class MainViewModel(
                     it.copy(
                         isWorking = false,
                         status = "Video export failed: ${error.message ?: "unknown error"}",
+                        exportUri = null,
                     )
                 }
             } finally {

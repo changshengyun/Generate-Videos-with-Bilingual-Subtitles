@@ -25,11 +25,11 @@ class WhisperAsrModule(
         videoUri: Uri,
         onStatus: (String) -> Unit,
     ): List<CaptionCue> {
-        if (runtimeStatus.mode == SpeechMode.UNAVAILABLE) {
+        if (runtimeStatus.mode != SpeechMode.LOCAL) {
             throw AsrUnavailableException(runtimeStatus.detail)
         }
 
-        val routeName = if (runtimeStatus.mode == SpeechMode.LOCAL) "Local Whisper JNI" else "Demo ASR"
+        val routeName = "Local Whisper JNI"
         onStatus("Extracting audio for $routeName...")
         val audio = audioExtractor.extract(videoUri)
         try {

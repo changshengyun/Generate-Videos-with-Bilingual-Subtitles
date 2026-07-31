@@ -1,79 +1,126 @@
-# 项目当前状态
+﻿# LyricCaptioner 当前状态
 
-## 一、当前门禁
+## 当前门禁
 
-`PERSONAL_USE_ACCEPTED`
+- 当前阶段：`V2_ASR_FIXTURE_REQUIRED`
+- 当前任务：`V2-ASR-002 / FIXTURE_REQUIRED`
+- 当前目标：用固定英文歌曲语料比较 Whisper 候选模型并证明识别质量提升
+- 下一任务：准备至少 3 段 30-60 秒英文歌曲音频、人工准确歌词、时间范围和统一预处理条件
 
-- 项目根目录：`D:\DevEnv\Projects\lyric-captioner-android`
-- 当前阶段：个人自用稳定版收口
-- 当前任务：`CLS-001`，修订号 `1`
-- 当前状态：`PERSONAL_USE_ACCEPTED`
-- 验收设备：ARM64 `25098PN5AC`（ADB `fcf4b0cb`）
+## 仓库快照
 
-## 二、已确认基线
+- 仓库：`D:\DevEnv\Projects\lyric-captioner-android`
+- 分支：`migration/lyric-captioner-history`
+- 核对时 HEAD：`b7830710c64660083521708f533ac3a25fa7ec70`
+- 工作树存在未提交的 V2-ASR 模型校验、目录、测试、评测工具和三份活动文档修改。
+- `third_party/ffmpeg-kit` 保持既有脏状态，不得清理、重置或并入本轮。
 
-- `ASR-001` 已在目标设备达到 `ARM64_DEVICE_VERIFIED`，固定媒体生成 3 条非空、时间戳有效且有序的英文 cue。
-- `LocalTranslator` 已由 `MlKitLocalTranslator` 实现，使用 ML Kit `translate:17.0.3` 的英文到中文官方 API。
-- `ProjectArchive` 写入 v2 并兼容读取 v1；v2 已保存 cue 的英文、中文、时间戳、候选和确认状态，无需扩展归档格式。
-- 当前翻译入口已由统一 TranslationModule 管理模型状态、取消边界和批量原子提交；已有中文不会被覆盖。
-- 英文变化会清除旧中文，文本/时间变化会取消确认；单语 cue 不允许确认。
+开始开发时必须重新核对 Git 状态；以上快照只说明本次规划依据，不覆盖后续变化。
 
-## 三、TRN-001 已验证事实
+## 已验证基线
 
-- 统一 TranslationModule 已完成，没有创建平行翻译路线；模型状态显式区分 `NEEDS_DOWNLOAD`、`PREPARING`、`READY`、`FAILED`。
-- 翻译目标仅限英文非空且中文为空；成功整批提交，已有人工中文保持，失败或取消零写入。
-- 自动翻译不确认；双语均非空才可确认；英文变更清除旧中文；文本或时间变化取消确认。
-- v2 归档继续保存中文与确认状态并兼容 v1；force-stop、重启和 Open Project 已恢复人工中文与 `Confirmed`。
-- 全量 JVM 测试 68 项通过；普通 Debug 与 Native Debug 通过。
-- 目标设备首次准备耗时 11.857 秒，3 条 Local ASR cue 翻译成功且时间戳不变。
-- 关闭 Wi-Fi 和双卡数据后，重启 App 仍显示模型 `READY`；固定英文 cue 离线翻译耗时 253 ms；网络随后恢复。
-- 30 条批次在翻译阶段取消后零写入，重试 30/30 成功。
+V1 已在个人 ARM64 设备完成真实五分钟工作流：
 
-## 四、边界与风险
+- 手机本地视频导入；
+- Local Whisper 识别；
+- 离线中文翻译与人工确认；
+- 保存、重启和恢复；
+- FFmpegKit 导出 H.264/AAC MP4；
+- 双语字幕可见且 Media3 回放正常；
+- 取消/失败清理通过。
 
-- 不卸载 App、不清除数据、不删除现有 Whisper 或 ML Kit 模型。
-- 不修改 Whisper JNI、FFmpeg、AAR、Media3 或导出路线。
-- ML Kit 模型可能已由历史运行缓存；若设备已有模型，不删除模型来伪造“首次下载”，只记录本轮首次准备与实际缓存状态。
-- 普通实现问题按最小复现、根因、最小修复、回归和全量验收处理。
+该结果证明架构可行，但不能代替当前 V2 代码的重新验收。
 
-## 五、已关闭的组件门禁
+## 当前实现事实
 
-- 下载失败、翻译中途失败、取消和重试的原子性均有单元测试。
-- 真机取消、零写入和重试证据已保留；下载失败与翻译失败的原子性由单测覆盖，按照用户决定不再补真机故障注入。
-- `TRN-001` 保持 `COMPONENT_VERIFIED`；`E2E-001` 已达到 `ARM64_E2E_VERIFIED`，不再存在阻断当前个人自用版本的组件门禁。
+- FFmpegKit 是当前产品烧录后端，Media3用于播放/回放。
+- 产品工厂和 UI 已只允许 Local Whisper；固定 Demo 处理文件已删除，缺少模型/JNI 时明确失败。
+- 当前有 38 个主 Kotlin 文件、23 个 JVM 测试文件、无有效 `androidTest` 用例；数量不是质量目标。
+- `MainViewModel.kt` 与 `EditorScreen.kt` 较大，后续只按业务边界渐进拆分，不整体重写。
+- 历史 Media3 导出实现、Demo 处理、一次性诊断代码和重复测试是清理候选，不是自动删除项。
 
-## 六、E2E-001 授权与验收范围
+## V2-ASR 资产状态
 
-- 用户已接受 TRN-001 的单测失败证据并放行 E2E-001；不再补真机下载或翻译失败注入。
-- 目标设备限定为个人自用 ARM64 `fcf4b0cb / 25098PN5AC`，不扩展多厂商设备矩阵。
-- 本轮只执行一次最终约 5 分钟完整成功验收，建立阶段耗时、总耗时、峰值 RSS、输出大小、温度和存储变化基线，不臆造阈值。
-- 完整流程必须覆盖 SAF 导入、Local ASR、缓存模型离线翻译、人工确认、预览、归档重启恢复、字幕烧录导出与 Media3 回放。
-- 当前门禁：`PERSONAL_USE_ACCEPTED`。
-# E2E-001 revision 2 state (2026-07-18)
+- 模型目录、精确校验、原子导入和评测脚本已进入当前工作树。
+- 候选模型准备和构建测试已有证据，但缺少合格英文歌曲音频、准确歌词/时间标注与稳定设备条件。
+- `V2-ASR-001` 暂停为 `PAUSED_WITH_ASSETS`；相关文件不得因当前任务而删除。
+- `V2-ASR-002` 已进入，但因缺少合格 fixture 停在 `FIXTURE_REQUIRED`；不得主观选择模型。
+- 后续 `V2-ASR-002` 将用固定数据集比较 WER、关键词召回、时间戳、耗时、内存和模型大小。
 
-- Repository baseline confirmed: main / 08266d2570a8c2008bfa696c582980841c1099cf. Existing E2E document edits and third_party/ffmpeg-kit dirty state were preserved.
-- Correctness component is verified by 77 passing JVM tests plus lint and both Debug build variants. Whisper fixture remains ignored and validated at 147951465 bytes with SHA-1 465707469ff3a37a2b9b8d8f89f2f99de7299dac.
-- Device runtime after the single Native APK install: ASR: LOCAL, Model: ready, JNI: ready, Translation model: READY.
-- A prior non-revision-2 export remains available as evidence: non-zero MP4, H.264/AAC, 299.791667 seconds, 46279071 bytes, SHA-256 0E0BA50D179C2044A9A7957AF92308933FA043B3EA1AFFEE5A02106723104585. It is not presented as the revision-2 final export.
-- Revision-2 ARM64 E2E continuation is incomplete due device UI automation idle failure after 5-minute import; no claim is made for new-version ASR, translation, save/restart, export, or Media3 playback.
-- Final state: PARTIAL_PASS.
+## 已批准开发顺序
 
-# E2E-001 revision 3 final state (2026-07-18)
+1. `V2-PROD-001`：`ARM64_PRODUCT_PATH_VERIFIED`，当前版本真实产品路径和测试/Review 基线已通过。
+2. `V2-CLEAN-001`：安全删除/合并和代码级验证已完成，完整链路转交本地模型模块收口。
+3. `V2-LOCAL-AI-001`：`LOCAL_AI_SIMULATOR_VERIFIED`，双本地模型模拟器闭环已通过。
+4. `V2-ASR-002`：当前活动任务，英文歌曲和英文单词识别提质；等待固定英文歌曲 fixture。
+5. `V2-TRN-002`：中文翻译提质。
+6. `V2-UI-001`、`V2-PREVIEW-001`：中文界面、全屏预览和字幕样式编辑。
+7. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收。
 
-- `E2E-001` 已从 `IMPLEMENTING` 完成到 `ARM64_E2E_VERIFIED`。本轮没有重新安装 APK、构建或重复 77 项测试。
-- 目标设备 `fcf4b0cb / 25098PN5AC`：1220x2656，portrait，rotation 0。执行方式为 adb screencap、定向 input、logcat、dumpsys、归档解析和 ffprobe；不把 uiautomator idle/dump 成功作为前提。
-- 真实闭环证据：导入固定 299.247733 秒素材；Local ASR 生成 48 条非空英文 cue；缓存 ML Kit 模型离线翻译 48/48；人工修改并确认 cue；预览；保存、force-stop、重启和 Open Project 后恢复双语及确认状态；成功导出并由 Media3 回放。
-- 本轮新 MP4 为 `/sdcard/Download/lyric-captioner-output (2).mp4`，46,277,905 字节，SHA-256 `D309B177569F638D7427D34ED96F2F9A4CDB8D1EF5EAB0527E2D130B241DD789`，H.264/AAC，592x1280，299.791667 秒。关键帧双语字幕可见；旧 46,279,071 字节输出未计入。
-- 阶段/资源基线：ASR 52.044 秒；翻译 1.573 秒；FFmpeg 回调约 9.375 秒；可记录墙钟间隔约 33 分 40.204 秒；采样峰值 RSS 418,604 kB，导出阶段 335,684 kB；结束温度 battery 32.7 C、CPU0 45.9 C、CPU7 44.9 C、skin 33.35 C；可用存储 137,660,528 -> 137,611,676 kB；`cache/ffmpeg-exports` 为空。
-- 离线翻译时 Wi-Fi/mobile_data=0/0，结束恢复 Wi-Fi/mobile_data=1/0；VPN 保持设备原有状态。仅维护活动文档，未提交 Git 或同步 GitHub。
+## 质量与删除决策
 
-# CLS-001 closeout state (2026-07-18)
+- 先定义产品不变量和测试覆盖，再删除测试或生产代码。
+- 无关测试是指没有独立边界价值、仅覆盖已删除实现或已被更高层契约测试完整替代；不是“运行慢”或“数量多”。
+- 失败测试不得直接删除，必须先判断是产品缺陷、过期契约还是测试自身错误。
+- 普通 Bug由开发窗口自行完成最小复现、根因修复和回归；不因连续失败自动换技术栈或降低验收标准。
+- 重大依赖、架构、数据破坏或范围冲突由决策窗口批准。
 
-- 当前状态统一为 `PERSONAL_USE_ACCEPTED`。冻结内容是个人自用稳定版，不代表公开发布合规。
-- 允许保留的未提交差异仅为：E2E revision 2 正确性修复、对应测试和三个活动文档；`third_party/ffmpeg-kit` 既有 dirty 状态保持不变。
-- Native Debug APK：`app/build/outputs/apk/debug/app-debug.apk`；SHA-256 `BA54697CD204D8334A5DD7484E4EC517D90EB5E144AD1A60F3182E213B225DBE`；applicationId `com.example.lyriccaptioner`；versionCode `1`；versionName `0.1.0`；ABI `arm64-v8a`, `x86_64`。
-- 本地 APK 与设备已安装 APK 的完整 SHA-256 相同；签名证书 SHA-256 均为 `a51e9235816b2f34195a459764ff7155958e3a5c503aa782d125a000c0817528`，因此具备直接更新安装条件。本轮未安装，不输出或复制私钥。
-- `git diff --check` 通过。77 项单测、lintDebug、普通 Debug、Native Debug 和 ARM64 E2E 沿用既有通过证据，因无代码变化不重复。
-- 模型、测试视频、输出 MP4、日志和 APK/构建产物仅在已忽略的 `.tool-downloads`、Gradle 或 build 目录中；没有进入 Git 未跟踪集合，未发现仓库外密钥候选。未清理既有证据。
-- `REL-001` 仅在未来公开分发时启用；不执行许可证、商店、SBOM 或多设备矩阵工作。
-- 检查点条件：`READY_FOR_CHECKPOINT`。不提交 Git，不同步 GitHub。
+## 临时设备测试决策（2026-07-30）
+
+- 用户要求后续开发暂时跳过所有真机测试，改用 Android 模拟器。
+- 最近一轮已通过 84 项单测、Lint、双 Debug 构建和模拟器 Native 启动冒烟；`connectedDebugAndroidTest` 为 0 用例。
+- 该结果没有实施 `V2-CLEAN-001` 的安全删除/合并，也没有运行模拟器完整产品链，因此此前的 `BLOCKED` 不转为完成，而是解除真机阻断后回到 `READY_FOR_IMPLEMENTATION`。
+- 当前模块必须完成实际精简和模拟器完整链路后，才能标记 `V2_CLEAN_SIMULATOR_VERIFIED`。
+- 本轮已完成安全删除/合并和全量代码验证，但 Pixel_8 的多显示 Launcher/无障碍焦点问题阻止真实 Import 进入 DocumentsUI；因此当前最终状态为 `BLOCKED`，不得把启动冒烟或 0 用例 instrumentation 当作完整链路通过。
+- `V2-E2E-002` 的 ARM64 最终验收延后，等待用户重新授权。
+
+## 双本地模型资产与决定（2026-07-30）
+
+- 用户明确要求识别和翻译均使用可手动下载的本地模型，并授权替换 ML Kit 动态翻译模型路径。
+- `tools/ggml-small.en-q5_1.bin` 已核验：190098681 bytes，SHA-1 `20F54878D608F94E4A8EE3AE56016571D47CBA34`。
+- `tools/opus-mt-en-zh` 最小运行包已核验齐全，总大小 122854406 bytes；包含量化 encoder、merged decoder、SentencePiece、tokenizer 和生成配置。
+- ONNX 文件当前位于模型目录根部，后续加载器按实际布局读取；不得运行时访问项目工具目录，而应校验后复制到 App 私有目录。
+- 当前 ML Kit `NEEDS_DOWNLOAD` 阻断由 `V2-LOCAL-AI-001` 取代处理；新后端通过前不删除对照实现，通过后移除产品引用和无用依赖。
+
+## V2-PROD-001 verification snapshot (2026-07-28)
+
+- Code path: Demo processing file removed; factory and UI permit only Local Whisper; unavailable model/JNI is explicit. Translation, FFmpegKit export, SAF import/relink, derived-output invalidation, and Media3 playback boundaries remain in place.
+- Regression/build evidence: 84 JVM unit tests passed; lint, normal Debug, and Native Debug passed. The final Native APK installed successfully with `primaryCpuAbi=arm64-v8a`.
+- ARM64 acceptance passed on `fcf4b0cb / 25098PN5AC` (`arm64-v8a`): real SAF video import, Local Whisper, real translation, project save/restore, FFmpegKit export, and Media3 preview playback completed. ASR was approximately 113 seconds with observed peak RSS 566,820 kB and peak sampled temperature 36.3 C; translation was 1,451 ms; export was approximately 10.79 seconds.
+- Final output was 46,276,534 bytes, 299.792 seconds, H.264/AAC, with visible English/Chinese burned-in subtitles and FFmpegKit return code 0. Media3 preview video-region comparison changed 568 sampled points across 3 seconds. No Demo fallback occurred and no device user data was deleted or reset. Failure/cancel/temp cleanup remains covered by passing tests.
+- Review inventory: KEEP 10 / MERGE 2 / DELETE 1 / DEFER 5. Existing V2-ASR model catalog/import/validator/tests and `tools/asr-evaluate.py` remain preserved; `third_party/ffmpeg-kit` remains dirty and untouched.
+- Final state: `ARM64_PRODUCT_PATH_VERIFIED`.
+
+## V2-CLEAN-001 verification snapshot (2026-07-30)
+
+- Safe cleanup implemented: deleted unused `processing/LocalModelManagers.kt` and the obsolete Demo compatibility test; merged Local ASR state handling and FFmpegKit temporary/destination cleanup ownership. Product-invariant tests, model catalog/import/validator, and `tools/asr-evaluate.py` remain.
+- Before/after metrics: main Kotlin `39/4209 -> 38/4173`; test Kotlin `23/1415 -> 23/1393`; unit tests `84 -> 83`; Native Debug APK `138394427 -> 138394427` bytes; current lint `0` errors and `3` warnings, baseline warning count unavailable.
+- Code verification: all 83 JVM unit tests passed; `lintDebug`, normal Debug, and Native Debug passed; connected instrumentation reported 0 test cases. Native simulator launch showed Local ASR, ready model, and ready JNI with no Demo fallback.
+- Full simulator product path remains unverified because `uiautomator`/Launcher focus is inconsistent across Pixel_8 displays and Import cannot reliably open the SAF picker. No claim is made for real video import, Local ASR inference, translation, save/restore, FFmpegKit output, or Media3 playback in this cleanup run.
+- LEFT_FOR_REVIEW: Media3 exporter/observability, historical one-off maintenance logic, large `MainViewModel`/`EditorScreen` split boundaries, and the ML Kit-used `LocalModelManager` contract. `third_party/ffmpeg-kit` remains dirty and untouched. Final state: `BLOCKED`.
+
+## 当前唯一下一步
+
+为 `V2-ASR-002` 准备固定英文歌曲质量评测 fixture：至少 3 段 30-60 秒英文歌曲音频、人工准确英文歌词、时间范围/裁剪方式和统一预处理条件。缺少这些 fixture 时，不能运行模型优选或安全切换。
+
+## V2-LOCAL-AI-001 verification snapshot (2026-07-30)
+
+- Local models: Whisper `ggml-small.en-q5_1.bin` verified at 190098681 bytes / SHA-1 `20F54878D608F94E4A8EE3AE56016571D47CBA34`; OPUS-MT approved runtime package verified at 122854406 bytes across 7 SHA-256 checked artifacts.
+- Product path: `OnnxLocalTranslator` replaces product ML Kit translation; ML Kit implementation/dependencies and app `INTERNET` permission were removed. Runtime model preparation is local asset -> validated private install only.
+- Verification: 92 JVM unit tests passed with 0 failures/errors/skips; `lintDebug`, normal Debug, Native Debug, and `assembleDebugAndroidTest` passed.
+- Offline emulator full chain passed on `emulator-5554`: local video -> Local Whisper -> local OPUS-MT translation -> project save/restore -> FFmpegKit export -> Media3 playback.
+- Output evidence: H.264 `video/avc`, AAC `audio/mp4a-latm`, 68730 bytes, 4011 ms; bilingual cue `(beep)` -> `(哔哔声)`; fixed translation probe `hello world` -> `世间喜悦`.
+- Resource data: ASR 226032 ms, fixed translation probe 2521 ms, ASR-cue translation 1635 ms, export 428 ms, battery 100, temperature 25.0 C.
+- Final state: `LOCAL_AI_SIMULATOR_VERIFIED`.
+
+## V2-ASR-002 fixture gate snapshot (2026-07-31)
+
+- Entry evidence: active roadmap lists `V2-ASR-002` after `V2-LOCAL-AI-001`; current repository has no approved English song quality fixture set.
+- Tooling update: `tools/asr-evaluate.py` now rejects unapproved model names, non-comparable fixture sets, missing accurate references, too few fixtures, and out-of-range durations. It reports WER, CER, missing words, repeated tokens, timestamp validity, elapsed time, peak RSS, temperature, crash, empty result, and Demo fallback.
+- Added evaluator regression tests in `tools/asr_evaluate_test.py`; tests use synthetic non-song text and cannot be used for model selection.
+- Ignored local-only ASR quality data directories: `tools/asr-fixtures/` and `tools/asr-results/`.
+- Verification: 6 Python evaluator tests passed; targeted Whisper validator/importer JVM tests passed.
+- Default model remains `ggml-small.en-q5_1.bin`; no model switch, no true-device operation, no FFmpegKit/Media3/third_party changes.
+- User review artifacts: three MP4 outputs were generated in `D:\DevEnv\Projects\sorce\` through simulator-only Local Whisper -> OPUS-MT -> FFmpegKit -> Media3 playback. They are for manual viewing only; without accurate reference lyrics they do not produce WER/CER and do not prove quality improvement.
+- Current next step remains human review of the three output videos plus preparation of accurate lyric fixtures.
+- Final state: `FIXTURE_REQUIRED`.

@@ -4,6 +4,27 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val localModelAssets = layout.buildDirectory.dir("generated/local-model-assets")
+val prepareLocalModelAssets = tasks.register<Copy>("prepareLocalModelAssets") {
+    val toolsDirectory = rootProject.file("tools")
+    from(toolsDirectory.resolve("ggml-small.en-q5_1.bin")) {
+        into("models")
+    }
+    from(toolsDirectory.resolve("opus-mt-en-zh")) {
+        include(
+            "encoder_model_quantized.onnx",
+            "decoder_model_merged_quantized.onnx",
+            "source.spm",
+            "target.spm",
+            "tokenizer.json",
+            "config.json",
+            "generation_config.json",
+        )
+        into("local_models/opus-mt-en-zh")
+    }
+    into(localModelAssets)
+}
+
 val whisperNativeEnabled =
     providers.gradleProperty("enableWhisperNative").orNull.toBoolean()
 
@@ -57,6 +78,8 @@ android {
         compose = true
     }
 
+    sourceSets["main"].assets.srcDir(localModelAssets)
+
     if (whisperNativeEnabled) {
         externalNativeBuild {
             cmake {
@@ -65,6 +88,10 @@ android {
             }
         }
     }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareLocalModelAssets)
 }
 
 dependencies {
@@ -83,9 +110,8 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
-    implementation(libs.mlkit.translate)
+    implementation(libs.onnxruntime.android)
     implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.kotlinx.coroutines.play.services)
 
     testImplementation(libs.junit)
 }

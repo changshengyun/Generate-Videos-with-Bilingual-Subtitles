@@ -73,18 +73,11 @@ class FfmpegKitSubtitleExporter(
         val cancelled = AtomicBoolean(false)
         var session: FFmpegSession? = null
 
-        fun cleanup(deleteDestination: Boolean) {
-            outputFile.delete()
-            assFile.delete()
-            inputFile.delete()
-            if (deleteDestination) {
-                deleteDestination(destinationUri)
-            }
-        }
+        fun cleanupDestination() = deleteDestination(destinationUri)
 
         fun fail(error: Throwable) {
             if (completed.compareAndSet(false, true)) {
-                cleanup(deleteDestination = true)
+                cleanupDestination()
                 if (continuation.isActive) continuation.resumeWithException(error)
             }
         }
@@ -101,14 +94,13 @@ class FfmpegKitSubtitleExporter(
                     copyFileToUri(outputFile, destinationUri, inspected.fileSizeBytes)
                     inspected.copy(outputUri = destinationUri)
                 }.onSuccess { result ->
-                    cleanup(deleteDestination = false)
                     if (continuation.isActive) continuation.resume(result)
                 }.onFailure { error ->
-                    cleanup(deleteDestination = true)
+                    cleanupDestination()
                     if (continuation.isActive) continuation.resumeWithException(error)
                 }
             } else {
-                cleanup(deleteDestination = true)
+                cleanupDestination()
                 val returnCode = finishedSession.returnCode?.getValue()
                 Log.e(LOG_TAG, "event=ffmpegkit_export_failed returnCode=$returnCode")
                 logErrorText("ffmpegkit_all_logs", finishedSession.allLogsAsString)
@@ -126,7 +118,7 @@ class FfmpegKitSubtitleExporter(
             cancelled.set(true)
             if (completed.compareAndSet(false, true)) {
                 session?.let { FFmpegKit.cancel(it.sessionId) }
-                cleanup(deleteDestination = true)
+                cleanupDestination()
             }
         }
 

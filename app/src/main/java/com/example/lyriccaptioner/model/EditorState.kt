@@ -33,6 +33,6 @@ data class ModelState(
     val speechNativeLibraryReady: Boolean = false,
     val speechRuntimeDetail: String = "Checking local speech runtime...",
     val speechMode: SpeechMode = SpeechMode.UNAVAILABLE,
-    val translationModelState: TranslationModelState = TranslationModelState.NEEDS_DOWNLOAD,
+    val translationModelState: TranslationModelState = TranslationModelState.NEEDS_INSTALL,
     val maxVideoDurationMs: Long = 5 * 60 * 1_000L,
 )

@@ -16,6 +16,10 @@ app/src/main/assets/models/
 ggml-*.bin
 *.gguf
 
+# Local ASR quality fixtures and evaluation outputs
+tools/asr-fixtures/
+tools/asr-results/
+
 # Downloaded native dependency; restore with tools/setup-whisper-native.ps1
 third_party/whisper.cpp/
 .cxx/
@@ -24,6 +28,9 @@ third_party/whisper.cpp/
 # Local Gradle caches
 .gradle-app/
 .gradle-ffmpeg/
+
+# Python tool test caches
+__pycache__/
 
 # Kotlin compiler error logs
 .kotlin/errors/

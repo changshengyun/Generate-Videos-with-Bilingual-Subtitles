@@ -8,7 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 enum class TranslationModelState {
-    NEEDS_DOWNLOAD,
+    NEEDS_INSTALL,
     PREPARING,
     READY,
     FAILED,
@@ -36,7 +36,7 @@ class TranslationModule(
     private val operationMutex = Mutex()
 
     @Volatile
-    var modelState: TranslationModelState = TranslationModelState.NEEDS_DOWNLOAD
+    var modelState: TranslationModelState = TranslationModelState.NEEDS_INSTALL
         private set
 
     suspend fun refreshModelState(
@@ -46,7 +46,7 @@ class TranslationModule(
             if (translator.isModelReady()) {
                 TranslationModelState.READY
             } else {
-                TranslationModelState.NEEDS_DOWNLOAD
+                TranslationModelState.NEEDS_INSTALL
             }
         } catch (error: CancellationException) {
             throw error
@@ -100,7 +100,7 @@ class TranslationModule(
             TranslationBatchResult(updated, translatedByIndex.size)
         } catch (error: CancellationException) {
             transitionTo(
-                if (prepared) TranslationModelState.READY else TranslationModelState.NEEDS_DOWNLOAD,
+                if (prepared) TranslationModelState.READY else TranslationModelState.NEEDS_INSTALL,
                 onStateChanged,
             )
             throw error

@@ -10,20 +10,26 @@ object AppPipelineFactory {
 
     fun createAsrDefault(context: Context): AsrModule {
         val store = WhisperModelStore(context)
+        store.ensureBundledModel()
         val status = store.status()
-        return when (status.mode) {
-            SpeechMode.LOCAL -> createLocalAsr(
+        return routeAsr(status) {
+            createLocalAsr(
                 context = context,
                 whisperModelPath = store.modelFile.absolutePath,
                 runtimeStatus = status,
             )
-            SpeechMode.DEMO -> WhisperAsrModule(
-                runtimeStatus = status,
-                audioExtractor = DemoAudioExtractor(),
-                speechRecognizer = DemoSpeechRecognizer(),
-            )
-            SpeechMode.UNAVAILABLE -> UnavailableAsrModule(status)
         }
+    }
+
+    fun createTranslationDefault(context: Context): LocalTranslator =
+        OnnxLocalTranslator(LocalTranslationModelStore(context))
+
+    internal fun routeAsr(
+        status: WhisperRuntimeStatus,
+        localFactory: () -> AsrModule,
+    ): AsrModule = when (status.mode) {
+        SpeechMode.LOCAL -> localFactory()
+        SpeechMode.UNAVAILABLE -> UnavailableAsrModule(status)
     }
 
     fun createLocalAsr(
