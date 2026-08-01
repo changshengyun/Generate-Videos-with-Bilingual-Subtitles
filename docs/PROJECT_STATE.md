@@ -2,17 +2,17 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_PREVIEW_SIMULATOR_VERIFIED`
-- 当前任务：`V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`
-- 当前目标：在现有产品链路中完成全屏 Media3 预览、实时字幕叠加和字幕样式持久化
-- 下一状态：进入后续规划任务 `V2-UI-002`
-- 后续任务顺序：`V2-UI-002` 移动端视觉/交互精修 → `V2-IMPORT-002` 手机本地视频直接导入 → `V2-E2E-002` ARM64 最终验收
+- 当前阶段：`V2_UI2_IMPLEMENTING`
+- 当前任务：`V2-UI-002 / IN_PROGRESS`
+- 当前目标：在不改变既有媒体与本地 AI 链路的前提下，完成预览优先、紧凑清晰且可访问的手机字幕编辑工作台
+- 下一状态：`UI2_SIMULATOR_VERIFIED` 或基于证据记录 `PARTIAL_PASS / BLOCKED / HUMAN_DECISION`
+- 后续任务顺序：完成 `V2-UI-002` 后进入 `V2-IMPORT-002` 手机本地视频直接导入，再进入 `V2-E2E-002` ARM64 最终验收
 
 ## 仓库快照
 
 - 仓库：`D:\DevEnv\Projects\lyric-captioner-android`
 - 分支：`migration/lyric-captioner-history`
-- 本次路线补充基线 HEAD：`cc4f0cf6dac0936cea60b2231339fb14c9a822d2`
+- 本阶段入口基线 HEAD：`3eda1d584d6709981bcd1070dea158cb613b11dc`
 - 工作树存在 Developer 正在实施的 `V2-PREVIEW-001` 业务代码、测试和本地验证产物；路线/Skill 提交不得清理、覆盖或并入这些修改。
 - `third_party/ffmpeg-kit` 保持既有脏状态，不得清理、重置或并入本轮。
 
@@ -39,6 +39,13 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 - 当前已有可实际执行的 `LocalAiInstrumentation`，覆盖本地 AI 链路与生产 UI/Insets 验收；测试数量不是质量目标，0 instrumentation 用例仍不算功能证据。
 - `MainViewModel.kt` 与 `EditorScreen.kt` 较大，后续只按业务边界渐进拆分，不整体重写。
 - 历史 Media3 导出实现、Demo 处理、一次性诊断代码和重复测试是清理候选，不是自动删除项。
+
+## V2-UI-002 当前执行约束
+
+- 只修改 Compose UI、主题/排版/布局、UI 状态组织、相关 UI instrumentation 与三份活动文档。
+- 保持 `LocalAiInstrumentation` 只针对 `emulator-5554`；不连接真机，不声明 `DEVICE_VERIFIED`。
+- 允许的 UI 证据必须包含 Pixel_8 新截图、Insets/触控 bounds/contentDescription 检查、DocumentsUI 选择与返回、导入后/字幕/样式/全屏/导出状态。
+- `third_party/ffmpeg-kit` 及已有未跟踪内容不属于本阶段提交范围。
 
 ## V2-ASR 资产状态
 

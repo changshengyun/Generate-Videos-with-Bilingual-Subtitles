@@ -1,14 +1,23 @@
-# 当前任务：V2-PREVIEW-001
+# 当前任务：V2-UI-002
 
 ## 状态
 
-- Revision: `2`
-- Status: `PREVIEW_SIMULATOR_VERIFIED`
+- Revision: `3`
+- Status: `IN_PROGRESS`
 - Owner: `Development Agent`
-- Product Gate: `V2_PREVIEW_SIMULATOR_ACCEPTANCE`
+- Product Gate: `V2_UI2_SIMULATOR_ACCEPTANCE`
 - Verification Mode: `SIMULATOR_ONLY_TEMPORARY`
 
-## V2-PREVIEW-001 Current Execution Contract
+## V2-UI-002 Current Execution Contract
+
+- The only active task is `V2-UI-002`.
+- Previous verified stages remain preserved: `V2-UI-001 / UI_SIMULATOR_VERIFIED` and `V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`.
+- Scope: second-round Compose/Material 3 mobile workbench refinement; compact header and status, preview-first layout, clearer import → recognition/translation → subtitle editing → export hierarchy, denser subtitle editing, consistent states, touch targets, accessibility semantics, and safe-area validation.
+- Preserve existing local video picker, Media3 fullscreen preview and controls, bilingual subtitle overlay, subtitle style persistence, project/archive semantics, FFmpegKit export, ViewModel behavior, model/runtime selection, and navigation.
+- Explicitly out of scope: ASR, translation, FFmpegKit, Media3 business logic, archive semantics, architecture/navigation migration, new dependencies, timeline, trimming, filters, effects, stickers, transitions, speed changes, and physical-device import acceptance.
+- Verification mode: only `emulator-5554` / Pixel_8; no physical device. Preserve existing dirty `third_party/ffmpeg-kit` and unrelated untracked content.
+
+## V2-PREVIEW-001 previous verification record
 
 - The only active task is `V2-PREVIEW-001`.
 - Preserved stage states: `V2-UI-001 / UI_SIMULATOR_VERIFIED`, `V2-ASR-002 / FIXTURE_REQUIRED`, and `V2-TRN-002 / PLANNED`.
@@ -26,9 +35,15 @@
 - Verification passed: 96 JVM tests with 0 failures/errors/skips, `python tools\asr_evaluate_test.py` (6 tests), `lintDebug`, normal Debug, Native Debug (arm64-v8a/x86_64), `assembleDebugAndroidTest`, and real UI instrumentation.
 - Final status: `PREVIEW_SIMULATOR_VERIFIED`.
 
+## V2-UI-002 阶段入口记录（2026-08-01）
+
+- 已将唯一活动任务从已验证的 `V2-PREVIEW-001` 切换为 `V2-UI-002 / IN_PROGRESS`。
+- 阶段入口 checkpoint 将只包含三份活动文档；`third_party/ffmpeg-kit` 与既有未跟踪内容不纳入提交。
+- 视觉审查基线：`D:\DevEnv\Projects\preview-v2-native-normal-final.png`、`D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`、`D:\DevEnv\Projects\preview-v2-native-restored-final.png`。初步发现工作台纵向卡片堆叠、状态区占高、字幕编辑区被挤压、主次操作不够集中；全屏预览能力保持不变。
+
 ## 已批准后续阶段（不改变当前唯一任务）
 
-- `V2-UI-002 / PLANNED`：在 `V2-PREVIEW-001` 完成后，使用项目级 UI 技能进行第二轮移动端视觉与交互精修。
+- `V2-UI-002 / IN_PROGRESS`：使用项目级 UI 技能进行第二轮移动端视觉与交互精修；完成后再进入本地视频导入设备门禁。
 - `V2-IMPORT-002 / PLANNED / DEVICE_GATE_DEFERRED`：完成 Android 系统媒体选择器到真实本地视频预览、权限持久化、保存恢复和处理链路。当前禁止真机，因此模拟器通过后仍必须把真机导入证据延续至 `V2-E2E-002`。
 - 当前 Developer 不得提前实施这两个模块，也不得因本路线补充扩大 `V2-PREVIEW-001` 范围。
 

@@ -29,7 +29,7 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 | V2-TRN-002 | `PLANNED` | 使用固定英中歌词语料评估并改善中文翻译 |
 | V2-UI-001 | `UI_SIMULATOR_VERIFIED` | 中文化并整理主要界面 |
 | V2-PREVIEW-001 | `PREVIEW_SIMULATOR_VERIFIED` | 全屏播放和字幕位置、大小、字体、颜色编辑 |
-| V2-UI-002 | `PLANNED` | 使用项目级 UI 技能进行第二轮移动端视觉系统、信息层级、触控交互和状态反馈优化 |
+| V2-UI-002 | `IN_PROGRESS` | 使用项目级 UI 技能进行第二轮移动端视觉系统、信息层级、触控交互和状态反馈优化 |
 | V2-IMPORT-002 | `PLANNED / DEVICE_GATE_DEFERRED` | 从手机系统媒体选择器直接选择本地视频，持久化访问权限并进入预览、保存恢复和处理链路 |
 | V2-E2E-002 | `DEFERRED_DEVICE_GATE` | 用户重新授权真机测试后，在个人 ARM64 手机完成 V2 全流程最终验收 |
 
