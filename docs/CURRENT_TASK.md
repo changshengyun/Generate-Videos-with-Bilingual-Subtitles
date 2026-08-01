@@ -16,6 +16,12 @@
 - Explicitly out of scope: timeline, multi-track editing, filters, stickers, transitions, effects, trimming, speed changes, cover editing, and new dependencies.
 - Verification mode: only `emulator-5554` / Pixel_8; no physical device.
 
+## 已批准后续阶段（不改变当前唯一任务）
+
+- `V2-UI-002 / PLANNED`：在 `V2-PREVIEW-001` 完成后，使用项目级 UI 技能进行第二轮移动端视觉与交互精修。
+- `V2-IMPORT-002 / PLANNED / DEVICE_GATE_DEFERRED`：完成 Android 系统媒体选择器到真实本地视频预览、权限持久化、保存恢复和处理链路。当前禁止真机，因此模拟器通过后仍必须把真机导入证据延续至 `V2-E2E-002`。
+- 当前 Developer 不得提前实施这两个模块，也不得因本路线补充扩大 `V2-PREVIEW-001` 范围。
+
 ## V2-UI-001 实施记录（2026-07-31）
 
 - 已建立 UI 前 checkpoint：`30b4238 chore: checkpoint local AI and product path before UI`。

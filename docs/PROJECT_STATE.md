@@ -5,14 +5,15 @@
 - 当前阶段：`V2_PREVIEW_IMPLEMENTING`
 - 当前任务：`V2-PREVIEW-001 / IMPLEMENTING`
 - 当前目标：在现有产品链路中完成全屏 Media3 预览、实时字幕叠加和字幕样式持久化
-- 下一任务：完成模拟器全链路验收后进入 `PREVIEW_SIMULATOR_VERIFIED`
+- 下一状态：完成当前模拟器全链路验收后进入 `PREVIEW_SIMULATOR_VERIFIED`
+- 后续任务顺序：`V2-UI-002` 移动端视觉/交互精修 → `V2-IMPORT-002` 手机本地视频直接导入 → `V2-E2E-002` ARM64 最终验收
 
 ## 仓库快照
 
 - 仓库：`D:\DevEnv\Projects\lyric-captioner-android`
 - 分支：`migration/lyric-captioner-history`
-- 核对时 HEAD：`b7830710c64660083521708f533ac3a25fa7ec70`
-- 工作树存在未提交的 V2-ASR 模型校验、目录、测试、评测工具和三份活动文档修改。
+- 本次路线补充基线 HEAD：`cc4f0cf6dac0936cea60b2231339fb14c9a822d2`
+- 工作树存在 Developer 正在实施的 `V2-PREVIEW-001` 业务代码、测试和本地验证产物；路线/Skill 提交不得清理、覆盖或并入这些修改。
 - `third_party/ffmpeg-kit` 保持既有脏状态，不得清理、重置或并入本轮。
 
 开始开发时必须重新核对 Git 状态；以上快照只说明本次规划依据，不覆盖后续变化。
@@ -35,7 +36,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 
 - FFmpegKit 是当前产品烧录后端，Media3用于播放/回放。
 - 产品工厂和 UI 已只允许 Local Whisper；固定 Demo 处理文件已删除，缺少模型/JNI 时明确失败。
-- 当前有 38 个主 Kotlin 文件、23 个 JVM 测试文件、无有效 `androidTest` 用例；数量不是质量目标。
+- 当前已有可实际执行的 `LocalAiInstrumentation`，覆盖本地 AI 链路与生产 UI/Insets 验收；测试数量不是质量目标，0 instrumentation 用例仍不算功能证据。
 - `MainViewModel.kt` 与 `EditorScreen.kt` 较大，后续只按业务边界渐进拆分，不整体重写。
 - 历史 Media3 导出实现、Demo 处理、一次性诊断代码和重复测试是清理候选，不是自动删除项。
 
@@ -52,11 +53,26 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 1. `V2-PROD-001`：`ARM64_PRODUCT_PATH_VERIFIED`，当前版本真实产品路径和测试/Review 基线已通过。
 2. `V2-CLEAN-001`：安全删除/合并和代码级验证已完成，完整链路转交本地模型模块收口。
 3. `V2-LOCAL-AI-001`：`LOCAL_AI_SIMULATOR_VERIFIED`，双本地模型模拟器闭环已通过。
-4. `V2-ASR-002`：当前活动任务，英文歌曲和英文单词识别提质；等待固定英文歌曲 fixture。
+4. `V2-ASR-002`：`FIXTURE_REQUIRED`，英文歌曲和英文单词识别提质等待固定英文歌曲 fixture，非当前活动任务。
 5. `V2-TRN-002`：中文翻译提质。
 6. `V2-UI-001`：`UI_SIMULATOR_VERIFIED`，中文界面与主流程层级整理已通过。
 7. `V2-PREVIEW-001`：`IMPLEMENTING`，全屏预览和字幕样式编辑。
-8. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收。
+8. `V2-UI-002`：`PLANNED`，使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级和交互反馈优化。
+9. `V2-IMPORT-002`：`PLANNED / DEVICE_GATE_DEFERRED`，实现系统选择器选择手机本地视频并进入预览、保存恢复和处理链路。
+10. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收，并收口 `V2-IMPORT-002` 的真实手机证据。
+
+## 项目级 UI Skill（2026-08-01）
+
+- `.codex/skills/ui-ux-pro-max`：UI/UX 设计系统、视觉层级、配色、字体、交互和 Review；已限制为 Jetpack Compose 使用。
+- `.codex/skills/mobile-android-design`：Material 3、Android 触控、可访问性和 Compose 组件指导。
+- `.codex/skills/edge-to-edge`：Google Android 系统栏、IME、安全区域和全屏界面指导。
+- Skill 只提供设计/实现指导，不授权依赖升级、Compose alpha、Navigation 迁移、新架构或业务范围扩大。
+
+## 手机本地视频导入门禁（2026-08-01）
+
+- 产品必须允许用户从手机系统媒体/文件选择器直接选择真实本地视频，不依赖 ADB、固定路径、预置 Demo 或手工复制到 App 私有目录。
+- 当前仍执行 `SIMULATOR_ONLY_TEMPORARY`。`V2-IMPORT-002` 可以先达到 `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`，但不能据此声明手机能力完成。
+- 真机未验证或验证失败时，该要求必须继续保留到下一状态并最终进入 `V2-E2E-002`；不得删除、绕过或降级为可选项。
 
 ## 质量与删除决策
 
@@ -102,7 +118,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 
 ## 当前唯一下一步
 
-为 `V2-ASR-002` 准备固定英文歌曲质量评测 fixture：至少 3 段 30-60 秒英文歌曲音频、人工准确英文歌词、时间范围/裁剪方式和统一预处理条件。缺少这些 fixture 时，不能运行模型优选或安全切换。
+继续完成唯一活动任务 `V2-PREVIEW-001` 的实现、测试和 Pixel_8 模拟器完整验收。通过后按顺序进入 `V2-UI-002`，再进入 `V2-IMPORT-002`；模型质量任务继续保持原门禁，不得混入当前 UI/预览范围。
 
 ## V2-UI-001 verification snapshot (2026-07-31)
 
