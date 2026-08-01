@@ -100,7 +100,13 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 
 - Pixel_8 `emulator-5554` (`1080x2400`, `420 dpi`) completed the visible DocumentsUI video selection, real preview, persistent permission, SRT import, project save, external force-stop/relaunch, invalid URI, relink, cancel, FFmpegKit export, and Media3 playback path.
 - Output evidence: `71,203` bytes, `4,011 ms`, H.264/AVC plus AAC; source SHA-256 was unchanged before/after export. Two imported captions survived relink while the previous derived export was invalidated.
-- `97` JVM tests, evaluator `6` tests, Lint, normal/Native Debug, AndroidTest build, and two real import-acceptance instrumentation phases passed. Final state is `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`; phone proof remains gated to `V2-E2E-002` and is not `DEVICE_VERIFIED`.
+- `100` JVM tests, evaluator `6` tests, Lint, normal/Native Debug, AndroidTest build, and three real import-acceptance instrumentation runs passed: prepare/export, valid restore, and invalid-URI/relink/cancel. Final state is `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`; phone proof remains gated to `V2-E2E-002` and is not `DEVICE_VERIFIED`.
+
+## V2-IMPORT-002 closure correction (2026-08-01)
+
+- The active stage is closed at `V2-IMPORT-002 / IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`.
+- `V2-E2E-002 / DEFERRED_DEVICE_GATE` is the only next stage. Physical-device selection, preview, restart recovery, relink, and export evidence remain incomplete and are not represented by the simulator result.
+- Review fixes covered relink caption/style retention, source-safe test hashing, export failure/cancellation ownership, bounded background file/model I/O, exception handling, and native Whisper cancellation. `third_party/ffmpeg-kit` and existing untracked content were preserved.
 
 ## V2-CLEAN-001 execution record (2026-07-30)
 

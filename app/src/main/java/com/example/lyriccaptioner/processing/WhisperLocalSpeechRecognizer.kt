@@ -2,6 +2,8 @@ package com.example.lyriccaptioner.processing
 
 import com.example.lyriccaptioner.model.CaptionCue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 class WhisperLocalSpeechRecognizer(
@@ -17,11 +19,13 @@ class WhisperLocalSpeechRecognizer(
         val audioPath = requireNotNull(audio.filePath) {
             "Whisper requires extracted audio as a readable local file path, not a content URI."
         }
+        val coroutineContext = currentCoroutineContext()
         bridge.transcribe(
             modelPath = modelPath,
             audioPath = audioPath,
             sampleRate = audio.sampleRate,
             channels = audio.channels,
+            cancellationToken = WhisperCancellationToken { !coroutineContext.isActive },
         ).let(WhisperSegmentConverter::toCaptions)
     }
 }
@@ -34,7 +38,12 @@ interface WhisperNativeClient {
         audioPath: String,
         sampleRate: Int,
         channels: Int,
+        cancellationToken: WhisperCancellationToken = WhisperCancellationToken { false },
     ): List<WhisperSegment>
+}
+
+fun interface WhisperCancellationToken {
+    fun isCancelled(): Boolean
 }
 
 data class WhisperSegment(
@@ -58,8 +67,9 @@ object WhisperNativeBridge : WhisperNativeClient {
         audioPath: String,
         sampleRate: Int,
         channels: Int,
+        cancellationToken: WhisperCancellationToken,
     ): List<WhisperSegment> {
-        return nativeTranscribe(modelPath, audioPath, sampleRate, channels).toList()
+        return nativeTranscribe(modelPath, audioPath, sampleRate, channels, cancellationToken).toList()
     }
 
     private external fun nativeTranscribe(
@@ -67,6 +77,7 @@ object WhisperNativeBridge : WhisperNativeClient {
         audioPath: String,
         sampleRate: Int,
         channels: Int,
+        cancellationToken: WhisperCancellationToken,
     ): Array<WhisperSegment>
 }
 

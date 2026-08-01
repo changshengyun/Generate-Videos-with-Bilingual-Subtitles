@@ -71,5 +71,27 @@ class VideoImportPolicyTest {
         assertTrue(result.captions.single().confirmed)
         assertNull(result.exportUri)
         assertNull(result.pendingSidecarSrt)
+        assertTrue(!result.requiresVideoAssociation)
+    }
+
+    @Test
+    fun successfulAssociationClearsExplicitPendingVideoAssociation() {
+        val pending = existingState().copy(
+            videoUri = null,
+            mediaState = MediaState.NONE,
+            requiresVideoAssociation = true,
+        )
+
+        val result = VideoImportPolicy.apply(
+            current = pending,
+            uri = TestUri("associated-video"),
+            durationMs = 2_000L,
+            mediaState = MediaState.PERSISTED,
+            mode = VideoImportMode.RELINK,
+            status = "relinked",
+        )
+
+        assertTrue(!result.requiresVideoAssociation)
+        assertEquals(listOf(existingCue), result.captions)
     }
 }

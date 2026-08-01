@@ -7,6 +7,7 @@ data class EditorState(
     val videoUri: Uri? = null,
     val videoDurationMs: Long? = null,
     val mediaState: MediaState = MediaState.NONE,
+    val requiresVideoAssociation: Boolean = false,
     val captions: List<CaptionCue> = emptyList(),
     val selectedCaptionId: String? = null,
     val modelState: ModelState = ModelState(),

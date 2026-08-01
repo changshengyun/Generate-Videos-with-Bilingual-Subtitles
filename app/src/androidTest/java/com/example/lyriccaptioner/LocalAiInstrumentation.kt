@@ -183,13 +183,13 @@ class LocalAiInstrumentation : Instrumentation() {
             ?: error("Missing -e $ARG_IMPORT_RELINK /sdcard/Download/v2-import-relink.mp4")
         val srtPath = inputArguments.getString(ARG_IMPORT_SRT)
             ?: error("Missing -e $ARG_IMPORT_SRT /sdcard/Download/v2-import-test.srt")
-        val inputFile = File(inputPath)
         val relinkFile = File(relinkPath)
         val srtFile = File(srtPath)
-        check(inputFile.isFile && inputFile.length() > 0L) { "Import input is missing or empty: $inputPath" }
         check(relinkFile.isFile && relinkFile.length() > 0L) { "Relink input is missing or empty: $relinkPath" }
         check(srtFile.isFile && srtFile.length() > 0L) { "Import SRT is missing or empty: $srtPath" }
-        scanVideo(inputPath)
+        val sourceUri = scanVideo(inputPath)
+        val sourceHashBefore = sha256(sourceUri)
+        val inputFile = File(inputPath)
         scanVideo(relinkPath)
         check(queryMediaStoreFromShell().any { (_, name) -> name == inputFile.name }) {
             "Prepared import video was not indexed by MediaStore: ${inputFile.name}"
@@ -222,12 +222,24 @@ class LocalAiInstrumentation : Instrumentation() {
         clickNode(waitForContentDescriptionWithScroll("import_srt", 20_000L))
         clickDocumentFile(srtFile.name)
         waitForText("字幕列表", 20_000L)
-        results.putInt("importedCaptionCount", 2)
+        val importedCaptionState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
+        val importedCaptionCount = Regex("caption_count=(\\d+)")
+            .find(importedCaptionState)?.groupValues?.get(1)?.toIntOrNull()
+            ?: error("Caption instrumentation did not expose a measured count: $importedCaptionState")
+        check(importedCaptionCount == 2) { "Expected two imported captions, got $importedCaptionCount" }
+        results.putInt("importedCaptionCount", importedCaptionCount)
 
         scrollToTop()
         clickNode(waitForContentDescription("workbench_subtitles"))
         waitForContentDescriptionWithScroll("style_controls", 20_000L)
         clickNode(waitForContentDescriptionWithScroll("英文 #61D6FF", 20_000L))
+        val importedStyleState = waitForContentDescriptionContaining(
+            prefix = "style_state:",
+            expected = "#61D6FF",
+            timeoutMs = 20_000L,
+        ).contentDescription.toString()
+        results.putString("importedStyleState", importedStyleState)
         scrollToTop()
 
         clickNode(waitForContentDescription("workbench_export"))
@@ -245,7 +257,9 @@ class LocalAiInstrumentation : Instrumentation() {
         check(targetContext.contentResolver.persistedUriPermissions.any { it.uri == importedVideoUri && it.isReadPermission }) {
             "Selected video did not retain a verified read permission: $importedVideoUri"
         }
-        val sourceHashBefore = sha256(importedVideoUri)
+        check(sha256(importedVideoUri) == sourceHashBefore) {
+            "The test-owned imported fixture differs from the original source."
+        }
         results.putString("projectUri", projectUri.toString())
         results.putString("importedVideoUri", importedVideoUri.toString())
         results.putString("persistedPermission", "verified")
@@ -261,7 +275,7 @@ class LocalAiInstrumentation : Instrumentation() {
         check(output.audioMime == "audio/mp4a-latm") { "Expected AAC product export, got ${output.audioMime}" }
         check(output.durationMs > 0L) { "Product export has no duration." }
         verifyMedia3Playback(outputUri)
-        check(sha256(importedVideoUri) == sourceHashBefore) { "Source SHA-256 changed during export." }
+        check(sha256(sourceUri) == sourceHashBefore) { "Source SHA-256 changed during export." }
         check(isActionEnabledByText("分享视频")) { "Exported video was not exposed as shareable." }
         results.putString("exportUri", outputUri.toString())
         results.putLong("outputBytes", output.fileSizeBytes)
@@ -269,10 +283,9 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putString("outputVideoMime", output.videoMime)
         results.putString("outputAudioMime", output.audioMime)
         results.putString("media3Playback", "ready")
-        results.putString("sourceSha256AfterExport", sha256(importedVideoUri))
-
-        executeShell("rm -f $inputPath")
-        results.putString("sourceDeletedOnlyForInvalidUriTest", "true")
+        results.putString("sourceSha256AfterExport", sha256(sourceUri))
+        results.putString("sourceFixture", "host_prepared_only_not_deleted_by_product_or_test")
+        check(sha256(sourceUri) == sourceHashBefore) { "Source SHA-256 changed during acceptance." }
         results.putString("restartBoundary", "ready_for_external_force_stop")
         activity.finish()
     }
@@ -280,13 +293,18 @@ class LocalAiInstrumentation : Instrumentation() {
     private fun runImportRestoreAcceptance(results: Bundle) {
         val relinkPath = inputArguments.getString(ARG_IMPORT_RELINK)
             ?: error("Missing -e $ARG_IMPORT_RELINK /sdcard/Download/v2-import-relink.mp4")
-        val projectDisplayName = inputArguments.getString(ARG_IMPORT_PROJECT_NAME)
         val projectPrefix = inputArguments.getString(ARG_IMPORT_PROJECT_PREFIX) ?: PROJECT_PREFIX
+        val projectPath = inputArguments.getString(ARG_IMPORT_PROJECT_PATH)
+        val expectUnavailable = inputArguments.getString(ARG_IMPORT_EXPECT_UNAVAILABLE)
+            ?.toBooleanStrictOrNull() ?: true
+        val projectDisplayName = inputArguments.getString(ARG_IMPORT_PROJECT_NAME)
+            ?: inputArguments.getString(ARG_IMPORT_PROJECT_SUFFIX)?.let { "$projectPrefix ($it).lcp" }
         val relinkFile = File(relinkPath)
         check(relinkFile.isFile && relinkFile.length() > 0L) {
             "Relink input is missing or empty: $relinkPath"
         }
         scanVideo(relinkPath)
+        projectPath?.let { scanDocument(it, "text/plain") }
 
         val activity = startActivitySync(
             Intent(targetContext, MainActivity::class.java).apply {
@@ -303,19 +321,46 @@ class LocalAiInstrumentation : Instrumentation() {
         } else {
             clickDocumentFileStartingWith(projectPrefix)
         }
+        if (!expectUnavailable) {
+            waitForContentDescription("preview_fullscreen", 30_000L)
+            val restoredState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+                .contentDescription.toString()
+            check(stateField(restoredState, "video").startsWith("content://")) {
+                "Project restore did not expose a playable persisted video URI: $restoredState"
+            }
+            clickNode(waitForContentDescription("preview_fullscreen", 20_000L))
+            waitForContentDescription("preview_fullscreen_dialog", 20_000L)
+            exerciseMedia3Controls(results)
+            results.putString("restoreState", "video_available_media3_ready")
+            results.putString("restoreSnapshot", restoredState)
+            activity.finish()
+            return
+        }
         waitForTextStartingWith("项目已恢复：视频不可用", 30_000L)
         clickNode(waitForContentDescription("workbench_export", 20_000L))
         check(!isActionEnabledByText("分享视频")) {
             "Stale export remained available after invalid URI restore."
         }
+        val beforeRelinkState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
         results.putString("invalidUriState", "unavailable_with_rebind")
 
         clickNode(waitForContentDescription("workbench_import", 20_000L))
+        scanVideo(relinkPath)
         resetDocumentsUi()
         clickNode(waitForContentDescription("import_video"))
         clickDocumentFile(relinkFile.name)
         waitForText("视频预览", 45_000L)
-        waitForText("Hello from the emulator", 20_000L)
+        val afterRelinkState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
+        check(stateField(beforeRelinkState, "captions") == stateField(afterRelinkState, "captions")) {
+            "Relink changed measured caption content, IDs, timing, or confirmation state."
+        }
+        check(stateField(beforeRelinkState, "style") == stateField(afterRelinkState, "style")) {
+            "Relink changed measured subtitle style state."
+        }
+        results.putString("relinkCaptionState", stateField(afterRelinkState, "captions"))
+        results.putString("relinkStyleState", stateField(afterRelinkState, "style"))
         clickNode(waitForContentDescription("workbench_export", 20_000L))
         check(!isActionEnabledByText("分享视频")) {
             "Old export remained available after relink."
@@ -325,18 +370,25 @@ class LocalAiInstrumentation : Instrumentation() {
         clickNode(waitForContentDescription("workbench_import", 20_000L))
         resetDocumentsUi()
         clickNode(waitForContentDescription("import_video"))
+        val cancelBeforeState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
         check(uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)) {
             "DocumentsUI cancel action was not dispatched."
         }
         waitForText("视频预览", 20_000L)
-        waitForText("Hello from the emulator", 20_000L)
+        val cancelAfterState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
+        check(cancelAfterState == cancelBeforeState) {
+            "Picker cancellation changed the measured project/editor state."
+        }
+        results.putString("cancelSnapshot", cancelAfterState)
         results.putString("cancelState", "project_preserved")
         results.putString("processRestart", "external_force_stop_and_relaunch")
         activity.finish()
     }
 
-    private fun scanVideo(path: String) {
-        scanDocument(path, "video/mp4")
+    private fun scanVideo(path: String): Uri {
+        return scanDocument(path, "video/mp4")
     }
 
     private fun resetDocumentsUi() {
@@ -344,14 +396,19 @@ class LocalAiInstrumentation : Instrumentation() {
         SystemClock.sleep(500L)
     }
 
-    private fun scanDocument(path: String, mimeType: String) {
+    private fun scanDocument(path: String, mimeType: String): Uri {
         val latch = CountDownLatch(1)
+        var scannedUri: Uri? = null
         MediaScannerConnection.scanFile(
             targetContext,
             arrayOf(path),
             arrayOf(mimeType),
-        ) { _, _ -> latch.countDown() }
+        ) { _, uri ->
+            scannedUri = uri
+            latch.countDown()
+        }
         check(latch.await(10, TimeUnit.SECONDS)) { "Test video was not indexed: $path" }
+        return scannedUri ?: error("Media scanner did not return a content URI: $path")
     }
 
     private fun confirmDocumentCreation() {
@@ -374,7 +431,8 @@ class LocalAiInstrumentation : Instrumentation() {
         clickNode(roots)
         val downloads = waitForText("Downloads", 10_000L)
         clickTextOrTap(downloads)
-        tapNode(waitForDocumentText(displayName, 30_000L))
+        val exact = runCatching { waitForDocumentText(displayName, 10_000L) }.getOrNull()
+        tapNode(exact ?: waitForDocumentTextStartingWith(displayName.substringBeforeLast('.'), 30_000L))
     }
 
     private fun clickDocumentFileStartingWith(prefix: String) {
@@ -439,6 +497,22 @@ class LocalAiInstrumentation : Instrumentation() {
     private fun waitForTextStartingWith(prefix: String, timeoutMs: Long): AccessibilityNodeInfo =
         waitForNode(timeoutMs) { root -> findAccessibilityNodeStartingWith(root, prefix) }
 
+    private fun waitForContentDescriptionStartingWith(
+        prefix: String,
+        timeoutMs: Long = 15_000L,
+    ): AccessibilityNodeInfo = waitForNode(timeoutMs) { root ->
+        findAccessibilityNodeContentDescriptionStartingWith(root, prefix)
+    }
+
+    private fun waitForContentDescriptionContaining(
+        prefix: String,
+        expected: String,
+        timeoutMs: Long,
+    ): AccessibilityNodeInfo = waitForNode(timeoutMs) { root ->
+        findAccessibilityNodeContentDescriptionStartingWith(root, prefix)
+            ?.takeIf { it.contentDescription?.toString()?.contains(expected) == true }
+    }
+
     private fun waitForContentUriStatus(timeoutMs: Long): Uri {
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         while (SystemClock.uptimeMillis() < deadline) {
@@ -488,6 +562,18 @@ class LocalAiInstrumentation : Instrumentation() {
         if (node.text?.toString()?.startsWith(prefix) == true) return node
         for (index in 0 until node.childCount) {
             findAccessibilityNodeStartingWith(node.getChild(index), prefix)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findAccessibilityNodeContentDescriptionStartingWith(
+        node: AccessibilityNodeInfo?,
+        prefix: String,
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.contentDescription?.toString()?.startsWith(prefix) == true) return node
+        for (index in 0 until node.childCount) {
+            findAccessibilityNodeContentDescriptionStartingWith(node.getChild(index), prefix)?.let { return it }
         }
         return null
     }
@@ -555,17 +641,31 @@ class LocalAiInstrumentation : Instrumentation() {
         error("Could not resolve display name for $uri")
     }
 
+    private fun stateField(snapshot: String, name: String): String {
+        val marker = "$name="
+        val start = snapshot.indexOf(marker)
+        check(start >= 0) { "State snapshot is missing field $name: $snapshot" }
+        val valueStart = start + marker.length
+        val end = snapshot.indexOf(';', valueStart).takeIf { it >= 0 } ?: snapshot.length
+        return snapshot.substring(valueStart, end)
+    }
+
     private fun sha256(uri: Uri): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        targetContext.contentResolver.openInputStream(uri)?.use { input ->
-            val buffer = ByteArray(32 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        } ?: error("Cannot read media for SHA-256: $uri")
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        uiAutomation.adoptShellPermissionIdentity()
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            targetContext.contentResolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(32 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            } ?: error("Cannot read media for SHA-256: $uri")
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        } finally {
+            uiAutomation.dropShellPermissionIdentity()
+        }
     }
 
     private fun inspectUri(uri: Uri): Mp4Inspection {
@@ -927,7 +1027,10 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_IMPORT_RELINK = "importRelink"
         const val ARG_IMPORT_SRT = "importSrt"
         const val ARG_IMPORT_PROJECT_NAME = "importProjectName"
+        const val ARG_IMPORT_PROJECT_PATH = "importProjectPath"
+        const val ARG_IMPORT_EXPECT_UNAVAILABLE = "importExpectUnavailable"
         const val ARG_IMPORT_PROJECT_PREFIX = "importProjectPrefix"
+        const val ARG_IMPORT_PROJECT_SUFFIX = "importProjectSuffix"
         const val PROJECT_PREFIX = "lyric-captioner-project"
         const val OUTPUT_PREFIX = "lyric-captioner-output"
     }

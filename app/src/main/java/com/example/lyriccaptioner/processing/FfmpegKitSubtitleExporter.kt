@@ -5,7 +5,6 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegKitConfig
@@ -40,6 +39,9 @@ class FfmpegKitSubtitleExporter(
         Log.i(LOG_TAG, "event=ffmpegkit_export_started captionCount=${project.captions.size}")
         require(project.captions.isNotEmpty()) { "At least one subtitle cue is required." }
         require(project.exportProfile.burnInSubtitles) { "Burn-in subtitles are disabled." }
+        check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri)) {
+            "The export destination must not be the source video."
+        }
 
         val workDirectory = createWorkDirectory()
         val inputFile = File(workDirectory, "input.mp4")
@@ -54,9 +56,8 @@ class FfmpegKitSubtitleExporter(
             FFmpegKitConfig.setFontDirectory(appContext, "/system/fonts", emptyMap())
             runFfmpeg(inputFile, assFile, outputFile, destinationUri)
         } catch (error: Throwable) {
-            // Failures before FFmpegKit owns the session (for example an empty input URI)
-            // must also remove the SAF destination created by the save picker.
-            deleteDestination(destinationUri)
+            // The destination may already refer to a user-owned document. Only the
+            // private work directory is owned by this exporter and is cleaned below.
             throw error
         } finally {
             workDirectory.deleteRecursively()
@@ -73,11 +74,8 @@ class FfmpegKitSubtitleExporter(
         val cancelled = AtomicBoolean(false)
         var session: FFmpegSession? = null
 
-        fun cleanupDestination() = deleteDestination(destinationUri)
-
         fun fail(error: Throwable) {
             if (completed.compareAndSet(false, true)) {
-                cleanupDestination()
                 if (continuation.isActive) continuation.resumeWithException(error)
             }
         }
@@ -96,11 +94,9 @@ class FfmpegKitSubtitleExporter(
                 }.onSuccess { result ->
                     if (continuation.isActive) continuation.resume(result)
                 }.onFailure { error ->
-                    cleanupDestination()
                     if (continuation.isActive) continuation.resumeWithException(error)
                 }
             } else {
-                cleanupDestination()
                 val returnCode = finishedSession.returnCode?.getValue()
                 Log.e(LOG_TAG, "event=ffmpegkit_export_failed returnCode=$returnCode")
                 logErrorText("ffmpegkit_all_logs", finishedSession.allLogsAsString)
@@ -118,7 +114,6 @@ class FfmpegKitSubtitleExporter(
             cancelled.set(true)
             if (completed.compareAndSet(false, true)) {
                 session?.let { FFmpegKit.cancel(it.sessionId) }
-                cleanupDestination()
             }
         }
 
@@ -172,15 +167,6 @@ class FfmpegKitSubtitleExporter(
         check(parent.exists() || parent.mkdirs()) { "Could not create FFmpeg work directory." }
         return File(parent, "job-${System.nanoTime()}").also {
             check(it.mkdirs()) { "Could not create FFmpeg job directory." }
-        }
-    }
-
-    private fun deleteDestination(destinationUri: Uri) {
-        val deletedByDocumentApi = runCatching {
-            DocumentsContract.deleteDocument(appContext.contentResolver, destinationUri)
-        }.getOrDefault(false)
-        if (!deletedByDocumentApi) {
-            runCatching { appContext.contentResolver.delete(destinationUri, null, null) }
         }
     }
 

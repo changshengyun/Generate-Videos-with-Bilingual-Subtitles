@@ -172,6 +172,7 @@ class AsrModuleTest {
             audioPath: String,
             sampleRate: Int,
             channels: Int,
+            cancellationToken: WhisperCancellationToken,
         ): List<WhisperSegment> {
             failure?.let { throw it }
             return listOf(WhisperSegment(0, 100, "ok", 0.9f))

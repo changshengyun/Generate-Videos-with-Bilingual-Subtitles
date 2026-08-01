@@ -78,6 +78,7 @@ import androidx.media3.ui.PlayerView
 import com.example.lyriccaptioner.MainViewModel
 import com.example.lyriccaptioner.captions.CaptionTimeline
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
@@ -94,6 +95,7 @@ import kotlinx.coroutines.isActive
 fun EditorScreen(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val editorSnapshot = buildEditorSnapshot(state)
     var showPasteLyrics by remember { mutableStateOf(false) }
     var pastedLyrics by remember { mutableStateOf("") }
     var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
@@ -104,12 +106,12 @@ fun EditorScreen(viewModel: MainViewModel) {
     }
     val srtPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            viewModel.importSrt(readText(context, uri))
+            viewModel.importSrt(uri)
         }
     }
     val lyricPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
-            viewModel.applyLyricText(readText(context, uri))
+            viewModel.importLyricText(uri)
         }
     }
     val projectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -127,15 +129,7 @@ fun EditorScreen(viewModel: MainViewModel) {
     ) { uri: Uri? ->
         val srt = state.pendingSidecarSrt
         if (uri != null && srt != null) {
-            runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { output ->
-                    output.write(srt.toByteArray(Charsets.UTF_8))
-                } ?: error("No output stream")
-            }.onSuccess {
-                viewModel.sidecarSrtSaved(uri)
-            }.onFailure { error ->
-                viewModel.sidecarSrtSaveFailed(error.message ?: "unknown error")
-            }
+            viewModel.saveSidecarSrt(uri, srt)
         }
     }
     val projectCreator = rememberLauncherForActivityResult(
@@ -226,12 +220,12 @@ fun EditorScreen(viewModel: MainViewModel) {
                         ActionRow {
                             ActionButton(
                                 icon = "＋",
-                                label = if (state.mediaState == MediaState.UNAVAILABLE) "重新绑定视频" else "导入视频",
+                                label = if (state.requiresVideoAssociation) "重新绑定视频" else "导入视频",
                                 enabled = !state.isWorking,
                                 primary = true,
                                 accessibilityId = "import_video",
                                 onClick = {
-                                    videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) VideoImportMode.RELINK else VideoImportMode.NEW_VIDEO
+                                    videoImportMode = if (state.requiresVideoAssociation) VideoImportMode.RELINK else VideoImportMode.NEW_VIDEO
                                     videoPicker.launch(arrayOf("video/*"))
                                 },
                             )
@@ -338,6 +332,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                 onDelete = viewModel::deleteCaption,
                 onConfirm = viewModel::confirmCue,
                 enabled = !state.isWorking,
+                editorSnapshot = editorSnapshot,
                 modifier = Modifier.weight(0.28f),
             )
         }
@@ -659,6 +654,13 @@ private fun SubtitleStyleControls(
             .semantics { contentDescription = "style_controls" },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            Box(
+                modifier = Modifier
+                    .size(1.dp)
+                    .clearAndSetSemantics {
+                        contentDescription = "style_state:$primaryColorHex:$secondaryColorHex:$outlineColorHex:$fontFamily:$fontSizeSp:$bottomMarginPercent"
+                    },
+            )
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -752,12 +754,6 @@ private fun SubtitleColorPalette(
     }
 }
 
-private fun readText(context: Context, uri: Uri): String {
-    return context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
-        it.readText()
-    }.orEmpty()
-}
-
 private fun shareExportedVideo(context: Context, uri: Uri) {
     val shareIntent = Intent(Intent.ACTION_SEND).apply {
         type = "video/mp4"
@@ -765,6 +761,25 @@ private fun shareExportedVideo(context: Context, uri: Uri) {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(shareIntent, "分享双语视频"))
+}
+
+private fun buildEditorSnapshot(state: EditorState): String = buildString {
+    append("video=").append(state.videoUri)
+    append(";duration=").append(state.videoDurationMs)
+    append(";media=").append(state.mediaState)
+    append(";requiresAssociation=").append(state.requiresVideoAssociation)
+    append(";export=").append(state.exportUri)
+    append(";style=").append(state.exportProfile.subtitleStyle)
+    append(";caption_count=").append(state.captions.size)
+    append(";captions=")
+    state.captions.forEach { cue ->
+        append(cue.id).append(',')
+            .append(cue.startMs).append(',')
+            .append(cue.endMs).append(',')
+            .append(cue.english).append(',')
+            .append(cue.chinese).append(',')
+            .append(cue.confirmed).append('|')
+    }
 }
 
 
@@ -1126,6 +1141,7 @@ private fun CaptionList(
     onDelete: (String) -> Unit,
     onConfirm: (String) -> Unit,
     enabled: Boolean,
+    editorSnapshot: String,
     modifier: Modifier = Modifier,
 ) {
     if (captions.isEmpty()) {
@@ -1150,6 +1166,11 @@ private fun CaptionList(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(1.dp)
+                    .clearAndSetSemantics { contentDescription = "caption_state:$editorSnapshot" },
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

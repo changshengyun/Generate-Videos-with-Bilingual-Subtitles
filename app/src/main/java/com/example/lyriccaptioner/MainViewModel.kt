@@ -3,7 +3,6 @@ package com.example.lyriccaptioner
 import android.net.Uri
 import android.content.Context
 import android.util.Log
-import android.provider.DocumentsContract
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -33,6 +32,9 @@ import com.example.lyriccaptioner.processing.TranslationModule
 import com.example.lyriccaptioner.processing.TranslationStage
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatus
 import com.example.lyriccaptioner.processing.WhisperModelStore
+import com.example.lyriccaptioner.processing.WhisperRuntimeStatusResolver
+import com.example.lyriccaptioner.processing.UnavailableAsrModule
+import com.example.lyriccaptioner.processing.ExportDestinationPolicy
 import com.example.lyriccaptioner.project.AndroidProjectRepository
 import com.example.lyriccaptioner.project.MediaAccessResult
 import com.example.lyriccaptioner.project.ProjectLoadResult
@@ -54,7 +56,15 @@ class MainViewModel(
     private var pipeline: CaptionPipeline,
     private val srtParser: SrtParser = SrtParser(),
     private val projectRepository: ProjectRepository = AndroidProjectRepository(context),
-    private var asrModule: AsrModule = AppPipelineFactory.createAsrDefault(context),
+    private var asrModule: AsrModule = UnavailableAsrModule(
+        WhisperRuntimeStatus(
+            modelInstalled = false,
+            nativeLibraryReady = false,
+            localRecognitionReady = false,
+            mode = SpeechMode.UNAVAILABLE,
+            detail = "Checking local speech runtime...",
+        ),
+    ),
     private val timingEditor: CaptionTimingEditor = CaptionTimingEditor(),
     private val lyricLineAligner: LyricLineAligner = LyricLineAligner(),
     private val translationModule: TranslationModule = TranslationModule(
@@ -71,6 +81,7 @@ class MainViewModel(
 
     init {
         refreshSpeechRuntimeStatus()
+        refreshLocalSpeechRuntime()
         refreshTranslationModelState()
     }
 
@@ -141,6 +152,10 @@ class MainViewModel(
         }
     }
 
+    fun importSrt(uri: Uri) {
+        readTextFile(uri, "SRT") { raw -> importSrt(raw) }
+    }
+
     fun applyLyricText(raw: String) {
         val lyricLines = raw.lines().map { it.trim() }.filter { it.isNotBlank() }
         if (lyricLines.isEmpty()) {
@@ -166,6 +181,10 @@ class MainViewModel(
                 status = "Matched ${matches.size} lyric lines. Review the suggested corrections.",
             ))
         }
+    }
+
+    fun importLyricText(uri: Uri) {
+        readTextFile(uri, "lyrics") { raw -> applyLyricText(raw) }
     }
 
     fun createCaptionsFromLyrics(raw: String) {
@@ -367,15 +386,16 @@ class MainViewModel(
     }
 
     fun importWhisperModel(uri: Uri) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             mutableState.update {
                 it.copy(isWorking = true, status = "Importing Whisper model...")
             }
             runCatching {
                 whisperModelStore.install(uri)
             }.onSuccess { runtime ->
+                val refreshedAsr = AppPipelineFactory.createAsrDefault(appContext)
                 pipeline = AppPipelineFactory.createDefault(appContext)
-                asrModule = AppPipelineFactory.createAsrDefault(appContext)
+                asrModule = refreshedAsr
                 updateSpeechRuntime(runtime)
                 mutableState.update {
                     it.copy(
@@ -510,16 +530,21 @@ class MainViewModel(
             else -> null
         }
         if (rejection != null) {
-            val destinationDeleted = deleteExportDestination(destinationUri)
             Log.w(
                 LOG_TAG,
-                "event=export_rejected reason=${rejection.first} destinationDeleted=$destinationDeleted",
+                "event=export_rejected reason=${rejection.first} destinationUntouched=true",
             )
             mutableState.update { it.copy(status = rejection.second) }
             return
         }
 
         val uri = checkNotNull(current.videoUri)
+        if (ExportDestinationPolicy.isSameDocument(uri, destinationUri)) {
+            mutableState.update {
+                it.copy(status = "Could not export: output destination is the source video.")
+            }
+            return
+        }
         Log.i(LOG_TAG, "event=export_started captionCount=${current.captions.size}")
         exportJob = viewModelScope.launch {
             try {
@@ -550,7 +575,6 @@ class MainViewModel(
                     }
                 }
             } catch (error: CancellationException) {
-                deleteExportDestination(destinationUri)
                 mutableState.update {
                     it.copy(
                         isWorking = false,
@@ -560,6 +584,7 @@ class MainViewModel(
                 }
                 throw error
             } catch (error: Throwable) {
+                Log.e(LOG_TAG, "event=export_failed destinationUntouched=true", error)
                 mutableState.update {
                     it.copy(
                         isWorking = false,
@@ -577,19 +602,6 @@ class MainViewModel(
         if (exportJob?.isActive == true) {
             Log.i(LOG_TAG, "event=export_cancel_requested")
             exportJob?.cancel()
-        }
-    }
-
-    private fun deleteExportDestination(destinationUri: Uri): Boolean {
-        val deletedByDocumentApi = runCatching {
-            DocumentsContract.deleteDocument(appContext.contentResolver, destinationUri)
-        }.getOrDefault(false)
-        if (deletedByDocumentApi) return true
-        return runCatching {
-            appContext.contentResolver.delete(destinationUri, null, null) > 0
-        }.getOrElse { error ->
-            Log.w(LOG_TAG, "event=export_destination_cleanup_failed", error)
-            false
         }
     }
 
@@ -615,6 +627,24 @@ class MainViewModel(
     fun sidecarSrtSaveFailed(message: String) {
         mutableState.update {
             it.copy(status = "Could not save SRT sidecar: $message")
+        }
+    }
+
+    fun saveSidecarSrt(uri: Uri, srt: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                appContext.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(srt.toByteArray(Charsets.UTF_8))
+                } ?: error("No output stream")
+                withContext(Dispatchers.Main.immediate) { sidecarSrtSaved(uri) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.w(LOG_TAG, "event=srt_sidecar_save_failed", error)
+                withContext(Dispatchers.Main.immediate) {
+                    sidecarSrtSaveFailed(error.message ?: "unknown error")
+                }
+            }
         }
     }
 
@@ -651,7 +681,7 @@ class MainViewModel(
         val snapshot = currentSnapshot()
         viewModelScope.launch {
             mutableState.update { it.copy(isWorking = true, status = "Saving project archive...") }
-            when (val result = projectRepository.save(snapshot, destinationUri)) {
+            when (val result = withContext(Dispatchers.IO) { projectRepository.save(snapshot, destinationUri) }) {
                 is ProjectSaveResult.Success -> mutableState.update {
                     Log.i(LOG_TAG, "event=project_save_completed captionCount=${snapshot.captions.size}")
                     it.copy(isWorking = false, status = "Project archive saved: ${result.destinationUri}")
@@ -665,11 +695,13 @@ class MainViewModel(
     }
 
     fun importProjectArchive(sourceUri: Uri) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             mutableState.update { it.copy(isWorking = true, status = "Opening project archive...") }
             when (val result = projectRepository.load(sourceUri)) {
                 is ProjectLoadResult.Success -> {
                    val snapshot = result.snapshot
+                    val requiresVideoAssociation = snapshot.videoUri.isNullOrBlank() ||
+                        result.mediaAccess is MediaAccessResult.Unavailable
                     val mediaState = if (snapshot.videoUri.isNullOrBlank()) {
                         MediaState.NONE
                     } else {
@@ -693,6 +725,7 @@ class MainViewModel(
                             videoUri = snapshot.videoUri?.let(Uri::parse),
                             videoDurationMs = snapshot.videoDurationMs ?: result.mediaAccess.durationMs,
                             mediaState = mediaState,
+                            requiresVideoAssociation = requiresVideoAssociation,
                             captions = snapshot.captions,
                             selectedCaptionId = snapshot.captions.firstOrNull()?.id,
                             exportProfile = snapshot.exportProfile,
@@ -729,10 +762,63 @@ class MainViewModel(
         updateSpeechRuntime(asrModule.runtimeStatus)
     }
 
+    private fun refreshLocalSpeechRuntime() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val resolved = runCatching { AppPipelineFactory.createAsrDefault(appContext) }
+                .getOrElse { error ->
+                    Log.e(LOG_TAG, "event=speech_runtime_initialization_failed", error)
+                    UnavailableAsrModule(WhisperRuntimeStatusResolver.resolve(false, false))
+                }
+            asrModule = resolved
+            updateSpeechRuntime(resolved.runtimeStatus)
+        }
+    }
+
     private fun refreshTranslationModelState() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             translationModule.refreshModelState(::updateTranslationModelState)
         }
+    }
+
+    private fun readTextFile(uri: Uri, label: String, onRead: (String) -> Unit) {
+        mutableState.update { it.copy(isWorking = true, status = "Reading $label file...") }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val raw = readUtf8Text(uri)
+                withContext(Dispatchers.Main.immediate) {
+                    onRead(raw)
+                    mutableState.update { it.copy(isWorking = false) }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                Log.w(LOG_TAG, "event=text_import_failed label=$label", error)
+                mutableState.update {
+                    it.copy(isWorking = false, status = "Could not read $label file: ${error.message ?: "unknown error"}")
+                }
+            }
+        }
+    }
+
+    private fun readUtf8Text(uri: Uri): String {
+        val bytes = appContext.contentResolver.openInputStream(uri)?.use { input ->
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                check(total <= MAX_TEXT_FILE_BYTES) { "Text file exceeds ${MAX_TEXT_FILE_BYTES / 1_024} KiB." }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        } ?: error("The selected file cannot be read.")
+        return Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes))
+            .toString()
     }
 
     private fun updateTranslationModelState(modelState: TranslationModelState) {
@@ -795,5 +881,6 @@ class MainViewModel(
         const val DEFAULT_CAPTION_DURATION_MS = 2_000L
         const val MIN_CAPTION_DURATION_MS = 100L
         const val PREVIEW_RELEASE_DELAY_MS = 1_500L
+        const val MAX_TEXT_FILE_BYTES = 1 * 1_024 * 1_024
     }
 }

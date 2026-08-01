@@ -6,53 +6,59 @@ import ai.onnxruntime.OrtSession
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 class OnnxLocalTranslator(
     private val modelStore: LocalTranslationModelStore,
 ) : LocalTranslator {
-    private val environment = OrtEnvironment.getEnvironment()
+    private val environment by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { OrtEnvironment.getEnvironment() }
     private var encoder: OrtSession? = null
     private var decoder: OrtSession? = null
     private var tokenizer: SentencePieceTokenizer? = null
     private var prepared = false
 
-    override suspend fun isModelReady(): Boolean = modelStore.isReady()
+    override suspend fun isModelReady(): Boolean = withContext(Dispatchers.IO) { modelStore.isReady() }
 
-    override suspend fun prepareBatch() {
-        if (prepared) return
-        modelStore.prepare()
-        try {
-            val tokenizerJson = modelStore.file("tokenizer.json").readText()
-            tokenizer = SentencePieceTokenizer.fromJson(tokenizerJson)
-            encoder = environment.createSession(
-                modelStore.file("encoder_model_quantized.onnx").absolutePath,
-                OrtSession.SessionOptions(),
-            )
-            decoder = environment.createSession(
-                modelStore.file("decoder_model_merged_quantized.onnx").absolutePath,
-                OrtSession.SessionOptions(),
-            )
-            verifySessionContract()
-            prepared = true
-        } catch (error: CancellationException) {
-            closeSessions()
-            throw error
-        } catch (error: Throwable) {
-            closeSessions()
-            throw IllegalStateException("The local OPUS-MT ONNX model could not be loaded.", error)
+    override suspend fun prepareBatch() = withContext(Dispatchers.IO) {
+        if (!prepared) {
+            modelStore.prepare()
+            try {
+                val tokenizerJson = modelStore.file("tokenizer.json").readText()
+                tokenizer = SentencePieceTokenizer.fromJson(tokenizerJson)
+                encoder = environment.createSession(
+                    modelStore.file("encoder_model_quantized.onnx").absolutePath,
+                    OrtSession.SessionOptions(),
+                )
+                decoder = environment.createSession(
+                    modelStore.file("decoder_model_merged_quantized.onnx").absolutePath,
+                    OrtSession.SessionOptions(),
+                )
+                verifySessionContract()
+                prepared = true
+            } catch (error: CancellationException) {
+                closeSessions()
+                throw error
+            } catch (error: Throwable) {
+                closeSessions()
+                throw IllegalStateException("The local OPUS-MT ONNX model could not be loaded.", error)
+            }
         }
     }
 
-    override suspend fun translateEnglishToChinese(text: String): String {
-        if (text.isBlank()) return ""
-        prepareBatch()
-        val ids = requireNotNull(tokenizer).encode(text)
-        currentCoroutineContext().ensureActive()
-        val hidden = runEncoder(ids)
-        val outputIds = runGreedyDecoder(ids, hidden)
-        return requireNotNull(tokenizer).decode(outputIds)
+    override suspend fun translateEnglishToChinese(text: String): String = withContext(Dispatchers.Default) {
+        if (text.isBlank()) {
+            ""
+        } else {
+            prepareBatch()
+            val ids = requireNotNull(tokenizer).encode(text)
+            currentCoroutineContext().ensureActive()
+            val hidden = runEncoder(ids)
+            val outputIds = runGreedyDecoder(ids, hidden)
+            requireNotNull(tokenizer).decode(outputIds)
+        }
     }
 
     private fun verifySessionContract() {

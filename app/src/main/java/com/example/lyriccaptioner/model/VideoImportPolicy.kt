@@ -24,6 +24,7 @@ object VideoImportPolicy {
                 videoUri = uri,
                 videoDurationMs = durationMs,
                 mediaState = mediaState,
+                requiresVideoAssociation = false,
                 captions = emptyList(),
                 selectedCaptionId = null,
                 status = status,
@@ -32,6 +33,7 @@ object VideoImportPolicy {
                 videoUri = uri,
                 videoDurationMs = durationMs,
                 mediaState = mediaState,
+                requiresVideoAssociation = false,
                 status = status,
             )
         }

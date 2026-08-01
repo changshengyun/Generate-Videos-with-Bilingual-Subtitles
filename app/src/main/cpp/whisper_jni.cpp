@@ -24,6 +24,43 @@ struct WavAudio {
     std::vector<float> samples;
 };
 
+struct JavaCancellationContext {
+    JavaVM * vm = nullptr;
+    jobject token = nullptr;
+    jmethodID is_cancelled = nullptr;
+};
+
+bool whisper_abort_callback(void * user_data) {
+    auto * cancellation = static_cast<JavaCancellationContext *>(user_data);
+    if (cancellation == nullptr || cancellation->vm == nullptr || cancellation->token == nullptr) {
+        return false;
+    }
+
+    JNIEnv * env = nullptr;
+    bool attached = false;
+    const jint env_result = cancellation->vm->GetEnv(
+        reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+    if (env_result == JNI_EDETACHED) {
+        if (cancellation->vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+            return true;
+        }
+        attached = true;
+    } else if (env_result != JNI_OK || env == nullptr) {
+        return true;
+    }
+
+    const jboolean cancelled = env->CallBooleanMethod(
+        cancellation->token,
+        cancellation->is_cancelled);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (attached) cancellation->vm->DetachCurrentThread();
+        return true;
+    }
+    if (attached) cancellation->vm->DetachCurrentThread();
+    return cancelled == JNI_TRUE;
+}
+
 uint16_t read_u16(std::istream & input) {
     uint8_t bytes[2]{};
     input.read(reinterpret_cast<char *>(bytes), sizeof(bytes));
@@ -213,7 +250,8 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
     jstring model_path_value,
     jstring audio_path_value,
     jint sample_rate,
-    jint channels
+    jint channels,
+    jobject cancellation_token
 ) {
     if (model_path_value == nullptr || audio_path_value == nullptr) {
         throw_java(env, "java/lang/IllegalArgumentException", "Model and audio paths are required.");
@@ -268,11 +306,37 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
         params.n_threads = static_cast<int>(
             std::clamp(hardware_threads == 0 ? 2U : hardware_threads, 1U, 4U));
 
-        if (whisper_full(
+        JavaCancellationContext cancellation;
+        if (cancellation_token != nullptr) {
+            env->GetJavaVM(&cancellation.vm);
+            cancellation.token = env->NewGlobalRef(cancellation_token);
+            jclass token_class = env->GetObjectClass(cancellation_token);
+            cancellation.is_cancelled = env->GetMethodID(token_class, "isCancelled", "()Z");
+            env->DeleteLocalRef(token_class);
+            if (cancellation.token == nullptr || cancellation.is_cancelled == nullptr) {
+                if (cancellation.token != nullptr) env->DeleteGlobalRef(cancellation.token);
+                throw std::runtime_error("Could not prepare Whisper cancellation callback.");
+            }
+            params.abort_callback = whisper_abort_callback;
+            params.abort_callback_user_data = &cancellation;
+        }
+
+        const int whisper_result = whisper_full(
                 context.get(),
                 params,
                 audio.samples.data(),
-                static_cast<int>(audio.samples.size())) != 0) {
+                static_cast<int>(audio.samples.size()));
+        const bool cancelled = cancellation.token != nullptr &&
+            whisper_abort_callback(&cancellation);
+        if (cancellation.token != nullptr) env->DeleteGlobalRef(cancellation.token);
+        if (whisper_result != 0) {
+            if (cancelled) {
+                throw_java(
+                    env,
+                    "java/util/concurrent/CancellationException",
+                    "Whisper transcription cancelled.");
+                return nullptr;
+            }
             throw std::runtime_error("Whisper transcription failed.");
         }
 
