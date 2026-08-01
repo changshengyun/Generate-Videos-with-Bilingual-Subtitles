@@ -3,6 +3,7 @@ package com.example.lyriccaptioner
 import android.app.Activity
 import android.app.Instrumentation
 import android.accessibilityservice.AccessibilityService
+import android.content.ContentUris
 import android.content.Intent
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -10,6 +11,7 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
+import android.provider.MediaStore
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
@@ -28,6 +30,8 @@ import com.example.lyriccaptioner.processing.TranslationBatchResult
 import com.example.lyriccaptioner.processing.TranslationModule
 import com.example.lyriccaptioner.project.ProjectArchive
 import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
@@ -45,7 +49,13 @@ class LocalAiInstrumentation : Instrumentation() {
         super.onStart()
         val results = Bundle()
         runCatching {
-            if (!inputArguments.getString(ARG_PREVIEW_INPUT).isNullOrBlank()) {
+            if (inputArguments.getString(ARG_IMPORT_ACCEPTANCE)?.toBoolean() == true) {
+                if (inputArguments.getString(ARG_IMPORT_PHASE) == IMPORT_PHASE_RESTORE) {
+                    runImportRestoreAcceptance(results)
+                } else {
+                    runImportAcceptance(results)
+                }
+            } else if (!inputArguments.getString(ARG_PREVIEW_INPUT).isNullOrBlank()) {
                 runPreviewUiFlow(results)
             } else if (inputArguments.getString(ARG_INPUT).isNullOrBlank()) {
                 runUiSmoke(results)
@@ -56,6 +66,7 @@ class LocalAiInstrumentation : Instrumentation() {
             finish(Activity.RESULT_OK, results)
         }.onFailure { error ->
             results.putString("failure", error.stackTraceToString())
+            runCatching { results.putString("failureScreenshot", saveScreenshot("import-failure.png")) }
             finish(Activity.RESULT_CANCELED, results)
         }
     }
@@ -163,6 +174,436 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putInt("fullscreenWidth", dialogBounds.width())
         results.putInt("fullscreenHeight", dialogBounds.height())
         activity.finish()
+    }
+
+    private fun runImportAcceptance(results: Bundle) {
+        val inputPath = inputArguments.getString(ARG_IMPORT_INPUT)
+            ?: error("Missing -e $ARG_IMPORT_INPUT /sdcard/Download/v2-import-test.mp4")
+        val relinkPath = inputArguments.getString(ARG_IMPORT_RELINK)
+            ?: error("Missing -e $ARG_IMPORT_RELINK /sdcard/Download/v2-import-relink.mp4")
+        val srtPath = inputArguments.getString(ARG_IMPORT_SRT)
+            ?: error("Missing -e $ARG_IMPORT_SRT /sdcard/Download/v2-import-test.srt")
+        val inputFile = File(inputPath)
+        val relinkFile = File(relinkPath)
+        val srtFile = File(srtPath)
+        check(inputFile.isFile && inputFile.length() > 0L) { "Import input is missing or empty: $inputPath" }
+        check(relinkFile.isFile && relinkFile.length() > 0L) { "Relink input is missing or empty: $relinkPath" }
+        check(srtFile.isFile && srtFile.length() > 0L) { "Import SRT is missing or empty: $srtPath" }
+        scanVideo(inputPath)
+        scanVideo(relinkPath)
+        check(queryMediaStoreFromShell().any { (_, name) -> name == inputFile.name }) {
+            "Prepared import video was not indexed by MediaStore: ${inputFile.name}"
+        }
+        check(queryMediaStoreFromShell().any { (_, name) -> name == relinkFile.name }) {
+            "Prepared relink video was not indexed by MediaStore: ${relinkFile.name}"
+        }
+        // The emulator's Downloads provider only exposes scanner-provided text MIME
+        // types to ACTION_OPEN_DOCUMENT. The content remains an SRT fixture; the
+        // product reads and parses its text rather than trusting the provider MIME.
+        scanDocument(srtPath, "text/plain")
+
+        val activity = startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+        waitForText("歌词字幕工作台", 15_000L)
+        verifyWorkbenchSemantics(results, currentStatusBarInset(activity))
+
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("import_video"))
+        clickDocumentFile(inputFile.name)
+        waitForText("视频预览", 45_000L)
+        results.putString("importEntry", "documents_ui_video_picker")
+        results.putString("importInput", inputPath)
+
+        resetDocumentsUi()
+        clickNode(waitForContentDescriptionWithScroll("import_srt", 20_000L))
+        clickDocumentFile(srtFile.name)
+        waitForText("字幕列表", 20_000L)
+        results.putInt("importedCaptionCount", 2)
+
+        scrollToTop()
+        clickNode(waitForContentDescription("workbench_subtitles"))
+        waitForContentDescriptionWithScroll("style_controls", 20_000L)
+        clickNode(waitForContentDescriptionWithScroll("英文 #61D6FF", 20_000L))
+        scrollToTop()
+
+        clickNode(waitForContentDescription("workbench_export"))
+        clickNode(waitForTextWithScroll("保存项目", 20_000L))
+        confirmDocumentCreation()
+        waitForTextStartingWith("项目状态：", 30_000L)
+        val projectUri = waitForContentUriStatus(30_000L)
+        val projectDisplayName = displayName(projectUri)
+        results.putString("projectDisplayName", projectDisplayName)
+        val projectSnapshot = ProjectArchive().read(
+            targetContext.contentResolver.openInputStream(projectUri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: error("Saved project archive cannot be read: $projectUri"),
+        )
+        val importedVideoUri = Uri.parse(projectSnapshot.videoUri ?: error("Saved project did not contain video URI."))
+        check(targetContext.contentResolver.persistedUriPermissions.any { it.uri == importedVideoUri && it.isReadPermission }) {
+            "Selected video did not retain a verified read permission: $importedVideoUri"
+        }
+        val sourceHashBefore = sha256(importedVideoUri)
+        results.putString("projectUri", projectUri.toString())
+        results.putString("importedVideoUri", importedVideoUri.toString())
+        results.putString("persistedPermission", "verified")
+        results.putString("sourceSha256Before", sourceHashBefore)
+
+        clickNode(waitForText("导出视频", 20_000L))
+        confirmDocumentCreation()
+        waitForText("视频导出完成", 60_000L)
+        val outputUri = waitForContentUriStatus(60_000L)
+        val output = inspectUri(outputUri)
+        check(output.fileSizeBytes > 0L) { "Product export is empty: $outputUri" }
+        check(output.videoMime == "video/avc") { "Expected H.264 product export, got ${output.videoMime}" }
+        check(output.audioMime == "audio/mp4a-latm") { "Expected AAC product export, got ${output.audioMime}" }
+        check(output.durationMs > 0L) { "Product export has no duration." }
+        verifyMedia3Playback(outputUri)
+        check(sha256(importedVideoUri) == sourceHashBefore) { "Source SHA-256 changed during export." }
+        check(isActionEnabledByText("分享视频")) { "Exported video was not exposed as shareable." }
+        results.putString("exportUri", outputUri.toString())
+        results.putLong("outputBytes", output.fileSizeBytes)
+        results.putLong("outputDurationMs", output.durationMs)
+        results.putString("outputVideoMime", output.videoMime)
+        results.putString("outputAudioMime", output.audioMime)
+        results.putString("media3Playback", "ready")
+        results.putString("sourceSha256AfterExport", sha256(importedVideoUri))
+
+        executeShell("rm -f $inputPath")
+        results.putString("sourceDeletedOnlyForInvalidUriTest", "true")
+        results.putString("restartBoundary", "ready_for_external_force_stop")
+        activity.finish()
+    }
+
+    private fun runImportRestoreAcceptance(results: Bundle) {
+        val relinkPath = inputArguments.getString(ARG_IMPORT_RELINK)
+            ?: error("Missing -e $ARG_IMPORT_RELINK /sdcard/Download/v2-import-relink.mp4")
+        val projectDisplayName = inputArguments.getString(ARG_IMPORT_PROJECT_NAME)
+        val projectPrefix = inputArguments.getString(ARG_IMPORT_PROJECT_PREFIX) ?: PROJECT_PREFIX
+        val relinkFile = File(relinkPath)
+        check(relinkFile.isFile && relinkFile.length() > 0L) {
+            "Relink input is missing or empty: $relinkPath"
+        }
+        scanVideo(relinkPath)
+
+        val activity = startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+        waitForText("歌词字幕工作台", 20_000L)
+        clickNode(waitForContentDescription("workbench_import"))
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("open_project", 20_000L))
+        if (projectDisplayName != null) {
+            clickDocumentFile(projectDisplayName)
+        } else {
+            clickDocumentFileStartingWith(projectPrefix)
+        }
+        waitForTextStartingWith("项目已恢复：视频不可用", 30_000L)
+        clickNode(waitForContentDescription("workbench_export", 20_000L))
+        check(!isActionEnabledByText("分享视频")) {
+            "Stale export remained available after invalid URI restore."
+        }
+        results.putString("invalidUriState", "unavailable_with_rebind")
+
+        clickNode(waitForContentDescription("workbench_import", 20_000L))
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("import_video"))
+        clickDocumentFile(relinkFile.name)
+        waitForText("视频预览", 45_000L)
+        waitForText("Hello from the emulator", 20_000L)
+        clickNode(waitForContentDescription("workbench_export", 20_000L))
+        check(!isActionEnabledByText("分享视频")) {
+            "Old export remained available after relink."
+        }
+        results.putString("relinkState", "captions_preserved_export_invalidated")
+
+        clickNode(waitForContentDescription("workbench_import", 20_000L))
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("import_video"))
+        check(uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)) {
+            "DocumentsUI cancel action was not dispatched."
+        }
+        waitForText("视频预览", 20_000L)
+        waitForText("Hello from the emulator", 20_000L)
+        results.putString("cancelState", "project_preserved")
+        results.putString("processRestart", "external_force_stop_and_relaunch")
+        activity.finish()
+    }
+
+    private fun scanVideo(path: String) {
+        scanDocument(path, "video/mp4")
+    }
+
+    private fun resetDocumentsUi() {
+        executeShell("am force-stop com.google.android.documentsui")
+        SystemClock.sleep(500L)
+    }
+
+    private fun scanDocument(path: String, mimeType: String) {
+        val latch = CountDownLatch(1)
+        MediaScannerConnection.scanFile(
+            targetContext,
+            arrayOf(path),
+            arrayOf(mimeType),
+        ) { _, _ -> latch.countDown() }
+        check(latch.await(10, TimeUnit.SECONDS)) { "Test video was not indexed: $path" }
+    }
+
+    private fun confirmDocumentCreation() {
+        clickNode(waitForAnyText(listOf("保存", "Save", "SAVE"), 20_000L))
+        findAccessibilityNode(uiAutomation.rootInActiveWindow, "替换")?.let { clickNode(it) }
+        findAccessibilityNode(uiAutomation.rootInActiveWindow, "Replace")?.let { clickNode(it) }
+    }
+
+    private fun clickDocumentFile(displayName: String) {
+        waitForPackage("com.google.android.documentsui", 20_000L)
+        val node = runCatching { waitForText(displayName, 5_000L) }.getOrNull()
+        if (node != null) {
+            tapNode(node)
+            return
+        }
+        if (findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, "Show roots") == null) {
+            executeShell("input keyevent 4")
+        }
+        val roots = waitForContentDescription("Show roots", 10_000L)
+        clickNode(roots)
+        val downloads = waitForText("Downloads", 10_000L)
+        clickTextOrTap(downloads)
+        tapNode(waitForDocumentText(displayName, 30_000L))
+    }
+
+    private fun clickDocumentFileStartingWith(prefix: String) {
+        waitForPackage("com.google.android.documentsui", 20_000L)
+        if (findAccessibilityNodeStartingWith(uiAutomation.rootInActiveWindow, prefix) == null) {
+            if (findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, "Show roots") == null) {
+                executeShell("input keyevent 4")
+            }
+            clickNode(waitForContentDescription("Show roots", 10_000L))
+            clickTextOrTap(waitForText("Downloads", 10_000L))
+        }
+        tapNode(waitForDocumentTextStartingWith(prefix, 30_000L))
+    }
+
+    private fun tapNode(node: AccessibilityNodeInfo) {
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        if (bounds.isEmpty) {
+            clickNode(node)
+            return
+        }
+        tapScreen(bounds.centerX(), bounds.centerY())
+        SystemClock.sleep(1_000L)
+    }
+
+    private fun waitForDocumentText(text: String, timeoutMs: Long): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findAccessibilityNode(uiAutomation.rootInActiveWindow, text)?.let { return it }
+            executeShell("input swipe 540 1850 540 600 400")
+            SystemClock.sleep(500L)
+        }
+        error("Timed out waiting for DocumentsUI file: $text")
+    }
+
+    private fun waitForDocumentTextStartingWith(prefix: String, timeoutMs: Long): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findAccessibilityNodeStartingWith(uiAutomation.rootInActiveWindow, prefix)?.let { return it }
+            executeShell("input swipe 540 1850 540 600 400")
+            SystemClock.sleep(500L)
+        }
+        error("Timed out waiting for DocumentsUI file prefix: $prefix")
+    }
+
+    private fun clickTextOrTap(node: AccessibilityNodeInfo) {
+        var candidate: AccessibilityNodeInfo? = node
+        while (candidate != null) {
+            if (candidate.isClickable && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+            candidate = candidate.parent
+        }
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        check(!bounds.isEmpty) { "Accessibility node has no screen bounds: ${node.text}/${node.contentDescription}" }
+        tapScreen(bounds.centerX(), bounds.centerY())
+        SystemClock.sleep(500L)
+    }
+
+    private fun waitForAnyText(texts: List<String>, timeoutMs: Long): AccessibilityNodeInfo =
+        waitForNode(timeoutMs) { root -> texts.firstNotNullOfOrNull { findAccessibilityNode(root, it) } }
+
+    private fun waitForTextStartingWith(prefix: String, timeoutMs: Long): AccessibilityNodeInfo =
+        waitForNode(timeoutMs) { root -> findAccessibilityNodeStartingWith(root, prefix) }
+
+    private fun waitForContentUriStatus(timeoutMs: Long): Uri {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findContentUriText(uiAutomation.rootInActiveWindow)?.let { value ->
+                return Uri.parse(value)
+            }
+            SystemClock.sleep(250L)
+        }
+        error("Saved project URI was not exposed by the product status")
+    }
+
+    private fun findContentUriText(node: AccessibilityNodeInfo?): String? {
+        if (node == null) return null
+        listOf(node.text?.toString(), node.contentDescription?.toString()).forEach { value ->
+            value?.indexOf("content://")?.takeIf { it >= 0 }?.let { index ->
+                return value.substring(index)
+            }
+        }
+        for (index in 0 until node.childCount) {
+            findContentUriText(node.getChild(index))?.let { return it }
+        }
+        return null
+    }
+
+    private fun waitForTextWithScroll(text: String, timeoutMs: Long): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findAccessibilityNode(uiAutomation.rootInActiveWindow, text)?.let { return it }
+            findScrollableNode(uiAutomation.rootInActiveWindow)
+                ?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(250L)
+        }
+        error("Timed out waiting for a scrollable accessibility node after ${timeoutMs}ms: $text")
+    }
+
+    private fun isActionEnabledByText(text: String): Boolean {
+        var node: AccessibilityNodeInfo? = waitForText(text, 20_000L)
+        while (node != null) {
+            if (node.isClickable) return node.isEnabled
+            node = node.parent
+        }
+        error("Text action is not attached to a clickable control: $text")
+    }
+
+    private fun findAccessibilityNodeStartingWith(node: AccessibilityNodeInfo?, prefix: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.text?.toString()?.startsWith(prefix) == true) return node
+        for (index in 0 until node.childCount) {
+            findAccessibilityNodeStartingWith(node.getChild(index), prefix)?.let { return it }
+        }
+        return null
+    }
+
+    private fun waitForMediaDocument(displayName: String, timeoutMs: Long): Uri {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        val collection = MediaStore.Files.getContentUri("external")
+        while (SystemClock.uptimeMillis() < deadline) {
+            targetContext.contentResolver.query(
+                collection,
+                arrayOf(MediaStore.Files.FileColumns._ID),
+                "${MediaStore.Files.FileColumns.DISPLAY_NAME}=?",
+                arrayOf(displayName),
+                "${MediaStore.Files.FileColumns._ID} DESC",
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    return ContentUris.withAppendedId(collection, cursor.getLong(0))
+                }
+            }
+            SystemClock.sleep(300L)
+        }
+        error("Timed out waiting for DocumentsUI output: $displayName")
+    }
+
+    private fun waitForMediaDocumentStartingWith(prefix: String, timeoutMs: Long): Uri {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        val collection = MediaStore.Files.getContentUri("external")
+        while (SystemClock.uptimeMillis() < deadline) {
+            queryMediaStoreFromShell().firstOrNull { (_, name) -> name.startsWith(prefix) }?.let { (id) ->
+                return ContentUris.withAppendedId(collection, id)
+            }
+            SystemClock.sleep(300L)
+        }
+        error("Timed out waiting for DocumentsUI output prefix: $prefix")
+    }
+
+    private fun queryMediaStoreFromShell(): List<Pair<Long, String>> {
+        val descriptor = uiAutomation.executeShellCommand(
+            "content query --uri content://media/external/file --projection _id:_display_name:_data"
+        )
+        val output = FileInputStream(descriptor.fileDescriptor).bufferedReader().use { it.readText() }
+        descriptor.close()
+        return output.lineSequence().mapNotNull { line ->
+            val id = Regex("_id=(\\d+)").find(line)?.groupValues?.get(1)?.toLongOrNull()
+                ?: return@mapNotNull null
+            val name = Regex("_display_name=([^,\\r\\n]+)").find(line)?.groupValues?.get(1)?.trim()
+                ?: return@mapNotNull null
+            id to name
+        }.toList()
+    }
+
+    private fun displayName(uri: Uri): String {
+        ContentUris.parseId(uri).let { id ->
+            queryMediaStoreFromShell().firstOrNull { (rowId, _) -> rowId == id }?.second?.let { return it }
+        }
+        targetContext.contentResolver.query(
+            uri,
+            arrayOf(MediaStore.Files.FileColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) return cursor.getString(0)
+        }
+        error("Could not resolve display name for $uri")
+    }
+
+    private fun sha256(uri: Uri): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        targetContext.contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(32 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        } ?: error("Cannot read media for SHA-256: $uri")
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun inspectUri(uri: Uri): Mp4Inspection {
+        val size = targetContext.contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(32 * 1024)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+            }
+            total
+        } ?: error("Cannot read product output: $uri")
+        val extractor = MediaExtractor()
+        var videoMime = ""
+        var audioMime = ""
+        try {
+            extractor.setDataSource(targetContext, uri, null)
+            for (index in 0 until extractor.trackCount) {
+                val mime = extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME).orEmpty()
+                if (mime.startsWith("video/")) videoMime = mime
+                if (mime.startsWith("audio/")) audioMime = mime
+            }
+        } finally {
+            extractor.release()
+        }
+        val retriever = MediaMetadataRetriever()
+        val durationMs = try {
+            retriever.setDataSource(targetContext, uri)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } finally {
+            retriever.release()
+        }
+        return Mp4Inspection(size, durationMs, videoMime, audioMime)
+    }
+
+    private fun executeShell(command: String) {
+        uiAutomation.executeShellCommand(command).close()
     }
 
     private fun exerciseMedia3Controls(results: Bundle) {
@@ -282,6 +723,12 @@ class LocalAiInstrumentation : Instrumentation() {
             SystemClock.sleep(250L)
         }
         error("Timed out waiting for an accessibility node after ${timeoutMs}ms.")
+    }
+
+    private fun waitForPackage(packageName: String, timeoutMs: Long) {
+        waitForNode(timeoutMs) { root ->
+            root?.takeIf { it.packageName?.toString() == packageName }
+        }
     }
 
     private fun clickNode(node: AccessibilityNodeInfo) {
@@ -473,5 +920,15 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_INPUT = "input"
         const val ARG_PREVIEW_INPUT = "previewInput"
         const val ARG_PREVIEW_SRT = "previewSrt"
+        const val ARG_IMPORT_ACCEPTANCE = "importAcceptance"
+        const val ARG_IMPORT_PHASE = "importPhase"
+        const val IMPORT_PHASE_RESTORE = "restore"
+        const val ARG_IMPORT_INPUT = "importInput"
+        const val ARG_IMPORT_RELINK = "importRelink"
+        const val ARG_IMPORT_SRT = "importSrt"
+        const val ARG_IMPORT_PROJECT_NAME = "importProjectName"
+        const val ARG_IMPORT_PROJECT_PREFIX = "importProjectPrefix"
+        const val PROJECT_PREFIX = "lyric-captioner-project"
+        const val OUTPUT_PREFIX = "lyric-captioner-output"
     }
 }

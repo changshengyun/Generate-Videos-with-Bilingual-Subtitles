@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -238,6 +239,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 icon = "▣",
                                 label = "打开项目",
                                 enabled = !state.isWorking,
+                                accessibilityId = "open_project",
                                 onClick = { projectPicker.launch(arrayOf("application/octet-stream", "text/plain")) },
                             )
                         }
@@ -310,11 +312,12 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 icon = "↗",
                                 label = "分享视频",
                                 enabled = state.exportUri != null && !state.isWorking,
+                                accessibilityId = "share_video",
                                 onClick = { state.exportUri?.let { shareExportedVideo(context, it) } },
                             )
                         }
                         ActionRow {
-                            SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking) { projectCreator.launch("lyric-captioner-project.lcp") }
+                            SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking, accessibilityId = "save_project") { projectCreator.launch("lyric-captioner-project.lcp") }
                             SecondaryAction("导出 SRT", state.captions.isNotEmpty() && !state.isWorking) { viewModel.exportSidecarSrt() }
                             if (state.isWorking && !state.translationRunning && !state.asrRunning) {
                                 SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)
@@ -801,7 +804,10 @@ private fun localizeStatus(status: String): String {
         status.isBlank() -> "等待操作"
         status.startsWith("Import a video") -> "导入 5 分钟以内的视频开始编辑"
         status.startsWith("Checking video access") -> "正在检查视频访问权限…"
+        status.startsWith("Video imported with persistent") -> "视频已导入：已保留持久访问权限"
+        status.startsWith("Video imported for this session only") -> "视频已导入：仅本次会话可用"
         status.startsWith("Video imported") -> "视频已导入，可继续识别或编辑"
+        status.startsWith("Video re-associated and persisted") -> "视频已重新绑定：已保留持久访问权限"
         status.startsWith("Video re-associated") -> "视频已重新绑定"
         status.startsWith("Could not import video") -> "视频导入失败：${status.substringAfter(": ", "未知原因")}"
         status.startsWith("Preparing") -> "正在准备本地翻译模型…"
@@ -812,6 +818,11 @@ private fun localizeStatus(status: String): String {
         status.startsWith("Export complete") -> "视频导出完成"
         status.startsWith("Video export") -> "导出状态：${status.substringAfter(": ", status)}"
         status.startsWith("ASR") -> "识别状态：${status.substringAfter(": ", status)}"
+        status.startsWith("Project restored; video access is session-only") -> "项目已恢复：视频仅本次会话可用"
+        status.startsWith("Project restored with persistent") -> "项目已恢复：视频持久访问有效"
+        status.startsWith("Project restored; video is unavailable") -> "项目已恢复：视频不可用，请重新绑定视频"
+        status.startsWith("Project restored without a video") -> "项目已恢复：没有视频，请先绑定视频"
+        status.startsWith("Project restored") -> "项目已恢复：${status.substringAfter(": ", status)}"
         status.startsWith("Project") -> "项目状态：${status.substringAfter(": ", status)}"
         status.startsWith("SRT") -> "SRT 状态：${status.substringAfter(": ", status)}"
         else -> status
@@ -881,11 +892,25 @@ private fun VideoPreview(
                 }
                 Text(
                     text = localizeStatus(status),
+                    modifier = Modifier.semantics {
+                        if (status.startsWith("Export complete")) {
+                            contentDescription = status
+                        }
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFD5DAE3),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (status.startsWith("Export complete")) {
+                    Box(
+                        modifier = Modifier
+                            .size(1.dp)
+                            .clearAndSetSemantics {
+                                contentDescription = "export_uri:${status.substringAfter(": ", status)}"
+                            },
+                    )
+                }
             }
         }
     }

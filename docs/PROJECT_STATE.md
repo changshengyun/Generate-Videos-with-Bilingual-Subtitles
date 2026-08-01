@@ -2,17 +2,17 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_IMPORT_IMPLEMENTING`
-- 当前任务：`V2-IMPORT-002 / IN_PROGRESS`
+- 当前阶段：`V2_IMPORT_SIMULATOR_VERIFIED`
+- 当前任务：`V2-IMPORT-002 / IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`
 - 当前目标：在不改变既有媒体、本地 AI、FFmpegKit 和 Media3 链路的前提下，完成系统选择器到真实本地视频的模拟器导入、保存恢复、重绑和导出回放验证
-- 下一状态：`IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED` 或基于证据记录 `PARTIAL_PASS / BLOCKED / HUMAN_DECISION`
-- 后续任务顺序：完成 `V2-IMPORT-002` 后进入 `V2-E2E-002` ARM64 最终验收；真机证据不得在当前门禁提前声明
+- 下一状态：进入 `V2-E2E-002 / DEFERRED_DEVICE_GATE`
+- 后续任务顺序：由 `V2-E2E-002` 完成 ARM64 手机选择、预览、重启恢复、重绑和导出证据；当前模拟器证据不得替代 `DEVICE_VERIFIED`
 
 ## 仓库快照
 
 - 仓库：`D:\DevEnv\Projects\lyric-captioner-android`
 - 分支：`migration/lyric-captioner-history`
-- 本阶段入口基线 HEAD：`3eda1d584d6709981bcd1070dea158cb613b11dc`
+- 本阶段入口基线 HEAD：`c0bb4741c69ed3e98dcae11c5b8f88caddb8915a`
 - 工作树存在 Developer 正在实施的 `V2-PREVIEW-001` 业务代码、测试和本地验证产物；路线/Skill 提交不得清理、覆盖或并入这些修改。
 - `third_party/ffmpeg-kit` 保持既有脏状态，不得清理、重置或并入本轮。
 
@@ -53,6 +53,14 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 - 复用现有 OpenDocument、AndroidProjectRepository、VideoImportPolicy 和重新绑定实现；只修复当前验收缺口，不重写已有 DocumentsUI 基础链路。
 - ADB 只能准备模拟器测试素材，不能替代产品入口选择 URI，也不能把媒体复制到 App 私有目录作为产品导入。
 - 不修改 ASR/翻译模型、UI 视觉系统、Media3、FFmpegKit、导航、项目架构、依赖、权限或 `third_party/ffmpeg-kit`。
+
+## V2-IMPORT-002 verification snapshot (2026-08-01)
+
+- Product-path instrumentation used `emulator-5554` only and entered the visible Android DocumentsUI video picker. The real MP4 returned with verified persisted read access, valid video metadata, and a playable Media3 preview; the source SHA-256 remained unchanged through export.
+- The exported artifact was non-zero (`71,203` bytes), `4,011 ms`, H.264/AVC video plus AAC audio, and FFmpegKit/Media3 acceptance passed. Two SRT captions were imported and retained across project save, external force-stop/relaunch, and video relink; relink invalidated the prior derived export.
+- Invalid persisted URI, rebind, and picker-cancel states were verified without crash or stale output. No Demo fallback, network, or runtime model download was used.
+- Evidence: `97` JVM tests, `6` evaluator tests, Lint, normal/Native Debug, AndroidTest build, and two real import-acceptance instrumentation phases passed (`INSTRUMENTATION_CODE: -1`).
+- Final state: `V2-IMPORT-002 / IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`. Phone real local-video evidence remains explicitly unproven and is reserved for `V2-E2E-002`; do not report `DEVICE_VERIFIED`.
 
 ## V2-ASR 资产状态
 

@@ -3,7 +3,7 @@
 ## 状态
 
 - Revision: `5`
-- Status: `IN_PROGRESS`
+- Status: `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`
 - Owner: `Development Agent`
 - Product Gate: `V2_IMPORT_SIMULATOR_ACCEPTANCE`
 - Verification Mode: `SIMULATOR_ONLY_TEMPORARY`
@@ -30,6 +30,14 @@
 - Preserve existing local video picker, Media3 fullscreen preview and controls, bilingual subtitle overlay, subtitle style persistence, project/archive semantics, FFmpegKit export, ViewModel behavior, model/runtime selection, and navigation.
 - Explicitly out of scope: ASR, translation, FFmpegKit, Media3 business logic, archive semantics, architecture/navigation migration, new dependencies, timeline, trimming, filters, effects, stickers, transitions, speed changes, and physical-device import acceptance.
 - Verification mode: only `emulator-5554` / Pixel_8; no physical device. Preserve existing dirty `third_party/ffmpeg-kit` and unrelated untracked content.
+
+## V2-IMPORT-002 verification record (2026-08-01)
+
+- `emulator-5554` / Pixel_8 (`1080x2400`, `420 dpi`) passed the product-entry import chain. The test entered the visible import control, selected a real MP4 through Android DocumentsUI, returned to the product, imported an SRT fixture, saved a project, and crossed an external force-stop/relaunch boundary.
+- Persistent read access was verified. The imported video was playable through Media3; FFmpegKit produced a non-zero `71,203` byte MP4 with `4,011 ms` duration, `video/avc` and `audio/mp4a-latm`. The source SHA-256 was unchanged before/after export: `68d080a8b5691442302f981ff645fe4073acb28eebd80b05fd37b9da4568709d`.
+- Restore phase verified an invalid persisted URI becomes unavailable with a rebind action; rebinding preserved the two imported captions and invalidated the old export. Opening the picker and cancelling preserved the project state. No Demo fallback or runtime network/model download was used.
+- Regression/build evidence: 97 JVM tests, `python tools\\asr_evaluate_test.py` (6 tests), `lintDebug`, normal Debug, Native Debug, and `assembleDebugAndroidTest -PenableWhisperNative=true` passed. Two real import-acceptance instrumentation phases returned `INSTRUMENTATION_CODE: -1`.
+- Final stage state: `V2-IMPORT-002 / IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`. Phone-level real local-video selection, preview, restart recovery, relink, and export remain unproven and are gated to `V2-E2E-002`; this simulator result is not `DEVICE_VERIFIED`.
 
 ## V2-PREVIEW-001 previous verification record
 

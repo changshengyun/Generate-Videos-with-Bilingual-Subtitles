@@ -90,16 +90,20 @@ class MainViewModel(
                     "Video imported with persistent access."
                 }
                 is MediaAccessResult.SessionOnly -> "Video imported for this session only: ${access.reason}"
-                is MediaAccessResult.ProviderUnsupported -> "Video imported: ${access.reason}"
+                is MediaAccessResult.ProviderUnsupported -> "Video imported for this session only: ${access.reason}"
                 is MediaAccessResult.Unavailable -> access.reason
             }
             val maxDurationMs = state.value.modelState.maxVideoDurationMs
             val durationMs = access.durationMs
-            if (durationMs != null && durationMs > maxDurationMs) {
+            if (!VideoImportPolicy.isDurationAllowed(durationMs, maxDurationMs)) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
-                        status = "Video is longer than 5 minutes. Please import a shorter clip.",
+                        status = if (durationMs != null && durationMs > maxDurationMs) {
+                            "Video is longer than 5 minutes. Please import a shorter clip."
+                        } else {
+                            "Could not import video: Video duration is unavailable or invalid."
+                        },
                     )
                 }
                 return@launch
@@ -676,7 +680,7 @@ class MainViewModel(
                     } else when (result.mediaAccess) {
                         is MediaAccessResult.Persisted -> "Project restored with persistent video access."
                         is MediaAccessResult.SessionOnly -> "Project restored; video access is session-only."
-                        is MediaAccessResult.ProviderUnsupported -> "Project restored; provider cannot persist video access."
+                        is MediaAccessResult.ProviderUnsupported -> "Project restored; video access is session-only because the provider cannot persist it."
                         is MediaAccessResult.Unavailable -> "Project restored; video is unavailable. Select a new video to re-associate it."
                     }
                     mutableState.update {

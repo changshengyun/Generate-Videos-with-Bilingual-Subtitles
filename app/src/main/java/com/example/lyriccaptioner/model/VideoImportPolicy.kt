@@ -8,6 +8,9 @@ enum class VideoImportMode {
 }
 
 object VideoImportPolicy {
+    fun isDurationAllowed(durationMs: Long?, maxDurationMs: Long): Boolean =
+        durationMs != null && durationMs > 0L && durationMs <= maxDurationMs
+
     fun apply(
         current: EditorState,
         uri: Uri,

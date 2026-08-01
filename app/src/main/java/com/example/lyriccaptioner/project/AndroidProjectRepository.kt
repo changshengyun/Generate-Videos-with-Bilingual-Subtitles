@@ -2,6 +2,7 @@ package com.example.lyriccaptioner.project
 
 import android.content.Context
 import android.content.Intent
+import android.media.MediaExtractor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
@@ -59,11 +60,27 @@ class AndroidProjectRepository(
         if (hasPersistedReadPermission(uri)) return validated.asPersisted()
         return try {
             resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            MediaAccessResult.Persisted(uri, validated.durationMs)
+            if (hasPersistedReadPermission(uri)) {
+                MediaAccessResult.Persisted(uri, validated.durationMs)
+            } else {
+                MediaAccessResult.ProviderUnsupported(
+                    uri,
+                    validated.durationMs,
+                    "Provider did not grant persistable permissions; video is session-only.",
+                )
+            }
         } catch (_: UnsupportedOperationException) {
-            MediaAccessResult.ProviderUnsupported(uri, validated.durationMs, "Provider does not support persistable permissions.")
+            MediaAccessResult.ProviderUnsupported(
+                uri,
+                validated.durationMs,
+                "Provider does not support persistable permissions; video is session-only.",
+            )
         } catch (_: IllegalArgumentException) {
-            MediaAccessResult.ProviderUnsupported(uri, validated.durationMs, "Provider rejected persistable permissions.")
+            MediaAccessResult.ProviderUnsupported(
+                uri,
+                validated.durationMs,
+                "Provider rejected persistable permissions; video is session-only.",
+            )
         } catch (_: SecurityException) {
             MediaAccessResult.SessionOnly(uri, validated.durationMs, "Media is readable for this session only.")
         }
@@ -77,7 +94,7 @@ class AndroidProjectRepository(
             resolver.openInputStream(uri)?.use { input ->
                 if (input.read() < 0) error("The selected video is empty.")
             } ?: error("The video cannot be read.")
-            val durationMs = readDuration(uri)
+            val durationMs = readVideoDuration(uri)
             if (hasPersistedReadPermission(uri)) {
                 MediaAccessResult.Persisted(uri, durationMs)
             } else {
@@ -88,14 +105,34 @@ class AndroidProjectRepository(
         }
     }
 
-    private fun readDuration(uri: Uri): Long? {
+    private fun readVideoDuration(uri: Uri): Long {
         val retriever = MediaMetadataRetriever()
-        return try {
+        val durationMs = try {
             retriever.setDataSource(appContext, uri)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
         } finally {
             retriever.release()
         }
+        if (durationMs == null || durationMs <= 0L) {
+            error("The video duration is unavailable or invalid.")
+        }
+        if (durationMs > MAX_VIDEO_DURATION_MS) {
+            error("The video is longer than 5 minutes.")
+        }
+
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(appContext, uri, null)
+            val hasVideoTrack = (0 until extractor.trackCount).any { index ->
+                extractor.getTrackFormat(index)
+                    .getString(android.media.MediaFormat.KEY_MIME)
+                    ?.startsWith("video/") == true
+            }
+            if (!hasVideoTrack) error("The selected file has no video track.")
+        } finally {
+            extractor.release()
+        }
+        return durationMs
     }
 
     private fun hasPersistedReadPermission(uri: Uri): Boolean = runCatching {
@@ -112,5 +149,9 @@ class AndroidProjectRepository(
             else -> fallback
         }
         return ProjectRepositoryError(kind, error.message ?: "Project operation failed.", error)
+    }
+
+    private companion object {
+        const val MAX_VIDEO_DURATION_MS = 5 * 60 * 1_000L
     }
 }

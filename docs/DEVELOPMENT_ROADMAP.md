@@ -30,7 +30,7 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 | V2-UI-001 | `UI_SIMULATOR_VERIFIED` | 中文化并整理主要界面 |
 | V2-PREVIEW-001 | `PREVIEW_SIMULATOR_VERIFIED` | 全屏播放和字幕位置、大小、字体、颜色编辑 |
 | V2-UI-002 | `UI2_SIMULATOR_VERIFIED` | 使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级、触控交互和状态反馈优化 |
-| V2-IMPORT-002 | `IN_PROGRESS` | 从手机系统媒体选择器直接选择本地视频，持久化访问权限并进入预览、保存恢复和处理链路 |
+| V2-IMPORT-002 | `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED` | 从手机系统媒体选择器直接选择本地视频，持久化访问权限并进入预览、保存恢复和处理链路；模拟器已验证，手机证据转交 V2-E2E-002 |
 | V2-E2E-002 | `DEFERRED_DEVICE_GATE` | 用户重新授权真机测试后，在个人 ARM64 手机完成 V2 全流程最终验收 |
 
 一次只实施一个模块。开发窗口可自行处理模块内普通 Bug；只有架构/技术栈变更、新大型依赖、破坏性数据操作、需求冲突或无法证明安全的删除，才交由决策窗口处理。
@@ -95,6 +95,12 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 - 给出主代码行数、测试行数、测试数量、APK 大小、Lint 警告的前后对比。
 - 产品公开行为和模拟器完整导入/导出回归保持通过。
 - 不修改或清理 `third_party/ffmpeg-kit` 的既有脏状态。
+
+## V2-IMPORT-002 verification record (2026-08-01)
+
+- Pixel_8 `emulator-5554` (`1080x2400`, `420 dpi`) completed the visible DocumentsUI video selection, real preview, persistent permission, SRT import, project save, external force-stop/relaunch, invalid URI, relink, cancel, FFmpegKit export, and Media3 playback path.
+- Output evidence: `71,203` bytes, `4,011 ms`, H.264/AVC plus AAC; source SHA-256 was unchanged before/after export. Two imported captions survived relink while the previous derived export was invalidated.
+- `97` JVM tests, evaluator `6` tests, Lint, normal/Native Debug, AndroidTest build, and two real import-acceptance instrumentation phases passed. Final state is `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`; phone proof remains gated to `V2-E2E-002` and is not `DEVICE_VERIFIED`.
 
 ## V2-CLEAN-001 execution record (2026-07-30)
 

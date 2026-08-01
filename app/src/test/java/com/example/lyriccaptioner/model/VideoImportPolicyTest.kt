@@ -29,6 +29,14 @@ class VideoImportPolicyTest {
     )
 
     @Test
+    fun durationMustBeKnownPositiveAndWithinFiveMinutes() {
+        assertTrue(VideoImportPolicy.isDurationAllowed(1L, 5 * 60 * 1_000L))
+        assertTrue(!VideoImportPolicy.isDurationAllowed(null, 5 * 60 * 1_000L))
+        assertTrue(!VideoImportPolicy.isDurationAllowed(0L, 5 * 60 * 1_000L))
+        assertTrue(!VideoImportPolicy.isDurationAllowed(5 * 60 * 1_000L + 1L, 5 * 60 * 1_000L))
+    }
+
+    @Test
     fun newVideoClearsPreviousCaptionsAndDerivedOutputs() {
         val result = VideoImportPolicy.apply(
             current = existingState(),
