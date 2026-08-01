@@ -28,8 +28,18 @@ class AssSubtitleWriterTest {
             ),
         )
 
-        assertTrue(ass.contains("Style: Default,Arial,30,&H00332211,&H00CCBBAA,&H00000000"))
+        assertTrue(ass.contains("Style: Default,sans-serif,30,&H00332211,&H00CCBBAA,&H00000000"))
         assertTrue(ass.contains("Dialogue: 0,0:00:01.23,0:00:04.56"))
         assertTrue(ass.contains("Hello \\{world\\}\\N你好"))
+    }
+
+    @Test
+    fun mapsSelectedFontFamilyToAssStyle() {
+        val ass = AssSubtitleWriter.write(
+            captions = listOf(CaptionCue("cue", 0L, 1_000L, "Hello", "你好", 1f)),
+            style = SubtitleStyle(fontFamily = "mono"),
+        )
+
+        assertTrue(ass.contains("Style: Default,monospace,"))
     }
 }

@@ -28,7 +28,7 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 | V2-ASR-002 | `FIXTURE_REQUIRED` | 使用固定英文歌曲语料比较候选模型，改善歌词和单词识别；当前缺人工准确歌曲 fixture |
 | V2-TRN-002 | `PLANNED` | 使用固定英中歌词语料评估并改善中文翻译 |
 | V2-UI-001 | `UI_SIMULATOR_VERIFIED` | 中文化并整理主要界面 |
-| V2-PREVIEW-001 | `IMPLEMENTING` | 全屏播放和字幕位置、大小、字体、颜色编辑 |
+| V2-PREVIEW-001 | `PREVIEW_SIMULATOR_VERIFIED` | 全屏播放和字幕位置、大小、字体、颜色编辑 |
 | V2-UI-002 | `PLANNED` | 使用项目级 UI 技能进行第二轮移动端视觉系统、信息层级、触控交互和状态反馈优化 |
 | V2-IMPORT-002 | `PLANNED / DEVICE_GATE_DEFERRED` | 从手机系统媒体选择器直接选择本地视频，持久化访问权限并进入预览、保存恢复和处理链路 |
 | V2-E2E-002 | `DEFERRED_DEVICE_GATE` | 用户重新授权真机测试后，在个人 ARM64 手机完成 V2 全流程最终验收 |
@@ -197,3 +197,14 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 - New repair evidence screenshots, generated 2026-08-01: `D:\DevEnv\Projects\v2-ui-insets-initial-20260801-115158.png`, `D:\DevEnv\Projects\v2-ui-insets-imported-20260801-115158.png`, and `D:\DevEnv\Projects\v2-ui-insets-scroll-20260801-115314.png`. The 2026-07-31 UI screenshots remain baseline-only.
 - Verification passed: 92 JVM tests, `lintDebug`, normal Debug, Native Debug, `assembleDebugAndroidTest`, and real UI instrumentation.
 - Final status: `UI_SIMULATOR_VERIFIED`.
+
+## V2-PREVIEW-001 verification record (2026-08-01)
+
+- Established checkpoint `cc4f0cf` before preview implementation, preserving the dirty `third_party/ffmpeg-kit` entry, untracked archive directory, local translation model directory, and ASR tooling.
+- Implemented one-player fullscreen Media3 preview with position/play-state preservation, live bilingual `CaptionTimeline` overlay, BackHandler/exit handling, and responsive subtitle placement.
+- Added persisted subtitle font family (`sans`/`serif`/`mono`), size, bottom position, English/Chinese/outline color validation, legacy archive defaults, and ASS/Media3 font mapping. FFmpegKit remains the product export backend.
+- Added real UI instrumentation for video import, SRT import, fullscreen, Play/Pause, fixed-target seekbar tap, Back return, no Demo content, and screenshot capture.
+- Pixel_8 `emulator-5554` / `1080x2400` / `420 dpi`: imported `/sdcard/Download/v2-preview-test.mp4` plus `/sdcard/Download/v2-preview-test.srt`, rendered 2 bilingual cues, completed fullscreen and Media3 control flow, and returned `INSTRUMENTATION_CODE: -1`.
+- New screenshots are outside the repository: `D:\DevEnv\Projects\preview-v2-native-normal-final.png`, `D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`, and `D:\DevEnv\Projects\preview-v2-native-restored-final.png`.
+- Verification passed: 96 JVM tests, 6 evaluator tests, `lintDebug`, normal Debug, Native Debug for arm64-v8a/x86_64, `assembleDebugAndroidTest`, and real UI instrumentation.
+- Final status: `PREVIEW_SIMULATOR_VERIFIED`.

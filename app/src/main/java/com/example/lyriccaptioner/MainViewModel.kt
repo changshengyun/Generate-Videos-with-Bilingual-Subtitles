@@ -18,6 +18,10 @@ import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.normalizeSubtitleColor
+import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
+import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
+import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
 import com.example.lyriccaptioner.model.VideoImportMode
 import com.example.lyriccaptioner.model.VideoImportPolicy
 import com.example.lyriccaptioner.processing.AsrModule
@@ -623,15 +627,20 @@ class MainViewModel(
     }
 
     fun updateEnglishColor(colorHex: String) {
-        updateSubtitleStyle { style -> style.copy(primaryColorHex = colorHex) }
+        updateSubtitleStyle { style -> style.copy(primaryColorHex = normalizeSubtitleColor(colorHex, style.primaryColorHex)) }
     }
 
     fun updateChineseColor(colorHex: String) {
-        updateSubtitleStyle { style -> style.copy(secondaryColorHex = colorHex) }
+        updateSubtitleStyle { style -> style.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, style.secondaryColorHex)) }
     }
 
     fun updateOutlineColor(colorHex: String) {
-        updateSubtitleStyle { style -> style.copy(outlineColorHex = colorHex) }
+        updateSubtitleStyle { style -> style.copy(outlineColorHex = normalizeSubtitleColor(colorHex, style.outlineColorHex)) }
+    }
+
+    fun updateFontFamily(fontFamily: String) {
+        val supported = setOf(SUBTITLE_FONT_SANS, SUBTITLE_FONT_SERIF, SUBTITLE_FONT_MONO)
+        updateSubtitleStyle { style -> style.copy(fontFamily = fontFamily.takeIf { it in supported } ?: style.fontFamily) }
     }
 
     fun saveProjectArchive(destinationUri: Uri) {

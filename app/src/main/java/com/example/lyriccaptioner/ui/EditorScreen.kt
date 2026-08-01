@@ -3,6 +3,7 @@ package com.example.lyriccaptioner.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -10,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -57,12 +59,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
@@ -72,6 +79,9 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
+import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
+import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
 import com.example.lyriccaptioner.model.VideoImportMode
 import com.example.lyriccaptioner.processing.TranslationModelState
 import kotlinx.coroutines.delay
@@ -215,6 +225,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                             label = if (state.mediaState == MediaState.UNAVAILABLE) "重新绑定视频" else "导入视频",
                             enabled = !state.isWorking,
                             primary = true,
+                            accessibilityId = "import_video",
                             onClick = {
                                 videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) {
                                     VideoImportMode.RELINK
@@ -232,7 +243,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                         )
                     }
                     ActionRow {
-                        SecondaryAction("字幕 SRT", !state.isWorking) { srtPicker.launch("*/*") }
+                        SecondaryAction("字幕 SRT", !state.isWorking, accessibilityId = "import_srt") { srtPicker.launch("*/*") }
                         SecondaryAction("Whisper 模型", !state.isWorking) { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                     }
                 }
@@ -270,6 +281,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     SubtitleStyleControls(
                         fontSizeSp = state.exportProfile.subtitleStyle.fontSizeSp,
                         bottomMarginPercent = state.exportProfile.subtitleStyle.bottomMarginPercent,
+                        fontFamily = state.exportProfile.subtitleStyle.fontFamily,
                         onFontSmaller = { viewModel.updateFontSize(-2) },
                         onFontLarger = { viewModel.updateFontSize(2) },
                         onMarginLower = { viewModel.updateBottomMargin(-2) },
@@ -280,6 +292,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                         onEnglishColorChanged = viewModel::updateEnglishColor,
                         onChineseColorChanged = viewModel::updateChineseColor,
                         onOutlineColorChanged = viewModel::updateOutlineColor,
+                        onFontFamilyChanged = viewModel::updateFontFamily,
                     )
                 }
                 WorkflowPanel(title = "4  导出与分享", subtitle = "保存项目、导出视频或分享成品") {
@@ -367,10 +380,17 @@ private fun RowScope.ActionButton(
     label: String,
     enabled: Boolean,
     primary: Boolean = false,
+    accessibilityId: String? = null,
     onClick: () -> Unit,
 ) {
     Button(
-        modifier = Modifier.weight(1f),
+        modifier = Modifier
+            .weight(1f)
+            .then(
+                if (accessibilityId == null) Modifier else Modifier.semantics {
+                    contentDescription = accessibilityId
+                },
+            ),
         enabled = enabled,
         onClick = onClick,
         colors = if (primary) {
@@ -400,10 +420,17 @@ private fun RowScope.ActionButton(
 private fun RowScope.SecondaryAction(
     label: String,
     enabled: Boolean,
+    accessibilityId: String? = null,
     onClick: () -> Unit,
 ) {
     OutlinedButton(
-        modifier = Modifier.weight(1f),
+        modifier = Modifier
+            .weight(1f)
+            .then(
+                if (accessibilityId == null) Modifier else Modifier.semantics {
+                    contentDescription = accessibilityId
+                },
+            ),
         enabled = enabled,
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
@@ -497,6 +524,7 @@ private fun RuntimeStatusCard(
 private fun SubtitleStyleControls(
     fontSizeSp: Int,
     bottomMarginPercent: Int,
+    fontFamily: String,
     onFontSmaller: () -> Unit,
     onFontLarger: () -> Unit,
     onMarginLower: () -> Unit,
@@ -507,6 +535,7 @@ private fun SubtitleStyleControls(
     onEnglishColorChanged: (String) -> Unit,
     onChineseColorChanged: (String) -> Unit,
     onOutlineColorChanged: (String) -> Unit,
+    onFontFamilyChanged: (String) -> Unit,
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -533,6 +562,17 @@ private fun SubtitleStyleControls(
                 TextButton(onClick = onMarginLower) { Text("下移") }
                 TextButton(onClick = onMarginHigher) { Text("上移") }
             }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("字体", style = MaterialTheme.typography.labelMedium)
+                TextButton(onClick = { onFontFamilyChanged(SUBTITLE_FONT_SANS) }) { Text("无衬线") }
+                TextButton(onClick = { onFontFamilyChanged(SUBTITLE_FONT_SERIF) }) { Text("衬线") }
+                TextButton(onClick = { onFontFamilyChanged(SUBTITLE_FONT_MONO) }) { Text("等宽") }
+                Text("当前 ${fontFamilyLabel(fontFamily)}", color = Color(0xFF9EA5B1))
+            }
             SubtitleColorPalette(
                 label = "英文",
                 selectedColorHex = primaryColorHex,
@@ -550,6 +590,13 @@ private fun SubtitleStyleControls(
             )
         }
     }
+}
+
+@Composable
+private fun fontFamilyLabel(fontFamily: String): String = when (fontFamily) {
+    SUBTITLE_FONT_SERIF -> "衬线"
+    SUBTITLE_FONT_MONO -> "等宽"
+    else -> "无衬线"
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -727,6 +774,7 @@ private fun VideoPlayer(
 ) {
     val context = LocalContext.current
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
+    var fullscreen by remember(uri) { mutableStateOf(false) }
     val timeline = remember(captions) { CaptionTimeline(captions) }
     val currentCue = timeline.cueAt(positionMs)
     val player = remember(uri) {
@@ -757,24 +805,95 @@ private fun VideoPlayer(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { viewContext ->
-                PlayerView(viewContext).apply {
-                    this.player = player
-                    useController = true
-                }
-            },
-            update = { playerView ->
-                playerView.player = player
-            },
-        )
+        if (!fullscreen) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { viewContext ->
+                    PlayerView(viewContext).apply {
+                        this.player = player
+                        useController = true
+                    }
+                },
+                update = { playerView ->
+                    playerView.player = player
+                },
+            )
+            TextButton(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .semantics { contentDescription = "preview_fullscreen" },
+                onClick = { fullscreen = true },
+            ) { Text("全屏", color = Color.White) }
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) { Text("正在全屏预览", color = Color.White) }
+        }
         if (currentCue != null) {
             SubtitlePreviewOverlay(
                 cue = currentCue,
                 style = subtitleStyle,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier.fillMaxSize(),
             )
+        }
+    }
+    if (fullscreen) {
+        Dialog(
+            onDismissRequest = { fullscreen = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false,
+            ),
+        ) {
+            BackHandler { fullscreen = false }
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color.Black,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .semantics { contentDescription = "preview_fullscreen_dialog" },
+                ) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { viewContext ->
+                            PlayerView(viewContext).apply {
+                                this.player = player
+                                useController = true
+                            }
+                        },
+                        update = { playerView -> playerView.player = player },
+                    )
+                    if (currentCue != null) {
+                        SubtitlePreviewOverlay(
+                            cue = currentCue,
+                            style = subtitleStyle,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
+                        TextButton(
+                            modifier = Modifier.semantics { contentDescription = "preview_exit" },
+                            onClick = { fullscreen = false },
+                        ) {
+                            Text("退出", color = Color.White)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -785,47 +904,57 @@ private fun SubtitlePreviewOverlay(
     style: SubtitleStyle,
     modifier: Modifier = Modifier,
 ) {
-    val bottomPadding = (190 * style.bottomMarginPercent.coerceIn(4, 28) / 100).dp
     val shadow = Shadow(
         color = parseComposeColor(style.outlineColorHex, Color.Black),
         offset = Offset(0f, 2f),
         blurRadius = 4f,
     )
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth(0.94f)
-            .padding(bottom = bottomPadding)
-            .background(Color.Black.copy(alpha = 0.42f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        if (cue.english.isNotBlank()) {
-            Text(
-                modifier = Modifier.fillMaxWidth(),
-                text = cue.english,
-                color = parseComposeColor(style.primaryColorHex, Color.White),
-                fontSize = style.fontSizeSp.coerceIn(14, 48).sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium.copy(shadow = shadow),
-            )
-        }
-        if (cue.chinese.isNotBlank()) {
-            Text(
-                modifier = Modifier.fillMaxWidth(),
-                text = cue.chinese,
-                color = parseComposeColor(style.secondaryColorHex, Color(0xFFF4E7A1)),
-                fontSize = (style.fontSizeSp.coerceIn(14, 48) * 0.82f).sp,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(shadow = shadow),
-            )
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.94f)
+                .padding(bottom = maxHeight * (style.bottomMarginPercent.coerceIn(4, 28) / 100f))
+                .background(Color.Black.copy(alpha = 0.42f), RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (cue.english.isNotBlank()) {
+                Text(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = cue.english,
+                    color = parseComposeColor(style.primaryColorHex, Color.White),
+                    fontSize = style.fontSizeSp.coerceIn(14, 48).sp,
+                    fontFamily = subtitleFontFamily(style.fontFamily),
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium.copy(shadow = shadow),
+                )
+            }
+            if (cue.chinese.isNotBlank()) {
+                Text(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = cue.chinese,
+                    color = parseComposeColor(style.secondaryColorHex, Color(0xFFF4E7A1)),
+                    fontSize = (style.fontSizeSp.coerceIn(14, 48) * 0.82f).sp,
+                    fontFamily = subtitleFontFamily(style.fontFamily),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall.copy(shadow = shadow),
+                )
+            }
         }
     }
+}
+
+private fun subtitleFontFamily(fontFamily: String): FontFamily = when (fontFamily) {
+    SUBTITLE_FONT_SERIF -> FontFamily.Serif
+    SUBTITLE_FONT_MONO -> FontFamily.Monospace
+    else -> FontFamily.SansSerif
 }
 
 private fun parseComposeColor(value: String, fallback: Color): Color {

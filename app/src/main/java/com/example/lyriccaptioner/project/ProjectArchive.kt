@@ -5,6 +5,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.ExportProfile
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.validated
 import java.util.Base64
 
 /** Versioned, text-based project archive codec. Media bytes are never copied into an archive. */
@@ -22,6 +23,7 @@ class ProjectArchive(
         appendField("primaryColorHex", encode(snapshot.exportProfile.subtitleStyle.primaryColorHex))
         appendField("secondaryColorHex", encode(snapshot.exportProfile.subtitleStyle.secondaryColorHex))
         appendField("outlineColorHex", encode(snapshot.exportProfile.subtitleStyle.outlineColorHex))
+        appendField("fontFamily", encode(snapshot.exportProfile.subtitleStyle.fontFamily))
         appendField("captions", encodeCaptions(snapshot.captions))
     }
 
@@ -47,7 +49,7 @@ class ProjectArchive(
                 primaryColorHex = values["primaryColorHex"].orDefault("#FFFFFF"),
                 secondaryColorHex = values["secondaryColorHex"].orDefault("#F4E7A1"),
                 outlineColorHex = values["outlineColorHex"].orDefault("#000000"),
-            ),
+            ).validated(),
             burnInSubtitles = values.optionalBoolean("burnInSubtitles", true),
         )
         val captions = if (body.isBlank()) {
@@ -73,7 +75,8 @@ class ProjectArchive(
             primaryColorHex = values.decodeOptional("primaryColorHex", "#FFFFFF"),
             secondaryColorHex = values.decodeOptional("secondaryColorHex", "#F4E7A1"),
             outlineColorHex = values.decodeOptional("outlineColorHex", "#000000"),
-        )
+            fontFamily = values.decodeOptional("fontFamily", "sans"),
+        ).validated()
         val profile = ExportProfile(
             outputName = values.decodeOptional("outputName", "lyric-captioner-output.mp4"),
             subtitleStyle = style,

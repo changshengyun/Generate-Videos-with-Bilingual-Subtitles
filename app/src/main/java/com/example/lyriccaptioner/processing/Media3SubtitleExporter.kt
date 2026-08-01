@@ -14,6 +14,7 @@ import android.text.TextPaint
 import android.text.style.AlignmentSpan
 import android.text.style.CharacterStyle
 import android.text.style.ForegroundColorSpan
+import android.text.style.TypefaceSpan
 import android.text.style.UpdateAppearance
 import android.util.Log
 import androidx.annotation.OptIn
@@ -335,6 +336,18 @@ private class TimedBilingualTextOverlay(
             )
             setSpan(
                 SubtitleShadowSpan(parseColor(style.outlineColorHex, Color.BLACK)),
+                0,
+                length,
+                Spannable.SPAN_INCLUSIVE_INCLUSIVE,
+            )
+            setSpan(
+                TypefaceSpan(
+                    when (style.fontFamily) {
+                        "serif" -> "serif"
+                        "mono" -> "monospace"
+                        else -> "sans-serif"
+                    },
+                ),
                 0,
                 length,
                 Spannable.SPAN_INCLUSIVE_INCLUSIVE,

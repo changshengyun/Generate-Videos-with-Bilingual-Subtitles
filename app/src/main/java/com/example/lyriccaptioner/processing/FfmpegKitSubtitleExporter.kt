@@ -278,6 +278,7 @@ internal object AssSubtitleWriter {
         val primary = assColor(style.primaryColorHex, "FFFFFF")
         val secondary = assColor(style.secondaryColorHex, "F4E7A1")
         val outline = assColor(style.outlineColorHex, "000000")
+        val fontName = assFontName(style.fontFamily)
         return buildString {
             appendLine("[Script Info]")
             appendLine("ScriptType: v4.00+")
@@ -287,7 +288,7 @@ internal object AssSubtitleWriter {
             appendLine()
             appendLine("[V4+ Styles]")
             appendLine("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding")
-            appendLine("Style: Default,Arial,$fontSize,$primary,$secondary,$outline,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,$marginV,1")
+            appendLine("Style: Default,$fontName,$fontSize,$primary,$secondary,$outline,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,$marginV,1")
             appendLine()
             appendLine("[Events]")
             appendLine("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text")
@@ -314,6 +315,12 @@ internal object AssSubtitleWriter {
     private fun assColor(value: String, fallback: String): String {
         val hex = value.removePrefix("#").takeIf { it.matches(Regex("[0-9a-fA-F]{6}")) } ?: fallback
         return "&H00${hex.substring(4, 6)}${hex.substring(2, 4)}${hex.substring(0, 2)}"
+    }
+
+    private fun assFontName(fontFamily: String): String = when (fontFamily) {
+        "serif" -> "serif"
+        "mono" -> "monospace"
+        else -> "sans-serif"
     }
 
     private fun formatAssTime(milliseconds: Long): String {

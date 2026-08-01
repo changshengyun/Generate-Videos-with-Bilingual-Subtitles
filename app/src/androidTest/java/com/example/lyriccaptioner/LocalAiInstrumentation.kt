@@ -2,12 +2,15 @@ package com.example.lyriccaptioner
 
 import android.app.Activity
 import android.app.Instrumentation
+import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -42,7 +45,9 @@ class LocalAiInstrumentation : Instrumentation() {
         super.onStart()
         val results = Bundle()
         runCatching {
-            if (inputArguments.getString(ARG_INPUT).isNullOrBlank()) {
+            if (!inputArguments.getString(ARG_PREVIEW_INPUT).isNullOrBlank()) {
+                runPreviewUiFlow(results)
+            } else if (inputArguments.getString(ARG_INPUT).isNullOrBlank()) {
                 runUiSmoke(results)
             } else {
                 runBlocking { runLocalAiChain(results) }
@@ -90,6 +95,122 @@ class LocalAiInstrumentation : Instrumentation() {
         activity.finish()
     }
 
+    private fun runPreviewUiFlow(results: Bundle) {
+        val inputPath = inputArguments.getString(ARG_PREVIEW_INPUT)
+            ?: error("Missing -e $ARG_PREVIEW_INPUT /sdcard/Download/preview.mp4")
+        val inputFile = File(inputPath)
+        check(inputFile.isFile && inputFile.length() > 0L) {
+            "Preview input is missing or empty: $inputPath"
+        }
+        val scanLatch = CountDownLatch(1)
+        MediaScannerConnection.scanFile(
+            targetContext,
+            arrayOf(inputPath),
+            arrayOf("video/mp4"),
+        ) { _, _ -> scanLatch.countDown() }
+        check(scanLatch.await(10, TimeUnit.SECONDS)) { "Preview input was not indexed by MediaStore." }
+        val activity = startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+        clickNode(waitForContentDescription("import_video"))
+        clickNode(waitForText(inputFile.name))
+        inputArguments.getString(ARG_PREVIEW_SRT)?.takeIf { it.isNotBlank() }?.let { srtPath ->
+            val srtFile = File(srtPath)
+            check(srtFile.isFile && srtFile.length() > 0L) { "Preview SRT is missing or empty: $srtPath" }
+            clickNode(waitForContentDescription("import_srt", 15_000L))
+            clickNode(waitForText(srtFile.name, 30_000L))
+            results.putString("previewSrt", srtPath)
+        }
+        val fullscreen = waitForContentDescription("preview_fullscreen", 45_000L)
+        val fullscreenBounds = Rect().also(fullscreen::getBoundsInScreen)
+        check(fullscreenBounds.width() > 0 && fullscreenBounds.height() > 0) {
+            "Fullscreen control has no visible bounds: $fullscreenBounds"
+        }
+        results.putString("normalScreenshot", saveScreenshot("preview-normal.png"))
+        clickNode(fullscreen)
+        val dialog = waitForContentDescription("preview_fullscreen_dialog", 10_000L)
+        val dialogBounds = Rect().also(dialog::getBoundsInScreen)
+        check(dialogBounds.width() > 0 && dialogBounds.height() > 0) {
+            "Fullscreen preview dialog has no visible bounds: $dialogBounds"
+        }
+        results.putString("fullscreenScreenshot", saveScreenshot("preview-fullscreen.png"))
+        exerciseMedia3Controls(results)
+        check(findAccessibilityNode(uiAutomation.rootInActiveWindow, "Demo") == null) {
+            "Demo preview content was exposed during the real media flow."
+        }
+        waitForContentDescription("preview_fullscreen", 10_000L)
+        results.putString("restoredScreenshot", saveScreenshot("preview-restored.png"))
+        results.putString("previewInput", inputPath)
+        results.putString("previewFlow", "imported_media_fullscreen_exit")
+        results.putInt("fullscreenWidth", dialogBounds.width())
+        results.putInt("fullscreenHeight", dialogBounds.height())
+        activity.finish()
+    }
+
+    private fun exerciseMedia3Controls(results: Bundle) {
+        clickNode(waitForContentDescription("Play", 10_000L))
+        SystemClock.sleep(750L)
+        clickNode(waitForContentDescription("Pause", 5_000L))
+        tapScreen(810, 1990)
+        results.putString("media3Controls", "play_pause_seekbar_tap")
+        check(uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)) {
+            "Media3 preview back action was not dispatched."
+        }
+    }
+
+    private fun tapScreen(x: Int, y: Int) {
+        val command = uiAutomation.executeShellCommand("input tap $x $y")
+        command.close()
+    }
+
+    private fun saveScreenshot(fileName: String): String {
+        val directory = targetContext.getExternalFilesDir("preview-evidence")
+            ?: error("External preview evidence directory is unavailable.")
+        check(directory.exists() || directory.mkdirs()) { "Could not create screenshot directory." }
+        val file = File(directory, fileName)
+        val bitmap = uiAutomation.takeScreenshot()
+        file.outputStream().use { output ->
+            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)) {
+                "Could not save screenshot: ${file.absolutePath}"
+            }
+        }
+        bitmap.recycle()
+        check(file.length() > 0L) { "Saved screenshot is empty: ${file.absolutePath}" }
+        return file.absolutePath
+    }
+
+    private fun waitForContentDescription(description: String, timeoutMs: Long = 15_000L): AccessibilityNodeInfo {
+        return waitForNode(timeoutMs) { root -> findAccessibilityNodeByContentDescription(root, description) }
+    }
+
+    private fun waitForText(text: String, timeoutMs: Long = 30_000L): AccessibilityNodeInfo {
+        return waitForNode(timeoutMs) { root -> findAccessibilityNode(root, text) }
+    }
+
+    private fun waitForNode(
+        timeoutMs: Long,
+        finder: (AccessibilityNodeInfo?) -> AccessibilityNodeInfo?,
+    ): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            finder(uiAutomation.rootInActiveWindow)?.let { return it }
+            SystemClock.sleep(250L)
+        }
+        error("Timed out waiting for an accessibility node after ${timeoutMs}ms.")
+    }
+
+    private fun clickNode(node: AccessibilityNodeInfo) {
+        var candidate: AccessibilityNodeInfo? = node
+        while (candidate != null) {
+            if (candidate.isClickable && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+            candidate = candidate.parent
+        }
+        error("Accessibility node was not clickable: ${node.text}/${node.contentDescription}")
+    }
+
     private fun findComposeRoot(view: View): Boolean {
         if (view.javaClass.name.contains("AndroidComposeView")) return true
         if (view is ViewGroup) {
@@ -108,6 +229,18 @@ class LocalAiInstrumentation : Instrumentation() {
         if (node.text?.toString() == text) return node
         for (index in 0 until node.childCount) {
             findAccessibilityNode(node.getChild(index), text)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findAccessibilityNodeByContentDescription(
+        node: AccessibilityNodeInfo?,
+        description: String,
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.contentDescription?.toString() == description) return node
+        for (index in 0 until node.childCount) {
+            findAccessibilityNodeByContentDescription(node.getChild(index), description)?.let { return it }
         }
         return null
     }
@@ -256,5 +389,7 @@ class LocalAiInstrumentation : Instrumentation() {
 
     private companion object {
         const val ARG_INPUT = "input"
+        const val ARG_PREVIEW_INPUT = "previewInput"
+        const val ARG_PREVIEW_SRT = "previewSrt"
     }
 }

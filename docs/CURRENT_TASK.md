@@ -2,8 +2,8 @@
 
 ## 状态
 
-- Revision: `1`
-- Status: `IMPLEMENTING`
+- Revision: `2`
+- Status: `PREVIEW_SIMULATOR_VERIFIED`
 - Owner: `Development Agent`
 - Product Gate: `V2_PREVIEW_SIMULATOR_ACCEPTANCE`
 - Verification Mode: `SIMULATOR_ONLY_TEMPORARY`
@@ -15,6 +15,16 @@
 - Scope: full-screen Media3 preview, play/pause/seek/back handling, live bilingual subtitle overlay, subtitle font/size/position/color editing, and persistence through `SubtitleStyle`, `ExportProfile`, project archives, and FFmpegKit output.
 - Explicitly out of scope: timeline, multi-track editing, filters, stickers, transitions, effects, trimming, speed changes, cover editing, and new dependencies.
 - Verification mode: only `emulator-5554` / Pixel_8; no physical device.
+
+## V2-PREVIEW-001 verification record (2026-08-01)
+
+- Implemented fullscreen Media3 preview using one ExoPlayer instance per imported URI; normal/fullscreen transitions preserve playback position and play state, with Play/Pause, seekbar tap, exit button, and BackHandler coverage.
+- Live bilingual subtitle overlay remains driven by `CaptionTimeline`; subtitle font family, size, bottom position, English/Chinese/outline colors are editable and persisted through `SubtitleStyle`, `ExportProfile`, v1/v2 project archives, and ASS/Media3 rendering mappings.
+- Added style validation/default compatibility tests and real UI instrumentation semantics for import, SRT import, fullscreen, Media3 controls, Back, no Demo content, and screenshot capture.
+- Pixel_8 `emulator-5554`: `1080x2400`, `420 dpi`; real flow imported `/sdcard/Download/v2-preview-test.mp4` and `/sdcard/Download/v2-preview-test.srt`, rendered 2 bilingual cues, entered/exited fullscreen, and returned `INSTRUMENTATION_CODE: -1` with `media3Controls=play_pause_seekbar_tap`.
+- New screenshots generated 2026-08-01 outside the repository: `D:\DevEnv\Projects\preview-v2-native-normal-final.png`, `D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`, and `D:\DevEnv\Projects\preview-v2-native-restored-final.png`.
+- Verification passed: 96 JVM tests with 0 failures/errors/skips, `python tools\asr_evaluate_test.py` (6 tests), `lintDebug`, normal Debug, Native Debug (arm64-v8a/x86_64), `assembleDebugAndroidTest`, and real UI instrumentation.
+- Final status: `PREVIEW_SIMULATOR_VERIFIED`.
 
 ## 已批准后续阶段（不改变当前唯一任务）
 

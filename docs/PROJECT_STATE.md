@@ -2,10 +2,10 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_PREVIEW_IMPLEMENTING`
-- 当前任务：`V2-PREVIEW-001 / IMPLEMENTING`
+- 当前阶段：`V2_PREVIEW_SIMULATOR_VERIFIED`
+- 当前任务：`V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`
 - 当前目标：在现有产品链路中完成全屏 Media3 预览、实时字幕叠加和字幕样式持久化
-- 下一状态：完成当前模拟器全链路验收后进入 `PREVIEW_SIMULATOR_VERIFIED`
+- 下一状态：进入后续规划任务 `V2-UI-002`
 - 后续任务顺序：`V2-UI-002` 移动端视觉/交互精修 → `V2-IMPORT-002` 手机本地视频直接导入 → `V2-E2E-002` ARM64 最终验收
 
 ## 仓库快照
@@ -56,7 +56,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 4. `V2-ASR-002`：`FIXTURE_REQUIRED`，英文歌曲和英文单词识别提质等待固定英文歌曲 fixture，非当前活动任务。
 5. `V2-TRN-002`：中文翻译提质。
 6. `V2-UI-001`：`UI_SIMULATOR_VERIFIED`，中文界面与主流程层级整理已通过。
-7. `V2-PREVIEW-001`：`IMPLEMENTING`，全屏预览和字幕样式编辑。
+7. `V2-PREVIEW-001`：`PREVIEW_SIMULATOR_VERIFIED`，全屏预览和字幕样式编辑。
 8. `V2-UI-002`：`PLANNED`，使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级和交互反馈优化。
 9. `V2-IMPORT-002`：`PLANNED / DEVICE_GATE_DEFERRED`，实现系统选择器选择手机本地视频并进入预览、保存恢复和处理链路。
 10. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收，并收口 `V2-IMPORT-002` 的真实手机证据。
@@ -160,3 +160,13 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 - New screenshots generated 2026-08-01: `D:\DevEnv\Projects\v2-ui-insets-initial-20260801-115158.png`, `D:\DevEnv\Projects\v2-ui-insets-imported-20260801-115158.png`, `D:\DevEnv\Projects\v2-ui-insets-scroll-20260801-115314.png`. Previous screenshots are not repair evidence.
 - Verification passed: 92 JVM tests, `lintDebug`, normal Debug, Native Debug, `assembleDebugAndroidTest`, and real UI instrumentation.
 - Current gate remains `V2_UI_SIMULATOR_ACCEPTANCE`; final state: `UI_SIMULATOR_VERIFIED`.
+
+## V2-PREVIEW-001 verification snapshot (2026-08-01)
+
+- Preview implementation is complete without changing the Local AI, translation, FFmpegKit export, archive format route, or Media3 dependency.
+- The normal preview and fullscreen dialog share one ExoPlayer instance per URI. Playback position and play state survive the surface transition; Back exits fullscreen before leaving the editor.
+- Subtitle overlay is live in both surfaces and supports bilingual text, responsive bottom placement, font family, size, English/Chinese/outline colors, and persistence through project archives and FFmpegKit ASS output.
+- Pixel_8 `emulator-5554` / `1080x2400` / `420 dpi` completed real video import, SRT import, bilingual preview, fullscreen, Play/Pause, seekbar tap, Back return, and no-Demo assertion. Instrumentation returned `INSTRUMENTATION_CODE: -1`, `media3Controls=play_pause_seekbar_tap`, and `fullscreen=1079x2399`.
+- New screenshot evidence outside the repository: `D:\DevEnv\Projects\preview-v2-native-normal-final.png`, `D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`, `D:\DevEnv\Projects\preview-v2-native-restored-final.png`.
+- Verification: 96 JVM tests passed with 0 failures/errors/skips; 6 evaluator tests passed; `lintDebug`, normal Debug, Native Debug, AndroidTest APK build, and real UI instrumentation passed.
+- Final state: `PREVIEW_SIMULATOR_VERIFIED`.
