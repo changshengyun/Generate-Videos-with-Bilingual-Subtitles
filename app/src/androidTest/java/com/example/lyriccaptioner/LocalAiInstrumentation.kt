@@ -10,6 +10,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
+import android.graphics.Rect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -64,6 +67,17 @@ class LocalAiInstrumentation : Instrumentation() {
             "Production activity has no laid-out window: ${root.width}x${root.height}"
         }
         check(findComposeRoot(root)) { "Compose root was not found in the production activity." }
+        val statusBarInset = root.rootWindowInsets?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
+        check(statusBarInset > 0) { "Status bar inset was not reported by the activity window." }
+        val titleNode = findAccessibilityNode(uiAutomation.rootInActiveWindow, "歌词字幕工作台")
+            ?: error("Editor title was not exposed through the accessibility tree.")
+        val titleBounds = Rect().also(titleNode::getBoundsInScreen)
+        check(titleBounds.top >= statusBarInset) {
+            "Editor title entered the status bar: titleTop=${titleBounds.top}, statusBarInset=$statusBarInset"
+        }
+        results.putInt("statusBarInset", statusBarInset)
+        results.putInt("titleTop", titleBounds.top)
+        results.putInt("titleBottom", titleBounds.bottom)
         val screenshot = uiAutomation.takeScreenshot()
         check(screenshot.width > 0 && screenshot.height > 0) {
             "Production UI screenshot is empty: ${screenshot.width}x${screenshot.height}"
@@ -84,6 +98,18 @@ class LocalAiInstrumentation : Instrumentation() {
             }
         }
         return false
+    }
+
+    private fun findAccessibilityNode(
+        node: AccessibilityNodeInfo?,
+        text: String,
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.text?.toString() == text) return node
+        for (index in 0 until node.childCount) {
+            findAccessibilityNode(node.getChild(index), text)?.let { return it }
+        }
+        return null
     }
 
     private suspend fun runLocalAiChain(results: Bundle) {

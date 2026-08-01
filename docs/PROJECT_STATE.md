@@ -134,3 +134,12 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 - User review artifacts: three MP4 outputs were generated in `D:\DevEnv\Projects\sorce\` through simulator-only Local Whisper -> OPUS-MT -> FFmpegKit -> Media3 playback. They are for manual viewing only; without accurate reference lyrics they do not produce WER/CER and do not prove quality improvement.
 - Current next step remains human review of the three output videos plus preparation of accurate lyric fixtures.
 - Final state: `FIXTURE_REQUIRED`.
+
+## V2-UI-001 Insets fix snapshot (2026-08-01)
+
+- Root cause confirmed: no Compose Window Insets were applied to the edge-to-edge activity content, so the title could occupy the status-bar region.
+- `EditorScreen` now applies `statusBarsPadding()` and `navigationBarsPadding()` at the root content boundary. Product processing and all non-UI modules are unchanged.
+- The production UI instrumentation asserts the actual accessibility title bounds against the actual status-bar inset. On `emulator-5554`, `1080x2400 / 420 dpi`, it passed with `statusBarInset=132`, `titleTop=164`, `titleBottom=256`, and `INSTRUMENTATION_CODE: -1`.
+- New screenshots generated 2026-08-01: `D:\DevEnv\Projects\v2-ui-insets-initial-20260801-115158.png`, `D:\DevEnv\Projects\v2-ui-insets-imported-20260801-115158.png`, `D:\DevEnv\Projects\v2-ui-insets-scroll-20260801-115314.png`. Previous screenshots are not repair evidence.
+- Verification passed: 92 JVM tests, `lintDebug`, normal Debug, Native Debug, `assembleDebugAndroidTest`, and real UI instrumentation.
+- Current gate remains `V2_UI_SIMULATOR_ACCEPTANCE`; final state: `UI_SIMULATOR_VERIFIED`.

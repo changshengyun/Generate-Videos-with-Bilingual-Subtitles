@@ -167,3 +167,13 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 - Review screenshots remain outside the repository at `D:\DevEnv\Projects\lyric-captioner-ui-review.png`, `D:\DevEnv\Projects\ui-flow-scroll.png`, and `D:\DevEnv\Projects\documentsui-video-picker.png`.
 - Verification passed: 92 JVM tests, `lintDebug` with 0 errors/0 warnings, normal Debug, Native Debug, and `assembleDebugAndroidTest`.
 - Final status: `UI_SIMULATOR_VERIFIED`.
+
+## V2-UI-001 Insets fix verification (2026-08-01)
+
+- Root cause: `MainActivity` did not apply Window Insets while the target SDK edge-to-edge window allowed the Compose root column to start at screen top; the previous ordinary padding did not protect the status bar.
+- Minimal fix: applied Compose `statusBarsPadding()` and `navigationBarsPadding()` to the editor root content. No ViewModel, model, FFmpegKit, Media3, export path, or dependency changes.
+- `LocalAiInstrumentation` now reads the status-bar inset and the accessibility bounds of the `歌词字幕工作台` node, asserting `titleTop >= statusBarInset`.
+- Pixel_8 / `emulator-5554` / `1080x2400` / `420 dpi`: instrumentation passed with `statusBarInset=132`, `titleTop=164`, `titleBottom=256`, screenshot `1080x2400`, and `INSTRUMENTATION_CODE: -1`.
+- New repair evidence screenshots, generated 2026-08-01: `D:\DevEnv\Projects\v2-ui-insets-initial-20260801-115158.png`, `D:\DevEnv\Projects\v2-ui-insets-imported-20260801-115158.png`, and `D:\DevEnv\Projects\v2-ui-insets-scroll-20260801-115314.png`. The 2026-07-31 UI screenshots remain baseline-only.
+- Verification passed: 92 JVM tests, `lintDebug`, normal Debug, Native Debug, `assembleDebugAndroidTest`, and real UI instrumentation.
+- Final status: `UI_SIMULATOR_VERIFIED`.

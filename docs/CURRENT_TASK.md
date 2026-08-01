@@ -2,7 +2,7 @@
 
 ## 状态
 
-- Revision: `2`
+- Revision: `3`
 - Status: `UI_SIMULATOR_VERIFIED`
 - Owner: `Development Agent`
 - Product Gate: `V2_UI_SIMULATOR_ACCEPTANCE`
@@ -85,3 +85,16 @@
 - 不提交 Git，不同步 GitHub。
 
 V2-ASR-002 历史阶段状态：`FIXTURE_REQUIRED`；当前活动任务最终状态：`UI_SIMULATOR_VERIFIED`。
+
+## V2-UI-001 Insets 修复记录（2026-08-01）
+
+- 根因：`MainActivity` 未配置 Window Insets，目标 SDK 的 edge-to-edge 窗口使 Compose 根列从屏幕顶端布局；原有普通 padding 不能避开状态栏。
+- 最小修复：`EditorScreen` 根内容增加 Compose `statusBarsPadding()` 与 `navigationBarsPadding()`；未修改 ViewModel、模型、FFmpegKit、Media3、导出链路或依赖。
+- `LocalAiInstrumentation` 现在读取状态栏 inset 与可访问性树中“歌词字幕工作台”的真实屏幕 bounds，并断言 `titleTop >= statusBarInset`。
+- `emulator-5554` / Pixel_8 / `1080x2400` / `420 dpi`：真实 instrumentation 通过，`statusBarInset=132`、`titleTop=164`、`titleBottom=256`、截图 `1080x2400`、`INSTRUMENTATION_CODE: -1`。
+- 本轮新截图（旧 UI 截图仅作为修改前基线，不作为本次修复证据）：
+  - `D:\DevEnv\Projects\v2-ui-insets-initial-20260801-115158.png`
+  - `D:\DevEnv\Projects\v2-ui-insets-imported-20260801-115158.png`
+  - `D:\DevEnv\Projects\v2-ui-insets-scroll-20260801-115314.png`
+- 全量验证通过：92 JVM tests、`lintDebug`、普通 Debug、Native Debug、`assembleDebugAndroidTest` 和真实 UI instrumentation。
+- 本轮最终状态：`UI_SIMULATOR_VERIFIED`。
