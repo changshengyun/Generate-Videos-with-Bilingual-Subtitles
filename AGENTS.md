@@ -81,3 +81,79 @@
   必须区分精确、派生、人工、不可获得和估算数据。平台不提供分角色精确 Token 时必须记录 `Unavailable`，不得按文本长度推测。
 - Governance findings may recommend changes to a Prompt, Skill, rule, template, or workflow, but do not authorize those changes or any product/architecture action.
   治理结论可以建议修改 Prompt、Skill、规则、模板或流程，但不授权这些修改，也不授权任何产品或架构动作。
+
+## 9. LyricCaptioner stage execution contract / LyricCaptioner 阶段执行契约
+
+本节是所有 LyricCaptioner Developer 阶段任务的默认执行契约。后续 Prompt 不需要重复本节，只需声明任务 ID、阶段目标、功能边界、专项验收和相对于本节的例外；若 Prompt 与本节冲突，以用户最新明确指令和三份活动文档共同确认的当前任务为准。
+
+### 9.1 Start and authority / 启动与授权
+
+- 收到用户或 Brain 明确交付的可执行阶段任务后，立即执行，不复述任务、不等待二次确认。该交付视为对任务范围内业务代码、测试、构建和允许运行环境操作的授权，但不授权本节规定的 `HUMAN_DECISION` 事项。
+- 执行前必须读取根目录 `AGENTS.md`、`docs/DEVELOPMENT_ROADMAP.md`、`docs/CURRENT_TASK.md`、`docs/PROJECT_STATE.md`，核对 Git 根目录、分支、HEAD、工作树和当前运行环境门禁。
+- 上述三份活动文档是 Brain 与 Developer 唯一共享状态面；`docs-BK`、`docs/archive` 和历史聊天只用于追溯，不参与当前调度。若活动文档互相矛盾，先在允许范围内依据最新已验证证据统一状态；无法安全统一时才返回 `HUMAN_DECISION`。
+- 同一时间只执行一个活动模块。不得重新安排已经完成的阶段，也不得把历史 Prompt 当作当前授权。
+
+### 9.2 Scope and change control / 范围与变更控制
+
+- 只修改当前模块为实现目标和验收所必需的代码、测试、配置及三份活动文档；保持未列入当前任务的业务链路和已验证基线不变。
+- 禁止通过绕过功能、删除或弱化测试、隐藏错误、使用 Demo/fallback 冒充产品链路、降低验收标准或擅自换方案取得 PASS。
+- 未经用户明确决定，不得改变架构或技术栈，不得替换或下载大型模型，不得引入大型依赖，不得扩大产品范围，不得执行破坏性文件、Git、设备或用户数据操作。
+- 普通实现选择、代码错误、测试失败、构建失败、模拟器问题和配置问题不属于人工决策，由 Developer 在当前模块内自主处理。
+
+### 9.3 Git discipline / Git 纪律
+
+- 开始新阶段时，先把三份活动文档切换到该任务的 `IN_PROGRESS` 状态，并为阶段入口建立独立 checkpoint commit；阶段完成后创建独立功能提交。阶段内的小调整沿用当前阶段，不额外制造微型阶段。
+- 提交前精确检查 staged diff，只提交当前任务文件。保留所有进入任务前已经存在的修改和未跟踪内容，尤其不得擅自清理、重置、覆盖或暂存 `third_party/ffmpeg-kit` 的既有状态。
+- 禁止使用 `git reset --hard`、强制 checkout、clean 或等效破坏性操作。默认不 push；只有用户明确要求时才允许 push。
+
+### 9.4 Autonomous debug loop / 自主 Debug 闭环
+
+- 不在第一个新错误处结束模块。按“最早失败点 → 最小复现或回归测试 → 根因分析 → 针对性修复 → 相关测试 → 全量测试 → 完整模块验收”持续执行。
+- 修复必须针对已证明的根因，并补充能够防止回归的测试。若一个错误修复后出现下一个普通错误，继续处理，直到模块达到验收状态或触发真正的 `HUMAN_DECISION`。
+- 本闭环属于一次已授权实现任务内部的工作，不是 Multi-Agent 自动递归或新的状态流转，不需要为普通失败反复请求用户批准。
+
+### 9.5 Verification and evidence levels / 验证与证据等级
+
+- 编译成功不等于功能通过。根据改动范围完成单元测试、模块测试、集成测试和目标运行环境验收；UI、媒体、模型或端到端行为必须在允许的模拟器或设备上走真实产品入口验证。
+- 默认 Android 阶段回归矩阵包括：`python tools\asr_evaluate_test.py`、`.\gradlew.bat testDebugUnitTest`、`.\gradlew.bat lintDebug`、普通 Debug 构建、`-PenableWhisperNative=true` Native Debug 构建和 AndroidTest 构建；与界面或产品流程有关的阶段还必须实际运行 instrumentation。若某命令不适用于当前仓库状态，应说明依据，不得静默跳过。
+- 严格区分 `BUILD_VERIFIED`、`COMPONENT_VERIFIED`、`SIMULATOR_VERIFIED`、`DEVICE_VERIFIED` 和正式验收。模拟器证据不得写成真机证据；Demo、固定探针、mock、空结果或 fallback 不得写成真实产品成功。
+- 设备边界以三份活动文档为准。处于 simulator-only 门禁时，禁止连接或测试真机，最终证据最高只能到对应的 `*_SIMULATOR_VERIFIED`，并把真机验证明确延后到后续设备门禁阶段。
+- 验收证据必须报告实际命令结果、测试数量、模拟器或设备标识、关键产物路径及大小/时长/编码等适用数据；UI 阶段必须提供可复核截图，并检查系统栏 Insets、裁切、重叠、滚动、触控区域和关键无障碍描述。
+
+### 9.6 Documentation / 文档维护
+
+- 活动状态最多维护 `docs/DEVELOPMENT_ROADMAP.md`、`docs/CURRENT_TASK.md`、`docs/PROJECT_STATE.md`。不得为每次 Debug 新建状态、总结或交接文档。
+- 阶段结束时三份文档必须一致记录：实际实现、测试证据、证据等级、剩余风险、设备门禁和下一完整模块。不得提前声明未验证的质量提升、设备通过或后续模块完成。
+- 涉及长期路线、模块顺序或关键产品决策的变更，不得自行写成既定路线，应返回 Brain/用户确认。
+
+### 9.7 HUMAN_DECISION boundary / 人工决策边界
+
+仅在以下情况停止并明确返回 `HUMAN_DECISION`：
+
+- 架构或技术栈变化；
+- 下载、替换大型模型或引入大型依赖；
+- 破坏性文件、Git、设备或用户数据操作；
+- 产品需求与活动文档发生实质冲突；
+- 开发范围明显扩大；
+- 缺少无法由 Developer 合理生成的真实数据或人工参考标准；
+- 无法证明当前修复方案安全。
+
+其余普通问题继续自主 Debug，不交给用户选择实现细节。
+
+### 9.8 Completion report / 最终汇报
+
+最终汇报保持精简且可审计，至少包含：
+
+1. 最终状态：`PASS`、`PARTIAL_PASS`、`BLOCKED` 或 `HUMAN_DECISION`，并附模块证据等级；
+2. 实际修改内容与明确未修改范围；
+3. 单元、模块、集成、构建和运行环境测试结果；
+4. 模拟器或设备证据、产物或截图路径；
+5. checkpoint 与最终功能 Commit，以及是否 push；
+6. 最终 Git 状态和保留的既有脏内容；
+7. 剩余问题、当前门禁和下一完整模块。
+
+### 9.9 Prompt inheritance / Prompt 继承规则
+
+- 新阶段 Prompt 只需提供：当前已验证快照、模块 ID 与目标、模块特有的允许/禁止范围、专项验收、当前模拟器/设备门禁、需要使用的专项 Skill，以及对本契约的明确例外。
+- 已在本节固定的启动读取、Git 安全、自主 Debug、通用测试、证据分级、三份文档维护、人工决策边界和最终汇报格式，不再逐段复制到后续 Prompt。
+- 同一阶段内的补充调整只写可直接执行的 delta：要改什么、不能改什么、如何验收；不得重新生成完整阶段合同。
