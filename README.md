@@ -3,23 +3,25 @@
 这是一个本地优先的 Android 双语字幕工具。用户可以导入不超过 5 分钟的视频，使用 SRT、歌词、人工字幕或真实本地语音识别生成英文字幕，编辑中英文内容和时间，预览后导出带双语字幕的 MP4。
 
 ## 当前状态
-参考docs文件夹下的文档
+
+V2 已由用户手动验收并归档，当前进入 V3 决策与规划阶段。活动状态以 `docs/` 为准；V2 历史状态见 `docs-v2/`。
 
 ## 当前使用的三份项目文档
 
 - [长期开发路线](docs/DEVELOPMENT_ROADMAP.md)：模块顺序、模块边界、接口、测试和完成标准。
 - [当前任务](docs/CURRENT_TASK.md)：当前唯一活动任务、允许范围和人工决策门。
 - [项目状态](docs/PROJECT_STATE.md)：当前门禁、已确认事实、风险和下一允许动作。
+- [V3 产品与架构方案](docs/V3_PRODUCT_ARCHITECTURE.md)：V3 的交互、字幕坐标、模型缓存和云端增强详细参考。
 
 ## 文档备份
 
-原有 `docs` 目录没有删除，已完整备份为 `docs-BK`。备份内容只用于追溯，不作为当前执行队列。需要恢复旧证据时，先依据当前三份文档和人工决策确定范围。
+V2 活动文档已归档为 `docs-v2/`；更早的原始文档备份位于 `docs-BK/`。归档内容只用于追溯，不作为当前执行队列。
 
 ## 技术边界
 
 - Android-only，当前配置 `minSdk 26`、`targetSdk 35`。
-- Kotlin、Jetpack Compose、Media3、Android MediaCodec、whisper.cpp JNI 和 ML Kit 是当前技术基础。
-- 核心媒体处理以本地优先为原则，不把用户媒体强制上传到云端。
+- Kotlin、Jetpack Compose、Material 3、Media3、FFmpegKit 和 whisper.cpp JNI 是当前技术基础。
+- 视频导入、音频处理、Whisper 识别、预览和导出保持本地执行；V3 云端字幕增强仍受 API、后端、隐私和离线策略决策门禁约束。
 - 不保证自动还原原歌词；低置信度结果必须允许人工修正。
 
 ## 开发规则

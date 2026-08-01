@@ -1,54 +1,59 @@
-# LyricCaptioner project state
+# LyricCaptioner V3 project state
 
 ## Authoritative current state
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V2-IMPORT-002 / IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`
-- Review baseline: `65ac915` with code-fix baseline `6b9fd99`
-- Current gate: `SIMULATOR_ONLY_TEMPORARY`
-- Next permitted stage: `V2-E2E-002 / DEFERRED_DEVICE_GATE`
-- Physical-device evidence: not complete; simulator evidence must not be promoted to `DEVICE_VERIFIED`.
-- Required device for this stage: `emulator-5554` only.
+- Current task: `V3-DEC-001 / AWAITING_USER_RESPONSES`
+- V2 functional code baseline: `8a48d88`
+- V2 archive: `docs-v2/`
+- Current gate: `PLANNING_ONLY`
+- Implementation authorization: not granted; user requested review of the V3 task before development
+- Next permitted action: collect row-by-row answers from `CURRENT_TASK.md`, reconcile them into the V3 architecture, then generate the first executable Developer Prompt
 
-## V2-IMPORT-002 closure facts (2026-08-02)
+## Version transition
 
-- Product entry used Android DocumentsUI to select a real MP4 and returned to the product with a playable preview and verified persistent read permission.
-- SRT import produced two measured captions. Style state was measured as `#61D6FF / #F4E7A1 / #000000 / sans / 24 / 12`.
-- FFmpegKit output was `71,203` bytes, `4,011 ms`, H.264/AVC plus AAC. Media3 playback and controls were ready.
-- Source SHA-256 before and after export was identical: `68d080a8b5691442302f981ff645fe4073acb28eebd80b05fd37b9da4568709d`.
-- External force-stop/relaunch restored a valid persisted project and Media3 playback. A separate invalid archive exposed unavailable state; relink preserved measured captions and style and invalidated stale export. Picker cancellation preserved an exact state snapshot.
-- Instrumentation on Pixel_8 `1080x2400 / 420 dpi` returned `INSTRUMENTATION_CODE: -1` for the prepare, valid-restore, and invalid/relink/cancel runs.
-- Illegal-media product entry rejected non-video, empty, unreadable, and over-five-minute inputs without changing the baseline project/editor state; retained fixture hashes were unchanged.
-- Real `ggml-small.en-q5_1.bin` JNI cancellation returned in `91,298 ms`, exited `whisper_full` with `-6`, logged native cancellation, and deleted temporary audio.
-- Regression matrix: `101` JVM tests, `6` evaluator tests, Lint, normal Debug, Native Debug, and AndroidTest build all passed.
+- The user explicitly accepted V2 after manual verification on `fcf4b0cb / 25098PN5AC / ARM64 / 1220x2656 / 520 dpi` and waived further V2 operations.
+- The prior active `docs/` was archived to `docs-v2/`.
+- The former `docs-v3/` architecture draft was promoted into the new active `docs/` and supplemented with the required three-document state surface.
+- V2 code was not changed during this transition. `third_party/ffmpeg-kit`, models, media, test assets, and existing untracked content remain outside the documentation commit.
 
-## Review fixes included
+## Confirmed V3 direction
 
-- Relink intent is explicit through `requiresVideoAssociation`; no-video/invalid restore no longer routes a captioned project through new-video clearing semantics.
-- Instrumentation never deletes or shell-interprets the caller-provided source path. SHA verification uses scanner-provided content URIs with scoped shell identity only for test inspection.
-- Export rejects source/destination identity and never deletes a caller-owned destination on precondition, failure, or cancellation; only private temporary work files are owned by the exporter.
-- SRT and lyrics reads are bounded, UTF-8 validated, exception-safe, and dispatched off the Compose main thread. Project archive and model operations are also moved off the main thread.
-- ONNX preparation/inference runs on controlled background dispatchers. Whisper JNI now receives a cancellation token, configures the native abort callback, and has real emulator evidence for cancellation and native exit.
+- Add a process-level cache for the current Whisper model context; keep model state separate from task state and serialize use of one context.
+- Redesign interaction before visual styling.
+- After successful subtitle generation, navigate to subtitle editing and keep the subtitle list inside that section.
+- Use one project-level caption text box within the active video image and cue-level style overrides.
+- Resolve subtitle position and font size in source-video coordinates so preview, fullscreen, aspect-ratio changes, and export agree.
+- Prefer system gallery/media experiences for default import and export, with an advanced location override.
+- Replace test-workbench presentation with a product UI and remove visible development/version labels.
+- Preserve the existing cloud structured-caption enhancement proposal behind explicit API/backend/privacy decisions.
 
-## Boundaries and preserved state
+## Evidence and claim boundaries
 
-- Do not modify or clean `third_party/ffmpeg-kit`, models, AARs, Media3, archive semantics, or the existing untracked content.
-- Do not connect or test a physical device in the current gate.
-- Do not claim model quality improvement, device verification, or completion of the phone gate.
-- Existing prior stages remain: `V2-UI-001 / UI_SIMULATOR_VERIFIED`, `V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`, `V2-UI-002 / UI2_SIMULATOR_VERIFIED`, and `V2-ASR-002 / FIXTURE_REQUIRED`.
+- Whisper caching may improve repeated-task startup time but does not itself improve core inference speed or recognition accuracy.
+- User-observed V2 recognition usability is accepted as product feedback, not fixture-backed WER/CER evidence.
+- OPUS-MT works locally but its Chinese naturalness is not accepted as final product quality.
+- GPU availability on the phone does not authorize a GPU backend; any GPU work requires an independent Spike and regression evidence.
+- Preview/export visual equivalence must exclude letterbox/pillarbox regions and use the source video as the common coordinate system.
 
-## Stage routing history
+## Preserved state
+
+- Do not clean, reset, stage, or commit the existing dirty `third_party/ffmpeg-kit` state.
+- Do not commit models, `.emulator-test-assets/`, `tools/opus-mt-en-zh/`, `._cache_adb.exe`, or unrelated untracked content.
+- Do not push unless the user explicitly requests it.
+- Do not start V3 business-code implementation until `V3-DEC-001` is resolved.
+
+## Stage routing
 
 | Stage | State |
 |---|---|
-| V2-ASR-001 | `PAUSED_WITH_ASSETS` |
-| V2-PROD-001 | `ARM64_PRODUCT_PATH_VERIFIED` |
-| V2-CLEAN-001 | `V2_CLEAN_SIMULATOR_VERIFIED` |
-| V2-LOCAL-AI-001 | `LOCAL_AI_SIMULATOR_VERIFIED` |
-| V2-ASR-002 | `FIXTURE_REQUIRED` |
-| V2-UI-001 | `UI_SIMULATOR_VERIFIED` |
-| V2-PREVIEW-001 | `PREVIEW_SIMULATOR_VERIFIED` |
-| V2-UI-002 | `UI2_SIMULATOR_VERIFIED` |
-| V2-IMPORT-002 | `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED` |
-| V2-E2E-002 | `DEFERRED_DEVICE_GATE` |
+| V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
+| V3-DEC-001 | `AWAITING_USER_RESPONSES` |
+| V3-ASR-CACHE-001 | `PLANNED` |
+| V3-UX-001 | `PLANNED` |
+| V3-MEDIA-001 | `PLANNED` |
+| V3-UI-001 | `PLANNED` |
+| V3-API-001 | `BLOCKED_BY_DECISION` |
+| V3-AI-001 | `BLOCKED_BY_DECISION` |
+| V3-E2E-003 | `PLANNED` |

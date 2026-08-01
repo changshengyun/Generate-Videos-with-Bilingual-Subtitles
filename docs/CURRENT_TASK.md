@@ -1,53 +1,60 @@
-# Current Task: V2-IMPORT-002 closure
+# Current Task: V3-DEC-001
 
 ## Current status
 
-- Stage: `V2-IMPORT-002`
-- Status: `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`
-- Review baseline: `65ac915` with code-fix baseline `6b9fd99`
-- Verification mode: `SIMULATOR_ONLY_TEMPORARY`
-- Device: `emulator-5554` / Pixel_8 / `1080x2400` / `420 dpi`
-- Next stage: `V2-E2E-002 / DEFERRED_DEVICE_GATE`
+- Stage: `V3-DEC-001`
+- Status: `AWAITING_USER_RESPONSES`
+- Scope: V3 产品交互、字幕布局/样式、媒体默认入口、Whisper 缓存和云端增强决策冻结
+- V2 functional baseline: `8a48d88`
+- Implementation authorization: `NOT_YET_GRANTED`
+- Next action: 用户按决策表逐行回答；Brain 据此生成可立即执行的首个 V3 Developer Prompt
 
-## Active execution contract
+## Confirmed requirements
 
-- The product video entry launches Android DocumentsUI through the visible import control. ADB may prepare emulator fixtures only; it does not select the product URI or copy media into App-private storage.
-- Validate URI readability, real video track, non-empty content, duration, five-minute limit, and persisted permission or an explicit session-only result.
-- Cancellation preserves the current project, captions, styles, preview, and derived output. New import clears captions and derived output. Relink preserves captions, confirmation state, and style while invalidating the old export.
-- Save and external force-stop/relaunch restore the project. An unavailable URI exposes a rebind action and never reuses stale output.
-- Export uses FFmpegKit and playback uses Media3. Product processing has no Demo fallback or runtime network/model download.
-- Preserve source media, `third_party/ffmpeg-kit`, existing untracked content, models, archive semantics, and the existing navigation/processing architecture.
-- No physical device may be connected or tested in this stage. Physical evidence remains reserved for `V2-E2E-002` and must not be reported as `DEVICE_VERIFIED`.
+- V2 已由用户手动验收关闭，不再补做测试或设备证据。
+- Whisper 继续使用当前 `ggml-small.en-q5_1.bin`，V3 增加进程级模型上下文缓存；不得把缓存收益写成准确率提升。
+- 字幕生成成功后自动进入字幕编辑栏目，字幕列表移动到该栏目内。
+- 所有字幕共享一个视频内文本框范围；每段字幕可独立修改字体样式。
+- 普通预览、横屏/全屏预览和导出必须使用同一源视频坐标与字号解析规则。
+- 导入和导出默认走系统相册体验，同时保留用户主动选择其他位置的入口。
+- V3 UI 必须从测试 Demo 升级为正式产品，移除“歌词字幕工作台”、左侧 `V2` 等开发/版本展示。
+- 先冻结交互，再据此修改 UI；视觉样式不能反过来改变已确认工作流。
+- 已有 V3 云端结构化 AI 增强草案继续保留，但关键服务、隐私和离线决策未完成前不得实施。
 
-## Closure evidence (2026-08-02)
+## Proposed V3 execution task
 
-- `emulator-5554` entered DocumentsUI from the product, selected a real MP4, returned to the app, imported two SRT cues, changed subtitle style, saved a project, and produced a non-zero export.
-- Export: `71,203` bytes, `4,011 ms`, H.264 `video/avc`, AAC `audio/mp4a-latm`; Media3 playback and controls were ready.
-- Source SHA-256 before/after export: `68d080a8b5691442302f981ff645fe4073acb28eebd80b05fd37b9da4568709d` (unchanged).
-- Valid saved-project restore crossed an external force-stop/relaunch boundary and returned `media=PERSISTED`, with Media3 play/pause/seek verification.
-- Invalid URI restore exposed unavailable state; relink measured caption and style state equality and export invalidation; picker cancel measured an identical before/after state snapshot.
-- Instrumentation results returned `INSTRUMENTATION_CODE: -1` for prepare, valid restore, and invalid/relink/cancel runs. No true device was used.
-- Illegal-media product entry rejected non-video, empty, unreadable, and over-five-minute fixtures while preserving the baseline project/caption/style/export state; retained fixture hashes were unchanged.
-- Real `ggml-small.en-q5_1.bin` JNI cancellation returned in `91,298 ms` with native abort/full-exit/cancel logs and deleted temporary WAV.
+用户完成下方决策后，首个实施任务建议拆为 `V3-ASR-CACHE-001`，只实现 Whisper 缓存和可测量的冷/热启动基线，不同时重做 UI。随后执行 `V3-UX-001` 和 `V3-MEDIA-001`，最后基于已验证交互进入 `V3-UI-001`。云端增强阶段保持决策门禁，不与本地性能和交互改造混在同一提交。
 
-## Regression matrix
+## Decision table
 
-- `101` JVM tests: passed, 0 failures/errors/skips.
-- `python tools\\asr_evaluate_test.py`: `6` passed.
-- `lintDebug`: passed.
-- `assembleDebug`: passed.
-- `assembleDebug -PenableWhisperNative=true`: passed.
-- `assembleDebugAndroidTest -PenableWhisperNative=true`: passed.
+请按 ID 回复，例如：`D01 采用建议；D03 只调宽度和上下位置；D07 中文名叫……`。
 
-## Scope disposition
+| ID | 待决定事项 | 建议默认值 | 影响 |
+|---|---|---|---|
+| `D01` | V3 是否继续包含现有“自有后端 + 云端结构化 AI 英文纠错/中文翻译”路线 | 保留，但与缓存/UI 分阶段实施 | 决定 OPUS-MT 是否最终退出产品路径 |
+| `D02` | Whisper 缓存在何时释放 | 单模型常驻；模型切换、显式关闭或严重内存压力时释放；普通页面切换与任务结束不释放 | 影响热启动速度、RAM 和进程被系统回收概率 |
+| `D03` | 统一字幕文本框允许用户调哪些维度 | 调整宽度、水平位置和垂直位置；高度随文本自动计算，不允许任意拉伸 | 避免逐段字幕高度差异和导出换行失控 |
+| `D04` | 每段字幕可独立覆盖哪些样式 | 字体、字号、英文色、中文色、描边色、粗体、斜体、对齐；文本框范围保持全局 | 决定编辑器复杂度和数据迁移范围 |
+| `D05` | 新字幕与旧 V2 项目的样式继承方式 | 项目保存默认样式；每段只保存差异覆盖；V2 全局样式迁移为 V3 默认样式 | 减少重复数据并保持旧项目视觉一致 |
+| `D06` | “默认系统相册”的具体行为 | 导入用 Android Photo Picker；导出自动保存到 `Movies/LyricCaptioner` 并进入系统相册；高级操作允许另选文件位置 | Android 系统没有“用相册选择导出路径”的对称 API，需要确定产品语义 |
+| `D07` | 正式产品名称和顶栏内容 | 顶栏只显示 `LyricCaptioner` 或用户指定中文名；删除“歌词字幕工作台”和 `V2/V3` | 决定品牌文本、图标和导航层级 |
+| `D08` | 自动进入字幕编辑的触发规则 | 仅在新识别/增强成功后自动跳转一次；打开旧项目或后台恢复不强制抢焦点 | 避免恢复项目时打断用户当前操作 |
+| `D09` | 云端增强失败或断网时的产品行为 | 保留原始英文 ASR，可继续编辑、预览和导出；不回退到 Demo | 决定离线可用性和错误恢复 |
+| `D10` | 云端 API、后端、隐私和歌词来源 | 自有后端持有密钥；默认不持久化歌词；无授权歌词来源时只做上下文纠错/翻译，不声称精确歌曲匹配 | 这是进入 `V3-API-001` 前的架构门禁 |
 
-- Fixed in this closure: relink state retention after no-video/invalid restore, source-safe instrumentation hashing and fixture handling, export destination/source safety, failure/cancel destination preservation, bounded asynchronous SRT/lyrics reads, background model/ONNX work, and Whisper JNI cancellation.
-- Deferred: physical-phone ARM64 selection, restart recovery, relink, and export evidence; these belong to `V2-E2E-002 / DEFERRED_DEVICE_GATE`.
-- Not changed: Whisper/translation strategy, UI visual system, Media3/FFmpegKit business logic, AARs, dependencies, archive semantics, and `third_party/ffmpeg-kit`.
+## Technical baseline: preview/export typography
 
-## Prior verified stages
+竖屏视频在横屏播放器中出现黑边时，字幕不能按整个播放器高度计算。统一方式如下：
 
-- `V2-UI-001 / UI_SIMULATOR_VERIFIED`
-- `V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`
-- `V2-UI-002 / UI2_SIMULATOR_VERIFIED`
-- `V2-ASR-002 / FIXTURE_REQUIRED`
+1. 读取源视频 `width/height`，以源视频像素建立规范坐标。
+2. 字号保存为源视频高度比例：`fontSizeRatio = fontSizePx / sourceVideoHeight`。
+3. 普通/全屏预览先计算实际视频有效矩形，排除黑边，再用 `displayedVideoHeight / sourceVideoHeight` 缩放字号和文本框。
+4. FFmpegKit/ASS 使用源视频尺寸作为 `PlayResX/PlayResY`，按相同 `fontSizeRatio` 还原导出字号。
+5. 三种渲染路径必须调用同一个样式解析器和布局转换器，禁止各自使用独立 magic number。
+
+## Boundaries
+
+- 当前任务只允许完善活动文档和收集用户决策，不允许修改业务代码或启动 V3 实施。
+- 不启用 GPU、不替换 Whisper 模型、不下载大型依赖。
+- 不把 UI 重做、模型缓存和云端后端塞进一个实现阶段。
+- 用户完成决策后，Developer Prompt 必须立即执行对应阶段，不再次要求确认。
