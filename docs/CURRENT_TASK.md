@@ -2,15 +2,15 @@
 
 ## 状态
 
-- Revision: `3`
-- Status: `IN_PROGRESS`
+- Revision: `4`
+- Status: `UI2_SIMULATOR_VERIFIED`
 - Owner: `Development Agent`
 - Product Gate: `V2_UI2_SIMULATOR_ACCEPTANCE`
 - Verification Mode: `SIMULATOR_ONLY_TEMPORARY`
 
 ## V2-UI-002 Current Execution Contract
 
-- The only active task is `V2-UI-002`.
+- The only completed active task is `V2-UI-002`; the next planned task is `V2-IMPORT-002`.
 - Previous verified stages remain preserved: `V2-UI-001 / UI_SIMULATOR_VERIFIED` and `V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`.
 - Scope: second-round Compose/Material 3 mobile workbench refinement; compact header and status, preview-first layout, clearer import → recognition/translation → subtitle editing → export hierarchy, denser subtitle editing, consistent states, touch targets, accessibility semantics, and safe-area validation.
 - Preserve existing local video picker, Media3 fullscreen preview and controls, bilingual subtitle overlay, subtitle style persistence, project/archive semantics, FFmpegKit export, ViewModel behavior, model/runtime selection, and navigation.
@@ -19,7 +19,7 @@
 
 ## V2-PREVIEW-001 previous verification record
 
-- The only active task is `V2-PREVIEW-001`.
+- Historical stage record: `V2-PREVIEW-001` is already verified and is not the active task.
 - Preserved stage states: `V2-UI-001 / UI_SIMULATOR_VERIFIED`, `V2-ASR-002 / FIXTURE_REQUIRED`, and `V2-TRN-002 / PLANNED`.
 - Scope: full-screen Media3 preview, play/pause/seek/back handling, live bilingual subtitle overlay, subtitle font/size/position/color editing, and persistence through `SubtitleStyle`, `ExportProfile`, project archives, and FFmpegKit output.
 - Explicitly out of scope: timeline, multi-track editing, filters, stickers, transitions, effects, trimming, speed changes, cover editing, and new dependencies.
@@ -37,13 +37,23 @@
 
 ## V2-UI-002 阶段入口记录（2026-08-01）
 
-- 已将唯一活动任务从已验证的 `V2-PREVIEW-001` 切换为 `V2-UI-002 / IN_PROGRESS`。
+- 阶段入口时已将唯一活动任务从已验证的 `V2-PREVIEW-001` 切换为 `V2-UI-002 / IN_PROGRESS`；该阶段现已完成并更新为 `UI2_SIMULATOR_VERIFIED`。
 - 阶段入口 checkpoint 将只包含三份活动文档；`third_party/ffmpeg-kit` 与既有未跟踪内容不纳入提交。
 - 视觉审查基线：`D:\DevEnv\Projects\preview-v2-native-normal-final.png`、`D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`、`D:\DevEnv\Projects\preview-v2-native-restored-final.png`。初步发现工作台纵向卡片堆叠、状态区占高、字幕编辑区被挤压、主次操作不够集中；全屏预览能力保持不变。
 
-## 已批准后续阶段（不改变当前唯一任务）
+## V2-UI-002 verification record (2026-08-01)
 
-- `V2-UI-002 / IN_PROGRESS`：使用项目级 UI 技能进行第二轮移动端视觉与交互精修；完成后再进入本地视频导入设备门禁。
+- 完成阶段 checkpoint `6741fc5`，最终功能提交为本阶段独立提交；既有 `third_party/ffmpeg-kit` 脏状态及未跟踪内容未纳入。
+- Compose 工作台改为紧凑标题、预览优先、状态条和四段工作区标签；导入、识别/翻译、字幕编辑、样式控制与导出按阶段分区，保留现有 ViewModel、Local AI、FFmpegKit、Media3 和导航行为。
+- 新增可访问语义与触控边界检查，覆盖工作区标签、视频导入、字幕列表、样式控制和导出入口；继续使用状态栏/导航栏安全区。
+- Pixel_8 `emulator-5554`（`1080x2400` / `420 dpi`）完成真实 DocumentsUI 视频选择与返回、字幕导入、样式控制、导出操作区和 Media3 全屏/退出回放；instrumentation 返回 `INSTRUMENTATION_CODE: -1`，状态栏 inset `132`，安全内容高度 `2400`。
+- 测试通过：`asr_evaluate_test.py` 6 项、JVM 96 项、Lint、普通 Debug、Native Debug、AndroidTest 构建及真实 UI instrumentation。
+- 新截图（2026-08-01 13:53:42）位于 `D:\DevEnv\Projects\preview-v2-ui2-ui2-initial.png`、`preview-v2-ui2-ui2-imported.png`、`preview-v2-ui2-ui2-subtitles.png`、`preview-v2-ui2-ui2-export.png`、`preview-v2-ui2-preview-fullscreen.png`、`preview-v2-ui2-preview-restored.png`；相较基线，工作流层级更清晰、重复大卡片减少、预览和编辑区可用空间增加。
+- 阶段最终状态：`UI2_SIMULATOR_VERIFIED`。不声明 `DEVICE_VERIFIED`；手机本地视频设备门禁延续到 `V2-IMPORT-002` / `V2-E2E-002`。
+
+## 已批准后续阶段（当前任务已完成）
+
+- `V2-UI-002 / UI2_SIMULATOR_VERIFIED`：第二轮移动端视觉与交互精修已完成，仅模拟器证据通过。
 - `V2-IMPORT-002 / PLANNED / DEVICE_GATE_DEFERRED`：完成 Android 系统媒体选择器到真实本地视频预览、权限持久化、保存恢复和处理链路。当前禁止真机，因此模拟器通过后仍必须把真机导入证据延续至 `V2-E2E-002`。
 - 当前 Developer 不得提前实施这两个模块，也不得因本路线补充扩大 `V2-PREVIEW-001` 范围。
 

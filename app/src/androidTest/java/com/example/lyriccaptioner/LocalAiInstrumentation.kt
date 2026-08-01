@@ -74,12 +74,12 @@ class LocalAiInstrumentation : Instrumentation() {
         check(findComposeRoot(root)) { "Compose root was not found in the production activity." }
         val statusBarInset = root.rootWindowInsets?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
         check(statusBarInset > 0) { "Status bar inset was not reported by the activity window." }
-        val titleNode = findAccessibilityNode(uiAutomation.rootInActiveWindow, "歌词字幕工作台")
-            ?: error("Editor title was not exposed through the accessibility tree.")
+        val titleNode = waitForText("歌词字幕工作台", 10_000L)
         val titleBounds = Rect().also(titleNode::getBoundsInScreen)
         check(titleBounds.top >= statusBarInset) {
             "Editor title entered the status bar: titleTop=${titleBounds.top}, statusBarInset=$statusBarInset"
         }
+        verifyWorkbenchSemantics(results, statusBarInset)
         results.putInt("statusBarInset", statusBarInset)
         results.putInt("titleTop", titleBounds.top)
         results.putInt("titleBottom", titleBounds.bottom)
@@ -115,20 +115,35 @@ class LocalAiInstrumentation : Instrumentation() {
             },
         )
         waitForIdleSync()
+        waitForText("歌词字幕工作台", 10_000L)
+        verifyWorkbenchSemantics(results, statusBarInset = currentStatusBarInset(activity))
+        results.putString("initialScreenshot", saveScreenshot("ui2-initial.png"))
         clickNode(waitForContentDescription("import_video"))
         clickNode(waitForText(inputFile.name))
+        waitForText("视频预览", 45_000L)
+        results.putString("importedScreenshot", saveScreenshot("ui2-imported.png"))
         inputArguments.getString(ARG_PREVIEW_SRT)?.takeIf { it.isNotBlank() }?.let { srtPath ->
             val srtFile = File(srtPath)
             check(srtFile.isFile && srtFile.length() > 0L) { "Preview SRT is missing or empty: $srtPath" }
-            clickNode(waitForContentDescription("import_srt", 15_000L))
+            clickNode(waitForContentDescriptionWithScroll("import_srt", 20_000L))
             clickNode(waitForText(srtFile.name, 30_000L))
             results.putString("previewSrt", srtPath)
         }
+        scrollToTop()
         val fullscreen = waitForContentDescription("preview_fullscreen", 45_000L)
         val fullscreenBounds = Rect().also(fullscreen::getBoundsInScreen)
         check(fullscreenBounds.width() > 0 && fullscreenBounds.height() > 0) {
             "Fullscreen control has no visible bounds: $fullscreenBounds"
         }
+        clickNode(waitForContentDescription("workbench_subtitles"))
+        waitForContentDescriptionWithScroll("style_controls", 20_000L)
+        results.putString("subtitleScreenshot", saveScreenshot("ui2-subtitles.png"))
+        scrollToTop()
+        clickNode(waitForContentDescription("workbench_export"))
+        waitForContentDescription("export_video")
+        results.putString("exportScreenshot", saveScreenshot("ui2-export.png"))
+        scrollToTop()
+        clickNode(waitForContentDescription("workbench_import"))
         results.putString("normalScreenshot", saveScreenshot("preview-normal.png"))
         clickNode(fullscreen)
         val dialog = waitForContentDescription("preview_fullscreen_dialog", 10_000L)
@@ -184,6 +199,73 @@ class LocalAiInstrumentation : Instrumentation() {
 
     private fun waitForContentDescription(description: String, timeoutMs: Long = 15_000L): AccessibilityNodeInfo {
         return waitForNode(timeoutMs) { root -> findAccessibilityNodeByContentDescription(root, description) }
+    }
+
+    private fun waitForContentDescriptionWithScroll(
+        description: String,
+        timeoutMs: Long,
+    ): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, description)?.let { return it }
+            findScrollableNode(uiAutomation.rootInActiveWindow)?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(250L)
+        }
+        error("Timed out waiting for a scrollable accessibility node after ${timeoutMs}ms: $description")
+    }
+
+    private fun scrollToTop() {
+        repeat(32) {
+            val scrollable = findScrollableNode(uiAutomation.rootInActiveWindow) ?: return
+            if (!scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return
+            SystemClock.sleep(100L)
+        }
+    }
+
+    private fun findScrollableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isScrollable) return node
+        for (index in 0 until node.childCount) {
+            findScrollableNode(node.getChild(index))?.let { return it }
+        }
+        return null
+    }
+
+    private fun currentStatusBarInset(activity: Activity): Int {
+        return activity.window.decorView.rootWindowInsets?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
+    }
+
+    private fun verifyWorkbenchSemantics(results: Bundle, statusBarInset: Int) {
+        val root = uiAutomation.rootInActiveWindow ?: error("Accessibility root is unavailable.")
+        val screenshot = uiAutomation.takeScreenshot()
+        val requiredTargets = listOf(
+            "workbench_import",
+            "workbench_asr",
+            "workbench_subtitles",
+            "workbench_export",
+            "import_video",
+            "caption_list",
+        )
+        requiredTargets.forEach { description ->
+            val node = findAccessibilityNodeByContentDescription(root, description)
+                ?: error("Missing required UI semantic: $description")
+            val bounds = Rect().also(node::getBoundsInScreen)
+            check(bounds.width() > 0 && bounds.height() > 0) {
+                "UI semantic has no visible bounds: $description $bounds"
+            }
+            check(bounds.left >= 0 && bounds.top >= statusBarInset &&
+                bounds.right <= screenshot.width && bounds.bottom <= screenshot.height) {
+                "UI semantic is outside safe screen bounds: $description $bounds screen=${screenshot.width}x${screenshot.height} inset=$statusBarInset"
+            }
+            check(bounds.width() >= 48 && bounds.height() >= 48) {
+                "UI semantic touch target is smaller than 48dp at ${screenshot.width}x${screenshot.height}: $description $bounds"
+            }
+        }
+        results.putString("workbenchSemantics", requiredTargets.joinToString(","))
+        results.putInt("safeContentWidth", screenshot.width)
+        results.putInt("safeContentHeight", screenshot.height)
+        results.putInt("safeStatusBarInset", statusBarInset)
+        screenshot.recycle()
     }
 
     private fun waitForText(text: String, timeoutMs: Long = 30_000L): AccessibilityNodeInfo {

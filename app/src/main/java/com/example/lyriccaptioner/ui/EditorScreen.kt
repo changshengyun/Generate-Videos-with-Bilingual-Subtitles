@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -193,15 +194,15 @@ fun EditorScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.74f)
+                    .weight(0.72f)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Header()
                 VideoPreview(
@@ -212,110 +213,112 @@ fun EditorScreen(viewModel: MainViewModel) {
                     status = state.status,
                     isWorking = state.isWorking,
                 )
-                SpeechRuntimeStatus(
-                    modelInstalled = state.modelState.speechModelInstalled,
-                    nativeReady = state.modelState.speechNativeLibraryReady,
-                    mode = state.modelState.speechMode,
+                RuntimeStatusStrip(
+                    speechReady = state.modelState.speechMode == SpeechMode.LOCAL &&
+                        state.modelState.speechModelInstalled && state.modelState.speechNativeLibraryReady,
+                    translationState = state.modelState.translationModelState,
                 )
-                TranslationRuntimeStatus(state.modelState.translationModelState)
-                WorkflowPanel(title = "1  导入与项目", subtitle = "先选择视频，或打开已有项目") {
-                    ActionRow {
-                        ActionButton(
-                            icon = "＋",
-                            label = if (state.mediaState == MediaState.UNAVAILABLE) "重新绑定视频" else "导入视频",
-                            enabled = !state.isWorking,
-                            primary = true,
-                            accessibilityId = "import_video",
-                            onClick = {
-                                videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) {
-                                    VideoImportMode.RELINK
-                                } else {
-                                    VideoImportMode.NEW_VIDEO
-                                }
-                                videoPicker.launch(arrayOf("video/*"))
-                            },
-                        )
-                        ActionButton(
-                            icon = "▣",
-                            label = "打开项目",
-                            enabled = !state.isWorking,
-                            onClick = { projectPicker.launch(arrayOf("application/octet-stream", "text/plain")) },
-                        )
-                    }
-                    ActionRow {
-                        SecondaryAction("字幕 SRT", !state.isWorking, accessibilityId = "import_srt") { srtPicker.launch("*/*") }
-                        SecondaryAction("Whisper 模型", !state.isWorking) { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }
-                    }
-                }
-                WorkflowPanel(title = "2  识别与翻译", subtitle = "使用本地模型生成英文并翻译成中文") {
-                    ActionRow {
-                        ActionButton(
-                            icon = "▶",
-                            label = if (state.modelState.speechMode == SpeechMode.LOCAL) "生成字幕" else "识别不可用",
-                            enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode == SpeechMode.LOCAL,
-                            primary = true,
-                            onClick = viewModel::generateCaptions,
-                        )
-                        ActionButton(
-                            icon = "中",
-                            label = "翻译中文",
-                            enabled = state.captions.any { it.english.isNotBlank() && it.chinese.isBlank() } && !state.isWorking,
-                            onClick = viewModel::translateMissingChinese,
-                        )
-                    }
-                    if (state.asrRunning || state.translationRunning) {
+                var activeSection by remember { mutableStateOf(0) }
+                WorkbenchTabs(activeSection = activeSection, onSectionSelected = { activeSection = it })
+                when (activeSection) {
+                    0 -> WorkflowPanel(title = "导入", subtitle = "视频、项目和字幕文件") {
                         ActionRow {
-                            SecondaryAction("取消当前任务", true) {
-                                if (state.asrRunning) viewModel.cancelGenerateCaptions()
-                                if (state.translationRunning) viewModel.cancelTranslation()
+                            ActionButton(
+                                icon = "＋",
+                                label = if (state.mediaState == MediaState.UNAVAILABLE) "重新绑定视频" else "导入视频",
+                                enabled = !state.isWorking,
+                                primary = true,
+                                accessibilityId = "import_video",
+                                onClick = {
+                                    videoImportMode = if (state.mediaState == MediaState.UNAVAILABLE) VideoImportMode.RELINK else VideoImportMode.NEW_VIDEO
+                                    videoPicker.launch(arrayOf("video/*"))
+                                },
+                            )
+                            ActionButton(
+                                icon = "▣",
+                                label = "打开项目",
+                                enabled = !state.isWorking,
+                                onClick = { projectPicker.launch(arrayOf("application/octet-stream", "text/plain")) },
+                            )
+                        }
+                        ActionRow {
+                            SecondaryAction("字幕 SRT", !state.isWorking, accessibilityId = "import_srt") { srtPicker.launch("*/*") }
+                            SecondaryAction("Whisper 模型", !state.isWorking) { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }
+                        }
+                    }
+                    1 -> WorkflowPanel(title = "识别 / 翻译", subtitle = "使用本地模型处理当前视频") {
+                        ActionRow {
+                            ActionButton(
+                                icon = "▶",
+                                label = if (state.modelState.speechMode == SpeechMode.LOCAL) "生成字幕" else "识别不可用",
+                                enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode == SpeechMode.LOCAL,
+                                primary = true,
+                                accessibilityId = "generate_captions",
+                                onClick = viewModel::generateCaptions,
+                            )
+                            ActionButton(
+                                icon = "中",
+                                label = "翻译中文",
+                                enabled = state.captions.any { it.english.isNotBlank() && it.chinese.isBlank() } && !state.isWorking,
+                                accessibilityId = "translate_chinese",
+                                onClick = viewModel::translateMissingChinese,
+                            )
+                        }
+                        if (state.asrRunning || state.translationRunning) {
+                            ActionRow {
+                                SecondaryAction("取消当前任务", true) {
+                                    if (state.asrRunning) viewModel.cancelGenerateCaptions()
+                                    if (state.translationRunning) viewModel.cancelTranslation()
+                                }
                             }
                         }
                     }
-                }
-                WorkflowPanel(title = "3  字幕编辑", subtitle = "检查文本、调整时间并确认字幕") {
-                    ActionRow {
-                        SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) { viewModel.addCaption() }
-                        SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
-                        SecondaryAction("粘贴歌词", state.videoUri != null && !state.isWorking) { showPasteLyrics = true }
-                    }
-                    SubtitleStyleControls(
-                        fontSizeSp = state.exportProfile.subtitleStyle.fontSizeSp,
-                        bottomMarginPercent = state.exportProfile.subtitleStyle.bottomMarginPercent,
-                        fontFamily = state.exportProfile.subtitleStyle.fontFamily,
-                        onFontSmaller = { viewModel.updateFontSize(-2) },
-                        onFontLarger = { viewModel.updateFontSize(2) },
-                        onMarginLower = { viewModel.updateBottomMargin(-2) },
-                        onMarginHigher = { viewModel.updateBottomMargin(2) },
-                        primaryColorHex = state.exportProfile.subtitleStyle.primaryColorHex,
-                        secondaryColorHex = state.exportProfile.subtitleStyle.secondaryColorHex,
-                        outlineColorHex = state.exportProfile.subtitleStyle.outlineColorHex,
-                        onEnglishColorChanged = viewModel::updateEnglishColor,
-                        onChineseColorChanged = viewModel::updateChineseColor,
-                        onOutlineColorChanged = viewModel::updateOutlineColor,
-                        onFontFamilyChanged = viewModel::updateFontFamily,
-                    )
-                }
-                WorkflowPanel(title = "4  导出与分享", subtitle = "保存项目、导出视频或分享成品") {
-                    ActionRow {
-                        ActionButton(
-                            icon = "⇩",
-                            label = "导出视频",
-                            enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
-                            primary = true,
-                            onClick = { videoCreator.launch(state.exportProfile.outputName) },
-                        )
-                        ActionButton(
-                            icon = "↗",
-                            label = "分享视频",
-                            enabled = state.exportUri != null && !state.isWorking,
-                            onClick = { state.exportUri?.let { shareExportedVideo(context, it) } },
+                    2 -> WorkflowPanel(title = "字幕编辑", subtitle = "调整文本、时间和字幕样式") {
+                        ActionRow {
+                            SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) { viewModel.addCaption() }
+                            SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
+                            SecondaryAction("粘贴歌词", state.videoUri != null && !state.isWorking) { showPasteLyrics = true }
+                        }
+                        SubtitleStyleControls(
+                            fontSizeSp = state.exportProfile.subtitleStyle.fontSizeSp,
+                            bottomMarginPercent = state.exportProfile.subtitleStyle.bottomMarginPercent,
+                            fontFamily = state.exportProfile.subtitleStyle.fontFamily,
+                            onFontSmaller = { viewModel.updateFontSize(-2) },
+                            onFontLarger = { viewModel.updateFontSize(2) },
+                            onMarginLower = { viewModel.updateBottomMargin(-2) },
+                            onMarginHigher = { viewModel.updateBottomMargin(2) },
+                            primaryColorHex = state.exportProfile.subtitleStyle.primaryColorHex,
+                            secondaryColorHex = state.exportProfile.subtitleStyle.secondaryColorHex,
+                            outlineColorHex = state.exportProfile.subtitleStyle.outlineColorHex,
+                            onEnglishColorChanged = viewModel::updateEnglishColor,
+                            onChineseColorChanged = viewModel::updateChineseColor,
+                            onOutlineColorChanged = viewModel::updateOutlineColor,
+                            onFontFamilyChanged = viewModel::updateFontFamily,
                         )
                     }
-                    ActionRow {
-                        SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking) { projectCreator.launch("lyric-captioner-project.lcp") }
-                        SecondaryAction("导出 SRT", state.captions.isNotEmpty() && !state.isWorking) { viewModel.exportSidecarSrt() }
-                        if (state.isWorking && !state.translationRunning && !state.asrRunning) {
-                            SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)
+                    else -> WorkflowPanel(title = "导出", subtitle = "保存项目、导出视频或分享成品") {
+                        ActionRow {
+                            ActionButton(
+                                icon = "⇩",
+                                label = "导出视频",
+                                enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
+                                primary = true,
+                                accessibilityId = "export_video",
+                                onClick = { videoCreator.launch(state.exportProfile.outputName) },
+                            )
+                            ActionButton(
+                                icon = "↗",
+                                label = "分享视频",
+                                enabled = state.exportUri != null && !state.isWorking,
+                                onClick = { state.exportUri?.let { shareExportedVideo(context, it) } },
+                            )
+                        }
+                        ActionRow {
+                            SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking) { projectCreator.launch("lyric-captioner-project.lcp") }
+                            SecondaryAction("导出 SRT", state.captions.isNotEmpty() && !state.isWorking) { viewModel.exportSidecarSrt() }
+                            if (state.isWorking && !state.translationRunning && !state.asrRunning) {
+                                SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)
+                            }
                         }
                     }
                 }
@@ -332,7 +335,113 @@ fun EditorScreen(viewModel: MainViewModel) {
                 onDelete = viewModel::deleteCaption,
                 onConfirm = viewModel::confirmCue,
                 enabled = !state.isWorking,
-                modifier = Modifier.weight(0.26f),
+                modifier = Modifier.weight(0.28f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkbenchTabs(
+    activeSection: Int,
+    onSectionSelected: (Int) -> Unit,
+) {
+    val tabs = listOf(
+        Triple("导入", "＋", "workbench_import"),
+        Triple("识别/翻译", "▶", "workbench_asr"),
+        Triple("字幕编辑", "Aa", "workbench_subtitles"),
+        Triple("导出", "⇩", "workbench_export"),
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        tabs.forEachIndexed { index, (label, icon, accessibilityId) ->
+            val selected = index == activeSection
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 52.dp)
+                    .clickable { onSectionSelected(index) }
+                    .semantics { contentDescription = accessibilityId },
+                shape = RoundedCornerShape(10.dp),
+                color = if (selected) Color(0xFFB7F36B) else Color(0xFF1B1F25),
+                contentColor = if (selected) Color(0xFF162000) else Color(0xFFD5DAE3),
+                tonalElevation = if (selected) 2.dp else 0.dp,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(icon, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RuntimeStatusStrip(
+    speechReady: Boolean,
+    translationState: TranslationModelState,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RuntimeStatusChip(
+            modifier = Modifier.weight(1f),
+            label = "识别",
+            value = if (speechReady) "Whisper 就绪" else "Whisper 不可用",
+            healthy = speechReady,
+        )
+        RuntimeStatusChip(
+            modifier = Modifier.weight(1f),
+            label = "翻译",
+            value = when (translationState) {
+                TranslationModelState.READY -> "OPUS-MT 就绪"
+                TranslationModelState.PREPARING -> "准备中"
+                TranslationModelState.NEEDS_INSTALL -> "未安装"
+                TranslationModelState.FAILED -> "不可用"
+            },
+            healthy = translationState == TranslationModelState.READY,
+        )
+    }
+}
+
+@Composable
+private fun RuntimeStatusChip(
+    modifier: Modifier = Modifier,
+    label: String,
+    value: String,
+    healthy: Boolean,
+) {
+    Surface(
+        modifier = modifier.heightIn(min = 42.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = Color(0xFF12151A),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (healthy) Color(0xFFB7F36B) else Color(0xFFFF7B78)),
+            )
+            Text(label, style = MaterialTheme.typography.labelSmall, color = Color(0xFF9EA5B1))
+            Text(
+                text = value,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -351,8 +460,8 @@ private fun WorkflowPanel(
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282D35)),
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
             content = {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -542,7 +651,9 @@ private fun SubtitleStyleControls(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+        modifier = Modifier
+            .padding(12.dp)
+            .semantics { contentDescription = "style_controls" },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             FlowRow(
@@ -617,6 +728,13 @@ private fun SubtitleColorPalette(
             val selected = colorHex.equals(selectedColorHex, ignoreCase = true)
             Box(
                 modifier = Modifier
+                    .size(48.dp)
+                    .semantics { contentDescription = "$label $colorHex" }
+                    .clickable { onColorSelected(colorHex) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
                     .size(28.dp)
                     .clip(RoundedCornerShape(5.dp))
                     .background(parseComposeColor(colorHex, Color.White))
@@ -625,8 +743,8 @@ private fun SubtitleColorPalette(
                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                         shape = RoundedCornerShape(5.dp),
                     )
-                    .clickable { onColorSelected(colorHex) },
-            )
+                )
+            }
         }
     }
 }
@@ -652,21 +770,29 @@ private fun Header() {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Bottom,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = "歌词字幕工作台",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = "本地双语 · 轻量编辑",
-            style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF9EA5B1),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                text = "歌词字幕工作台",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = "导入 · 识别/翻译 · 字幕 · 导出",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF9EA5B1),
+            )
         }
-        Text("V2", style = MaterialTheme.typography.labelLarge, color = Color(0xFFB7F36B))
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFF1B2A18),
+            contentColor = Color(0xFFB7F36B),
+        ) {
+            Text("V2", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
+        }
     }
 }
 
@@ -726,7 +852,7 @@ private fun VideoPreview(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(190.dp)
+                    .height(220.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF171A1F)),
                 contentAlignment = Alignment.Center,
@@ -979,7 +1105,7 @@ private fun CaptionList(
 ) {
     if (captions.isEmpty()) {
         Card(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
         ) {
@@ -994,7 +1120,7 @@ private fun CaptionList(
     }
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
     ) {

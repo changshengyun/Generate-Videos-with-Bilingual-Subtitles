@@ -29,7 +29,7 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 | V2-TRN-002 | `PLANNED` | 使用固定英中歌词语料评估并改善中文翻译 |
 | V2-UI-001 | `UI_SIMULATOR_VERIFIED` | 中文化并整理主要界面 |
 | V2-PREVIEW-001 | `PREVIEW_SIMULATOR_VERIFIED` | 全屏播放和字幕位置、大小、字体、颜色编辑 |
-| V2-UI-002 | `IN_PROGRESS` | 使用项目级 UI 技能进行第二轮移动端视觉系统、信息层级、触控交互和状态反馈优化 |
+| V2-UI-002 | `UI2_SIMULATOR_VERIFIED` | 使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级、触控交互和状态反馈优化 |
 | V2-IMPORT-002 | `PLANNED / DEVICE_GATE_DEFERRED` | 从手机系统媒体选择器直接选择本地视频，持久化访问权限并进入预览、保存恢复和处理链路 |
 | V2-E2E-002 | `DEFERRED_DEVICE_GATE` | 用户重新授权真机测试后，在个人 ARM64 手机完成 V2 全流程最终验收 |
 
@@ -208,3 +208,12 @@ V2 面向个人 ARM64 手机使用，形成稳定的真实工作流：
 - New screenshots are outside the repository: `D:\DevEnv\Projects\preview-v2-native-normal-final.png`, `D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`, and `D:\DevEnv\Projects\preview-v2-native-restored-final.png`.
 - Verification passed: 96 JVM tests, 6 evaluator tests, `lintDebug`, normal Debug, Native Debug for arm64-v8a/x86_64, `assembleDebugAndroidTest`, and real UI instrumentation.
 - Final status: `PREVIEW_SIMULATOR_VERIFIED`.
+
+## V2-UI-002 verification record (2026-08-01)
+
+- Established checkpoint `6741fc5` before implementation; the final feature commit contains only the UI, UI instrumentation, and three active documents. The dirty `third_party/ffmpeg-kit` entry and existing untracked content were preserved and excluded.
+- Reworked the Compose/Material 3 editor into a compact preview-first workbench with a smaller header, runtime status strip, four workflow tabs, denser subtitle/style editing, clearer export actions, safe-area padding, and accessibility semantics. Local video picker, Media3 preview, subtitle persistence, FFmpegKit, ViewModel behavior, and navigation were not changed.
+- Pixel_8 `emulator-5554` (`1080x2400` / `420 dpi`) completed real DocumentsUI video selection and return, SRT import, subtitle/style state, export action area, and Media3 fullscreen/exit playback. Instrumentation returned `INSTRUMENTATION_CODE: -1`; status-bar inset was `132` and safe content height was `2400`.
+- Verification passed: `python tools\\asr_evaluate_test.py` (6 tests), `testDebugUnitTest` (96 tests), `lintDebug`, normal Debug, Native Debug, `assembleDebugAndroidTest`, and real UI instrumentation. No physical device was used.
+- New screenshot evidence generated 2026-08-01 13:53:42 outside the repository: `D:\DevEnv\Projects\preview-v2-ui2-ui2-initial.png`, `preview-v2-ui2-ui2-imported.png`, `preview-v2-ui2-ui2-subtitles.png`, `preview-v2-ui2-ui2-export.png`, `preview-v2-ui2-preview-fullscreen.png`, and `preview-v2-ui2-preview-restored.png`. Compared with the three baseline screenshots, repeated full-width cards and oversized status/header regions were reduced while preview and editing hierarchy became clearer.
+- Final status: `UI2_SIMULATOR_VERIFIED`. The next stage is `V2-IMPORT-002`; the physical-device local-video gate remains deferred to `V2-E2E-002`.

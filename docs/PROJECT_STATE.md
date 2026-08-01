@@ -2,11 +2,11 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_UI2_IMPLEMENTING`
-- 当前任务：`V2-UI-002 / IN_PROGRESS`
-- 当前目标：在不改变既有媒体与本地 AI 链路的前提下，完成预览优先、紧凑清晰且可访问的手机字幕编辑工作台
-- 下一状态：`UI2_SIMULATOR_VERIFIED` 或基于证据记录 `PARTIAL_PASS / BLOCKED / HUMAN_DECISION`
-- 后续任务顺序：完成 `V2-UI-002` 后进入 `V2-IMPORT-002` 手机本地视频直接导入，再进入 `V2-E2E-002` ARM64 最终验收
+- 当前阶段：`V2_UI2_SIMULATOR_VERIFIED`
+- 当前任务：`V2-UI-002 / UI2_SIMULATOR_VERIFIED`
+- 当前目标：在不改变既有媒体与本地 AI 链路的前提下，已完成预览优先、紧凑清晰且可访问的手机字幕编辑工作台
+- 下一状态：`V2-IMPORT-002 / PLANNED / DEVICE_GATE_DEFERRED`
+- 后续任务顺序：已完成 `V2-UI-002`，下一步进入 `V2-IMPORT-002` 手机本地视频直接导入，再进入 `V2-E2E-002` ARM64 最终验收
 
 ## 仓库快照
 
@@ -64,7 +64,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 5. `V2-TRN-002`：中文翻译提质。
 6. `V2-UI-001`：`UI_SIMULATOR_VERIFIED`，中文界面与主流程层级整理已通过。
 7. `V2-PREVIEW-001`：`PREVIEW_SIMULATOR_VERIFIED`，全屏预览和字幕样式编辑。
-8. `V2-UI-002`：`PLANNED`，使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级和交互反馈优化。
+8. `V2-UI-002`：`UI2_SIMULATOR_VERIFIED`，使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级和交互反馈优化。
 9. `V2-IMPORT-002`：`PLANNED / DEVICE_GATE_DEFERRED`，实现系统选择器选择手机本地视频并进入预览、保存恢复和处理链路。
 10. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收，并收口 `V2-IMPORT-002` 的真实手机证据。
 
@@ -125,7 +125,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 
 ## 当前唯一下一步
 
-继续完成唯一活动任务 `V2-PREVIEW-001` 的实现、测试和 Pixel_8 模拟器完整验收。通过后按顺序进入 `V2-UI-002`，再进入 `V2-IMPORT-002`；模型质量任务继续保持原门禁，不得混入当前 UI/预览范围。
+`V2-UI-002` 已完成 `UI2_SIMULATOR_VERIFIED`。下一步进入 `V2-IMPORT-002`，继续在 `SIMULATOR_ONLY_TEMPORARY` 下验证系统选择器导入；手机本地视频的真实设备证据不得提前声明，须延续到 `V2-E2E-002`。
 
 ## V2-UI-001 verification snapshot (2026-07-31)
 
@@ -177,3 +177,13 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 - New screenshot evidence outside the repository: `D:\DevEnv\Projects\preview-v2-native-normal-final.png`, `D:\DevEnv\Projects\preview-v2-native-fullscreen-final.png`, `D:\DevEnv\Projects\preview-v2-native-restored-final.png`.
 - Verification: 96 JVM tests passed with 0 failures/errors/skips; 6 evaluator tests passed; `lintDebug`, normal Debug, Native Debug, AndroidTest APK build, and real UI instrumentation passed.
 - Final state: `PREVIEW_SIMULATOR_VERIFIED`.
+
+## V2-UI-002 verification snapshot (2026-08-01)
+
+- 阶段入口 checkpoint 为 `6741fc5`；最终功能提交仅包含 Compose UI、UI instrumentation 和三份活动文档。`third_party/ffmpeg-kit` 脏状态及既有未跟踪内容均保留且未纳入。
+- 工作台已改为紧凑标题、预览优先、运行状态条和四段工作区标签，导入、识别/翻译、字幕编辑、样式控制和导出层级更清晰；未修改 Local AI、翻译、FFmpegKit、Media3、ViewModel、导航或归档语义。
+- UI instrumentation 增加工作区标签、导入入口、字幕列表、样式控制和导出入口的语义与触控 bounds 校验，并覆盖状态栏/导航栏安全区、文本可见性和 Media3 控件。
+- Pixel_8 `emulator-5554`（`1080x2400` / `420 dpi`）完成真实 DocumentsUI 视频选择返回、SRT 导入、字幕/样式状态、导出操作区、全屏预览及退出恢复；`INSTRUMENTATION_CODE: -1`，`statusBarInset=132`，`safeContentHeight=2400`。
+- 验证通过：`asr_evaluate_test.py` 6 项、JVM 96 项、`lintDebug`、普通 Debug、Native Debug、AndroidTest 构建和真实 UI instrumentation。未使用真机。
+- 新截图于 2026-08-01 13:53:42 生成在仓库外：`D:\DevEnv\Projects\preview-v2-ui2-ui2-initial.png`、`preview-v2-ui2-ui2-imported.png`、`preview-v2-ui2-ui2-subtitles.png`、`preview-v2-ui2-ui2-export.png`、`preview-v2-ui2-preview-fullscreen.png`、`preview-v2-ui2-preview-restored.png`。与三张基线相比，重复大卡片和过大状态/标题区域减少，预览、字幕编辑和导出层级更清楚。
+- 最终状态：`UI2_SIMULATOR_VERIFIED`。下一阶段为 `V2-IMPORT-002`；手机真实视频导入设备门禁继续延后至 `V2-E2E-002`。
