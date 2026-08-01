@@ -2,11 +2,11 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_UI2_SIMULATOR_VERIFIED`
-- 当前任务：`V2-UI-002 / UI2_SIMULATOR_VERIFIED`
-- 当前目标：在不改变既有媒体与本地 AI 链路的前提下，已完成预览优先、紧凑清晰且可访问的手机字幕编辑工作台
-- 下一状态：`V2-IMPORT-002 / PLANNED / DEVICE_GATE_DEFERRED`
-- 后续任务顺序：已完成 `V2-UI-002`，下一步进入 `V2-IMPORT-002` 手机本地视频直接导入，再进入 `V2-E2E-002` ARM64 最终验收
+- 当前阶段：`V2_IMPORT_IMPLEMENTING`
+- 当前任务：`V2-IMPORT-002 / IN_PROGRESS`
+- 当前目标：在不改变既有媒体、本地 AI、FFmpegKit 和 Media3 链路的前提下，完成系统选择器到真实本地视频的模拟器导入、保存恢复、重绑和导出回放验证
+- 下一状态：`IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED` 或基于证据记录 `PARTIAL_PASS / BLOCKED / HUMAN_DECISION`
+- 后续任务顺序：完成 `V2-IMPORT-002` 后进入 `V2-E2E-002` ARM64 最终验收；真机证据不得在当前门禁提前声明
 
 ## 仓库快照
 
@@ -47,6 +47,13 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 - 允许的 UI 证据必须包含 Pixel_8 新截图、Insets/触控 bounds/contentDescription 检查、DocumentsUI 选择与返回、导入后/字幕/样式/全屏/导出状态。
 - `third_party/ffmpeg-kit` 及已有未跟踪内容不属于本阶段提交范围。
 
+## V2-IMPORT-002 当前执行约束
+
+- 仅允许 `emulator-5554` / Pixel_8；禁止连接或测试真机，最高证据为 `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`。
+- 复用现有 OpenDocument、AndroidProjectRepository、VideoImportPolicy 和重新绑定实现；只修复当前验收缺口，不重写已有 DocumentsUI 基础链路。
+- ADB 只能准备模拟器测试素材，不能替代产品入口选择 URI，也不能把媒体复制到 App 私有目录作为产品导入。
+- 不修改 ASR/翻译模型、UI 视觉系统、Media3、FFmpegKit、导航、项目架构、依赖、权限或 `third_party/ffmpeg-kit`。
+
 ## V2-ASR 资产状态
 
 - 模型目录、精确校验、原子导入和评测脚本已进入当前工作树。
@@ -65,7 +72,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 6. `V2-UI-001`：`UI_SIMULATOR_VERIFIED`，中文界面与主流程层级整理已通过。
 7. `V2-PREVIEW-001`：`PREVIEW_SIMULATOR_VERIFIED`，全屏预览和字幕样式编辑。
 8. `V2-UI-002`：`UI2_SIMULATOR_VERIFIED`，使用项目级 UI 技能完成第二轮移动端视觉系统、信息层级和交互反馈优化。
-9. `V2-IMPORT-002`：`PLANNED / DEVICE_GATE_DEFERRED`，实现系统选择器选择手机本地视频并进入预览、保存恢复和处理链路。
+9. `V2-IMPORT-002`：`IN_PROGRESS`，实现系统选择器选择手机本地视频并进入预览、保存恢复、重绑和处理链路。
 10. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收，并收口 `V2-IMPORT-002` 的真实手机证据。
 
 ## 项目级 UI Skill（2026-08-01）
@@ -125,7 +132,7 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 
 ## 当前唯一下一步
 
-`V2-UI-002` 已完成 `UI2_SIMULATOR_VERIFIED`。下一步进入 `V2-IMPORT-002`，继续在 `SIMULATOR_ONLY_TEMPORARY` 下验证系统选择器导入；手机本地视频的真实设备证据不得提前声明，须延续到 `V2-E2E-002`。
+当前执行 `V2-IMPORT-002`：在 `SIMULATOR_ONLY_TEMPORARY` 下完成系统选择器导入、保存恢复、重绑、取消/错误隔离、字幕处理、导出和回放验证；手机真实视频导入设备证据须延续到 `V2-E2E-002`。
 
 ## V2-UI-001 verification snapshot (2026-07-31)
 

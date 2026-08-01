@@ -1,16 +1,30 @@
-# 当前任务：V2-UI-002
+# 当前任务：V2-IMPORT-002
 
 ## 状态
 
-- Revision: `4`
-- Status: `UI2_SIMULATOR_VERIFIED`
+- Revision: `5`
+- Status: `IN_PROGRESS`
 - Owner: `Development Agent`
-- Product Gate: `V2_UI2_SIMULATOR_ACCEPTANCE`
+- Product Gate: `V2_IMPORT_SIMULATOR_ACCEPTANCE`
 - Verification Mode: `SIMULATOR_ONLY_TEMPORARY`
 
 ## V2-UI-002 Current Execution Contract
 
-- The only completed active task is `V2-UI-002`; the next planned task is `V2-IMPORT-002`.
+- The only active task is `V2-IMPORT-002`.
+- `V2-UI-002 / UI2_SIMULATOR_VERIFIED` is preserved as the immediately preceding stage.
+- The highest allowed evidence is `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`; no physical device may be connected or tested.
+- Scope is the real Android system picker to local video import, permission/media validation, preview, project save/restart recovery, relink, subtitle import/processing, FFmpegKit export, and Media3 playback.
+- Reuse the existing OpenDocument, AndroidProjectRepository, VideoImportPolicy, and relink paths; only fix unmet acceptance behavior.
+- Preserve source files and existing dirty `third_party/ffmpeg-kit` plus unrelated untracked content.
+- Explicitly out of scope: ASR/translation models or quality, UI visual redesign, Media3/FFmpegKit/navigation/architecture changes, new dependencies/permissions, and V2-E2E-002 device acceptance.
+
+## V2-IMPORT-002 Current Execution Contract
+
+- Product entry must launch Android DocumentsUI for `video/*`; ADB may prepare emulator fixtures only and must not select the product URI or copy media into App-private storage.
+- Validate readable URI, persisted read permission or explicit session-only status, real video track/type, non-empty content, valid duration, and the five-minute limit.
+- Cancel leaves the current project, subtitles, styles, preview, and derived output unchanged. A new import clears old subtitles and derived output; relinking preserves subtitles/confirmation/style but invalidates the old export.
+- Save and simulated process restart must restore a valid persisted URI and playable preview. Invalid URI must show an unavailable state and a rebind action, never crash or silently use stale output.
+- Required simulator evidence covers import/return, preview/media metadata, save/force-stop/restart, invalid URI/rebind, cancel, non-video/empty/unreadable/over-limit errors, SRT import, FFmpegKit export, Media3 playback, and source SHA-256 preservation.
 - Previous verified stages remain preserved: `V2-UI-001 / UI_SIMULATOR_VERIFIED` and `V2-PREVIEW-001 / PREVIEW_SIMULATOR_VERIFIED`.
 - Scope: second-round Compose/Material 3 mobile workbench refinement; compact header and status, preview-first layout, clearer import → recognition/translation → subtitle editing → export hierarchy, denser subtitle editing, consistent states, touch targets, accessibility semantics, and safe-area validation.
 - Preserve existing local video picker, Media3 fullscreen preview and controls, bilingual subtitle overlay, subtitle style persistence, project/archive semantics, FFmpegKit export, ViewModel behavior, model/runtime selection, and navigation.
@@ -51,11 +65,11 @@
 - 新截图（2026-08-01 13:53:42）位于 `D:\DevEnv\Projects\preview-v2-ui2-ui2-initial.png`、`preview-v2-ui2-ui2-imported.png`、`preview-v2-ui2-ui2-subtitles.png`、`preview-v2-ui2-ui2-export.png`、`preview-v2-ui2-preview-fullscreen.png`、`preview-v2-ui2-preview-restored.png`；相较基线，工作流层级更清晰、重复大卡片减少、预览和编辑区可用空间增加。
 - 阶段最终状态：`UI2_SIMULATOR_VERIFIED`。不声明 `DEVICE_VERIFIED`；手机本地视频设备门禁延续到 `V2-IMPORT-002` / `V2-E2E-002`。
 
-## 已批准后续阶段（当前任务已完成）
+## 已批准后续阶段（当前任务进行中）
 
 - `V2-UI-002 / UI2_SIMULATOR_VERIFIED`：第二轮移动端视觉与交互精修已完成，仅模拟器证据通过。
-- `V2-IMPORT-002 / PLANNED / DEVICE_GATE_DEFERRED`：完成 Android 系统媒体选择器到真实本地视频预览、权限持久化、保存恢复和处理链路。当前禁止真机，因此模拟器通过后仍必须把真机导入证据延续至 `V2-E2E-002`。
-- 当前 Developer 不得提前实施这两个模块，也不得因本路线补充扩大 `V2-PREVIEW-001` 范围。
+- `V2-IMPORT-002 / IN_PROGRESS`：完成 Android 系统媒体选择器到真实本地视频预览、权限持久化、保存恢复、重绑和处理链路；当前禁止真机，因此模拟器通过后仍必须把真机导入证据延续至 `V2-E2E-002`。
+- `V2-E2E-002 / DEFERRED_DEVICE_GATE`：在用户重新授权后完成真机选择、预览、重启恢复和导出证据。
 
 ## V2-UI-001 实施记录（2026-07-31）
 
