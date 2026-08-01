@@ -90,6 +90,13 @@ import com.example.lyriccaptioner.processing.TranslationModelState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
+private fun uniqueDocumentName(requestedName: String): String {
+    val extensionStart = requestedName.lastIndexOf('.')
+    val base = if (extensionStart > 0) requestedName.substring(0, extensionStart) else requestedName
+    val extension = if (extensionStart > 0) requestedName.substring(extensionStart) else ""
+    return "$base-${System.currentTimeMillis()}$extension"
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EditorScreen(viewModel: MainViewModel) {
@@ -300,7 +307,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
                                 primary = true,
                                 accessibilityId = "export_video",
-                                onClick = { videoCreator.launch(state.exportProfile.outputName) },
+                                onClick = { videoCreator.launch(uniqueDocumentName(state.exportProfile.outputName)) },
                             )
                             ActionButton(
                                 icon = "↗",
@@ -311,7 +318,9 @@ fun EditorScreen(viewModel: MainViewModel) {
                             )
                         }
                         ActionRow {
-                            SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking, accessibilityId = "save_project") { projectCreator.launch("lyric-captioner-project.lcp") }
+                            SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking, accessibilityId = "save_project") {
+                                projectCreator.launch(uniqueDocumentName("lyric-captioner-project.lcp"))
+                            }
                             SecondaryAction("导出 SRT", state.captions.isNotEmpty() && !state.isWorking) { viewModel.exportSidecarSrt() }
                             if (state.isWorking && !state.translationRunning && !state.asrRunning) {
                                 SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)

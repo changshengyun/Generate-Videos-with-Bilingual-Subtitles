@@ -28,6 +28,7 @@ struct JavaCancellationContext {
     JavaVM * vm = nullptr;
     jobject token = nullptr;
     jmethodID is_cancelled = nullptr;
+    bool reported = false;
 };
 
 bool whisper_abort_callback(void * user_data) {
@@ -58,6 +59,10 @@ bool whisper_abort_callback(void * user_data) {
         return true;
     }
     if (attached) cancellation->vm->DetachCurrentThread();
+    if (cancelled == JNI_TRUE && !cancellation->reported) {
+        cancellation->reported = true;
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "event=whisper_abort_callback_true");
+    }
     return cancelled == JNI_TRUE;
 }
 
@@ -321,16 +326,30 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
             params.abort_callback_user_data = &cancellation;
         }
 
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_jni_inference_started");
+
         const int whisper_result = whisper_full(
                 context.get(),
                 params,
                 audio.samples.data(),
                 static_cast<int>(audio.samples.size()));
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_full_exited result=%d",
+            whisper_result);
         const bool cancelled = cancellation.token != nullptr &&
             whisper_abort_callback(&cancellation);
         if (cancellation.token != nullptr) env->DeleteGlobalRef(cancellation.token);
         if (whisper_result != 0) {
             if (cancelled) {
+                __android_log_print(
+                    ANDROID_LOG_INFO,
+                    kLogTag,
+                    "event=whisper_jni_transcribe_cancelled");
                 throw_java(
                     env,
                     "java/util/concurrent/CancellationException",

@@ -12,6 +12,7 @@ import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.DocumentsContract
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
@@ -26,15 +27,26 @@ import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
 import com.example.lyriccaptioner.processing.FfmpegKitSubtitleExporter
+import com.example.lyriccaptioner.processing.ExtractedAudio
 import com.example.lyriccaptioner.processing.TranslationBatchResult
 import com.example.lyriccaptioner.processing.TranslationModule
+import com.example.lyriccaptioner.processing.WhisperLocalSpeechRecognizer
+import com.example.lyriccaptioner.processing.WhisperModelStore
+import com.example.lyriccaptioner.processing.WhisperAsrModule
 import com.example.lyriccaptioner.project.ProjectArchive
+import com.example.lyriccaptioner.audio.Pcm16WavWriter
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 class LocalAiInstrumentation : Instrumentation() {
     private lateinit var inputArguments: Bundle
@@ -55,6 +67,10 @@ class LocalAiInstrumentation : Instrumentation() {
                 } else {
                     runImportAcceptance(results)
                 }
+            } else if (inputArguments.getString(ARG_WHISPER_CANCEL)?.toBoolean() == true) {
+                runBlocking { runWhisperCancellationAcceptance(results) }
+            } else if (inputArguments.getString(ARG_ILLEGAL_MEDIA)?.toBoolean() == true) {
+                runIllegalMediaAcceptance(results)
             } else if (!inputArguments.getString(ARG_PREVIEW_INPUT).isNullOrBlank()) {
                 runPreviewUiFlow(results)
             } else if (inputArguments.getString(ARG_INPUT).isNullOrBlank()) {
@@ -68,6 +84,7 @@ class LocalAiInstrumentation : Instrumentation() {
             results.putString("failure", error.stackTraceToString())
             runCatching { results.putString("failureScreenshot", saveScreenshot("import-failure.png")) }
             finish(Activity.RESULT_CANCELED, results)
+            throw AssertionError("Instrumentation acceptance failed", error)
         }
     }
 
@@ -104,6 +121,88 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putInt("screenshotHeight", screenshot.height)
         results.putString("rootClass", root.javaClass.name)
         activity.finish()
+    }
+
+    private suspend fun runWhisperCancellationAcceptance(results: Bundle) {
+        val store = WhisperModelStore(targetContext)
+        store.ensureBundledModel()
+        check(store.status().localRecognitionReady) {
+            "Real Whisper cancellation requires the selected model and JNI library."
+        }
+        val audioFile = File(targetContext.cacheDir, "whisper-cancel-${System.currentTimeMillis()}.wav")
+        val sample = ShortArray(16_000) { index ->
+            (kotlin.math.sin(index * 2.0 * Math.PI * 440.0 / 16_000.0) * 8_000.0).toInt().toShort()
+        }
+        Pcm16WavWriter(audioFile, sampleRate = 16_000, channelCount = 1).use { writer ->
+            repeat(10) { writer.write(sample) }
+        }
+        check(audioFile.length() > 100_000L) { "Long cancellation fixture was not created." }
+
+        val completion = AtomicReference<Throwable?>(null)
+        val asr = WhisperAsrModule(
+            runtimeStatus = store.status(),
+            audioExtractor = object : com.example.lyriccaptioner.processing.AudioExtractor {
+                override suspend fun extract(videoUri: Uri): ExtractedAudio = ExtractedAudio(
+                    uri = Uri.fromFile(audioFile),
+                    sampleRate = 16_000,
+                    channels = 1,
+                    filePath = audioFile.absolutePath,
+                    deleteFileAfterUse = true,
+                )
+            },
+            speechRecognizer = WhisperLocalSpeechRecognizer(store.modelFile.absolutePath),
+        )
+        val job = CoroutineScope(Dispatchers.Default).launch {
+            try {
+                asr.recognize(Uri.EMPTY)
+                error("Real Whisper returned normally after cancellation was requested.")
+            } catch (error: Throwable) {
+                completion.set(error)
+                throw error
+            }
+        }
+        check(waitForNativeLog("event=whisper_jni_inference_started", 90_000L)) {
+            "Real Whisper did not enter whisper_full within the model-load timeout."
+        }
+        val startedAt = System.currentTimeMillis()
+        delay(500L)
+        job.cancel()
+        withTimeout(120_000L) { job.join() }
+        val elapsedMs = System.currentTimeMillis() - startedAt
+        check(job.isCancelled) { "Real Whisper job was not cancelled." }
+        check(completion.get() is java.util.concurrent.CancellationException) {
+            "Native Whisper did not return CancellationException: ${completion.get()}"
+        }
+        check(!audioFile.exists()) {
+            "Cancellation left the temporary WAV file behind: ${audioFile.absolutePath}"
+        }
+        delay(1_000L)
+        val nativeLog = readShell("logcat -d -s WhisperJNI:I *:S")
+        check(nativeLog.contains("event=whisper_full_exited")) {
+            "Native whisper_full exit was not observed in logcat."
+        }
+        check(nativeLog.contains("event=whisper_jni_transcribe_cancelled")) {
+            "Native Whisper cancellation event was not observed in logcat."
+        }
+        results.putLong("whisperCancelMs", elapsedMs)
+        results.putString("whisperCancel", "native_whisper_full_exited_and_cancelled")
+        results.putString("whisperTempAudio", "deleted")
+        results.putString("whisperModel", store.selectedModel?.fileName.orEmpty())
+    }
+
+    private fun readShell(command: String): String {
+        val descriptor = uiAutomation.executeShellCommand(command)
+        return FileInputStream(descriptor.fileDescriptor).bufferedReader().use { it.readText() }
+            .also { descriptor.close() }
+    }
+
+    private fun waitForNativeLog(marker: String, timeoutMs: Long): Boolean {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (readShell("logcat -d -s WhisperJNI:I *:S").contains(marker)) return true
+            SystemClock.sleep(500L)
+        }
+        return false
     }
 
     private fun runPreviewUiFlow(results: Bundle) {
@@ -290,6 +389,92 @@ class LocalAiInstrumentation : Instrumentation() {
         activity.finish()
     }
 
+    private fun runIllegalMediaAcceptance(results: Bundle) {
+        val validPath = inputArguments.getString(ARG_ILLEGAL_VALID)
+            ?: error("Missing -e $ARG_ILLEGAL_VALID")
+        val srtPath = inputArguments.getString(ARG_ILLEGAL_SRT)
+        val invalidFixtures = listOf(
+            "non_video" to inputArguments.getString(ARG_ILLEGAL_NON_VIDEO),
+            "empty" to inputArguments.getString(ARG_ILLEGAL_EMPTY),
+            "unreadable" to inputArguments.getString(ARG_ILLEGAL_UNREADABLE),
+            "over_limit" to inputArguments.getString(ARG_ILLEGAL_OVER_LIMIT),
+        )
+        check(invalidFixtures.all { it.second != null }) { "All four illegal media fixture paths are required." }
+
+        val activity = startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+        waitForContentDescription("import_video", 20_000L)
+        scanVideo(validPath)
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("import_video"))
+        clickDocumentFile(File(validPath).name)
+        waitForContentDescription("preview_fullscreen", 45_000L)
+
+        srtPath?.takeIf { it.isNotBlank() }?.let { path ->
+            scanDocument(path, "text/plain")
+            clickNode(waitForContentDescriptionWithScroll("import_srt", 20_000L))
+            clickDocumentFile(File(path).name)
+            waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+        }
+        val baselineState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
+        results.putString("baselineState", baselineState)
+
+        invalidFixtures.forEach { (label, pathValue) ->
+            val path = requireNotNull(pathValue)
+            val sourceUri = scanVideo(path)
+            val beforeHash = runCatching { sha256(sourceUri) }.getOrNull()
+            resetDocumentsUi()
+            clickNode(waitForContentDescription("import_video"))
+            clickDocumentFile(
+                File(path).name,
+                beforeSelection = if (label == "unreadable") {
+                    {
+                        // MediaProvider can read shared-storage mode-000 files as media_rw.
+                        // Revoke the fixture after DocumentsUI has located it but before the
+                        // product receives the URI, proving the unavailable-URI path.
+                        executeShell("rm -f ${path.replace(" ", "\\ ")}")
+                    }
+                } else {
+                    null
+                },
+            )
+            val expectedStatus = if (label == "over_limit") {
+                waitForTextContainingAny(
+                    listOf("longer than 5 minutes", "超过 5 分钟", "视频导入失败"),
+                    30_000L,
+                )
+            } else {
+                waitForImportRejectionStatus(30_000L)
+            }
+            val afterState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+                .contentDescription.toString()
+            check(afterState == baselineState) {
+                "Illegal media '$label' changed the project/editor state. before=$baselineState after=$afterState"
+            }
+            val afterHash = runCatching { sha256(sourceUri) }.getOrNull()
+            if (label == "unreadable") {
+                check(afterHash == null) { "Unreadable fixture became readable after revocation." }
+            } else {
+                check(beforeHash == afterHash) { "Illegal media '$label' changed its source bytes." }
+            }
+            results.putString("$label", "rejected:${expectedStatus.text}")
+            results.putString("${label}State", afterState)
+        }
+        results.putString("illegalMedia", "non_video_empty_unreadable_over_limit_rejected")
+        activity.finish()
+    }
+
+    private fun waitForImportRejectionStatus(timeoutMs: Long): AccessibilityNodeInfo =
+        waitForNode(timeoutMs) { root ->
+            listOf("视频导入失败", "Could not import video", "Video import failed")
+                .firstNotNullOfOrNull { prefix -> findAccessibilityNodeStartingWith(root, prefix) }
+        }
+
     private fun runImportRestoreAcceptance(results: Bundle) {
         val relinkPath = inputArguments.getString(ARG_IMPORT_RELINK)
             ?: error("Missing -e $ARG_IMPORT_RELINK /sdcard/Download/v2-import-relink.mp4")
@@ -408,43 +593,104 @@ class LocalAiInstrumentation : Instrumentation() {
             latch.countDown()
         }
         check(latch.await(10, TimeUnit.SECONDS)) { "Test video was not indexed: $path" }
-        return scannedUri ?: error("Media scanner did not return a content URI: $path")
+        val uri = scannedUri ?: error("Media scanner did not return a content URI: $path")
+        val displayName = File(path).name
+        val deadline = SystemClock.uptimeMillis() + 10_000L
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (queryMediaStoreFromShell().any { (_, name) -> name == displayName }) return uri
+            SystemClock.sleep(250L)
+        }
+        error("Media scanner callback completed but the document was not queryable: $path")
     }
 
     private fun confirmDocumentCreation() {
         clickNode(waitForAnyText(listOf("保存", "Save", "SAVE"), 20_000L))
-        findAccessibilityNode(uiAutomation.rootInActiveWindow, "替换")?.let { clickNode(it) }
-        findAccessibilityNode(uiAutomation.rootInActiveWindow, "Replace")?.let { clickNode(it) }
+        check(findAccessibilityNode(uiAutomation.rootInActiveWindow, "替换") == null)
+        check(findAccessibilityNode(uiAutomation.rootInActiveWindow, "Replace") == null) {
+            "DocumentsUI offered Replace; product must use a unique destination and never replace a user file."
+        }
     }
 
-    private fun clickDocumentFile(displayName: String) {
+    private fun clickDocumentFile(
+        displayName: String,
+        beforeSelection: (() -> Unit)? = null,
+    ) {
         waitForPackage("com.google.android.documentsui", 20_000L)
-        val node = runCatching { waitForText(displayName, 5_000L) }.getOrNull()
-        if (node != null) {
-            tapNode(node)
+        openDownloadsFromRoots()
+        val exact = runCatching { waitForDocumentText(displayName, 10_000L) }.getOrNull()
+        if (exact != null) {
+            beforeSelection?.invoke()
+            tapNode(exact)
             return
         }
-        if (findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, "Show roots") == null) {
-            executeShell("input keyevent 4")
-        }
-        val roots = waitForContentDescription("Show roots", 10_000L)
-        clickNode(roots)
-        val downloads = waitForText("Downloads", 10_000L)
-        clickTextOrTap(downloads)
-        val exact = runCatching { waitForDocumentText(displayName, 10_000L) }.getOrNull()
-        tapNode(exact ?: waitForDocumentTextStartingWith(displayName.substringBeforeLast('.'), 30_000L))
+        searchDocumentsUi(displayName, beforeSelection)
     }
 
     private fun clickDocumentFileStartingWith(prefix: String) {
         waitForPackage("com.google.android.documentsui", 20_000L)
-        if (findAccessibilityNodeStartingWith(uiAutomation.rootInActiveWindow, prefix) == null) {
-            if (findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, "Show roots") == null) {
-                executeShell("input keyevent 4")
-            }
-            clickNode(waitForContentDescription("Show roots", 10_000L))
-            clickTextOrTap(waitForText("Downloads", 10_000L))
-        }
+        openDownloadsFromRoots()
         tapNode(waitForDocumentTextStartingWith(prefix, 30_000L))
+    }
+
+    private fun searchDocumentsUi(displayName: String, beforeSelection: (() -> Unit)? = null) {
+        val search = findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, "Search")
+            ?: findAccessibilityNode(uiAutomation.rootInActiveWindow, "Search")
+            ?: error("DocumentsUI did not expose its search control for $displayName")
+        clickNode(search)
+        executeShell("input text ${displayName.replace(" ", "%s")}")
+        executeShell("input keyevent 66")
+        val result = waitForSearchResult(displayName, 30_000L)
+        beforeSelection?.invoke()
+        tapNode(result)
+    }
+
+    private fun openDownloadsFromRoots() {
+        val roots = findAccessibilityNodeByContentDescription(uiAutomation.rootInActiveWindow, "Show roots")
+            ?: run {
+                executeShell("input keyevent 4")
+                waitForContentDescription("Show roots", 10_000L)
+        }
+        clickNode(roots)
+        clickTextOrTap(waitForText("Downloads", 10_000L))
+        SystemClock.sleep(750L)
+        tapScreen(900, 300)
+        SystemClock.sleep(750L)
+        waitForPackage("com.google.android.documentsui", 10_000L)
+    }
+
+    private fun isDocumentsRootsDrawerOpen(): Boolean =
+        findAccessibilityNodeByClassName(
+            uiAutomation.rootInActiveWindow,
+            "com.android.documentsui.sidebar.RootsList",
+        ) != null
+
+    private fun waitForDocumentsRootText(text: String, timeoutMs: Long): AccessibilityNodeInfo =
+        waitForNode(timeoutMs) { root -> findDocumentsRootText(root, text) }
+
+    private fun findDocumentsRootText(
+        node: AccessibilityNodeInfo?,
+        text: String,
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.className?.toString()?.endsWith("RootItemView") == true) {
+            return findAccessibilityNode(node, text)
+        }
+        for (index in 0 until node.childCount) {
+            findDocumentsRootText(node.getChild(index), text)?.let { return it }
+        }
+        return null
+    }
+
+    private fun findAccessibilityNodeByClassName(
+        node: AccessibilityNodeInfo?,
+        className: String,
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.className?.toString() == className) return node
+        for (index in 0 until node.childCount) {
+            findAccessibilityNodeByClassName(node.getChild(index), className)?.let { return it }
+        }
+        return null
     }
 
     private fun tapNode(node: AccessibilityNodeInfo) {
@@ -478,6 +724,24 @@ class LocalAiInstrumentation : Instrumentation() {
         error("Timed out waiting for DocumentsUI file prefix: $prefix")
     }
 
+    private fun waitForSearchResult(displayName: String, timeoutMs: Long): AccessibilityNodeInfo =
+        waitForNode(timeoutMs) { root -> findSearchResult(root, displayName) }
+
+    private fun findSearchResult(node: AccessibilityNodeInfo?, displayName: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        val bounds = Rect().also(node::getBoundsInScreen)
+        if (node.text?.toString() == displayName &&
+            node.className?.toString() != "android.widget.EditText" &&
+            bounds.top > 250
+        ) {
+            return node
+        }
+        for (index in 0 until node.childCount) {
+            findSearchResult(node.getChild(index), displayName)?.let { return it }
+        }
+        return null
+    }
+
     private fun clickTextOrTap(node: AccessibilityNodeInfo) {
         var candidate: AccessibilityNodeInfo? = node
         while (candidate != null) {
@@ -496,6 +760,20 @@ class LocalAiInstrumentation : Instrumentation() {
 
     private fun waitForTextStartingWith(prefix: String, timeoutMs: Long): AccessibilityNodeInfo =
         waitForNode(timeoutMs) { root -> findAccessibilityNodeStartingWith(root, prefix) }
+
+    private fun waitForTextStartingWithAny(
+        prefixes: List<String>,
+        timeoutMs: Long,
+    ): AccessibilityNodeInfo = waitForNode(timeoutMs) { root ->
+        prefixes.firstNotNullOfOrNull { prefix -> findAccessibilityNodeStartingWith(root, prefix) }
+    }
+
+    private fun waitForTextContainingAny(
+        fragments: List<String>,
+        timeoutMs: Long,
+    ): AccessibilityNodeInfo = waitForNode(timeoutMs) { root ->
+        fragments.firstNotNullOfOrNull { fragment -> findAccessibilityNodeContaining(root, fragment) }
+    }
 
     private fun waitForContentDescriptionStartingWith(
         prefix: String,
@@ -566,6 +844,18 @@ class LocalAiInstrumentation : Instrumentation() {
         return null
     }
 
+    private fun findAccessibilityNodeContaining(
+        node: AccessibilityNodeInfo?,
+        fragment: String,
+    ): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.text?.toString()?.contains(fragment) == true) return node
+        for (index in 0 until node.childCount) {
+            findAccessibilityNodeContaining(node.getChild(index), fragment)?.let { return it }
+        }
+        return null
+    }
+
     private fun findAccessibilityNodeContentDescriptionStartingWith(
         node: AccessibilityNodeInfo?,
         prefix: String,
@@ -626,12 +916,9 @@ class LocalAiInstrumentation : Instrumentation() {
     }
 
     private fun displayName(uri: Uri): String {
-        ContentUris.parseId(uri).let { id ->
-            queryMediaStoreFromShell().firstOrNull { (rowId, _) -> rowId == id }?.second?.let { return it }
-        }
         targetContext.contentResolver.query(
             uri,
-            arrayOf(MediaStore.Files.FileColumns.DISPLAY_NAME),
+            arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
             null,
             null,
             null,
@@ -1031,6 +1318,14 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_IMPORT_EXPECT_UNAVAILABLE = "importExpectUnavailable"
         const val ARG_IMPORT_PROJECT_PREFIX = "importProjectPrefix"
         const val ARG_IMPORT_PROJECT_SUFFIX = "importProjectSuffix"
+        const val ARG_WHISPER_CANCEL = "whisperCancel"
+        const val ARG_ILLEGAL_MEDIA = "illegalMedia"
+        const val ARG_ILLEGAL_VALID = "illegalValid"
+        const val ARG_ILLEGAL_SRT = "illegalSrt"
+        const val ARG_ILLEGAL_NON_VIDEO = "illegalNonVideo"
+        const val ARG_ILLEGAL_EMPTY = "illegalEmpty"
+        const val ARG_ILLEGAL_UNREADABLE = "illegalUnreadable"
+        const val ARG_ILLEGAL_OVER_LIMIT = "illegalOverLimit"
         const val PROJECT_PREFIX = "lyric-captioner-project"
         const val OUTPUT_PREFIX = "lyric-captioner-output"
     }

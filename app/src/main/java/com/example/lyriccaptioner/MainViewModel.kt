@@ -539,7 +539,7 @@ class MainViewModel(
         }
 
         val uri = checkNotNull(current.videoUri)
-        if (ExportDestinationPolicy.isSameDocument(uri, destinationUri)) {
+        if (ExportDestinationPolicy.isSameDocument(uri, destinationUri, appContext.contentResolver)) {
             mutableState.update {
                 it.copy(status = "Could not export: output destination is the source video.")
             }

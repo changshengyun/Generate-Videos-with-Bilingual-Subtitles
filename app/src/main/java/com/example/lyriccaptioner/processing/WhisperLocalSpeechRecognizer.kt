@@ -4,7 +4,11 @@ import com.example.lyriccaptioner.model.CaptionCue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class WhisperLocalSpeechRecognizer(
     private val modelPath: String,
@@ -20,13 +24,25 @@ class WhisperLocalSpeechRecognizer(
             "Whisper requires extracted audio as a readable local file path, not a content URI."
         }
         val coroutineContext = currentCoroutineContext()
-        bridge.transcribe(
-            modelPath = modelPath,
-            audioPath = audioPath,
-            sampleRate = audio.sampleRate,
-            channels = audio.channels,
-            cancellationToken = WhisperCancellationToken { !coroutineContext.isActive },
-        ).let(WhisperSegmentConverter::toCaptions)
+        val cancellationRequested = AtomicBoolean(false)
+        suspendCancellableCoroutine<List<WhisperSegment>> { continuation ->
+            continuation.invokeOnCancellation { cancellationRequested.set(true) }
+            runCatching {
+                bridge.transcribe(
+                    modelPath = modelPath,
+                    audioPath = audioPath,
+                    sampleRate = audio.sampleRate,
+                    channels = audio.channels,
+                    cancellationToken = WhisperCancellationToken {
+                        cancellationRequested.get() || !coroutineContext.isActive
+                    },
+                )
+            }.onSuccess { segments ->
+                if (continuation.isActive) continuation.resume(segments)
+            }.onFailure { error ->
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+        }.let(WhisperSegmentConverter::toCaptions)
     }
 }
 

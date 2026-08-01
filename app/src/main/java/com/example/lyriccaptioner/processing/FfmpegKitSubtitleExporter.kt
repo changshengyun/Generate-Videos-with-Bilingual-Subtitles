@@ -16,12 +16,19 @@ import com.arthenica.ffmpegkit.ReturnCode
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.SubtitleStyle
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * Dual-ABI product exporter backed by the checked-in FFmpegKit AAR.
@@ -39,9 +46,14 @@ class FfmpegKitSubtitleExporter(
         Log.i(LOG_TAG, "event=ffmpegkit_export_started captionCount=${project.captions.size}")
         require(project.captions.isNotEmpty()) { "At least one subtitle cue is required." }
         require(project.exportProfile.burnInSubtitles) { "Burn-in subtitles are disabled." }
-        check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri)) {
+        check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri, appContext.contentResolver)) {
             "The export destination must not be the source video."
         }
+        val destinationState = ExportDestinationPolicy.inspectDestination(
+            appContext.contentResolver,
+            destinationUri,
+        )
+        ExportDestinationPolicy.requireNewDestination(destinationState)
 
         val workDirectory = createWorkDirectory()
         val inputFile = File(workDirectory, "input.mp4")
@@ -54,7 +66,7 @@ class FfmpegKitSubtitleExporter(
                 Charsets.UTF_8,
             )
             FFmpegKitConfig.setFontDirectory(appContext, "/system/fonts", emptyMap())
-            runFfmpeg(inputFile, assFile, outputFile, destinationUri)
+            runFfmpeg(inputFile, assFile, outputFile, destinationUri, destinationState)
         } catch (error: Throwable) {
             // The destination may already refer to a user-owned document. Only the
             // private work directory is owned by this exporter and is cleaned below.
@@ -69,32 +81,57 @@ class FfmpegKitSubtitleExporter(
         assFile: File,
         outputFile: File,
         destinationUri: Uri,
+        destinationState: ExportDestinationState,
     ): ExportResult = suspendCancellableCoroutine { continuation ->
-        val completed = AtomicBoolean(false)
+        val terminal = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         var session: FFmpegSession? = null
+        var copyJob: Job? = null
 
         fun fail(error: Throwable) {
-            if (completed.compareAndSet(false, true)) {
+            if (terminal.compareAndSet(false, true)) {
+                if (destinationState == ExportDestinationState.NEW) {
+                    deleteOwnedDestination(destinationUri)
+                }
                 if (continuation.isActive) continuation.resumeWithException(error)
             }
         }
 
         val callback = FFmpegSessionCompleteCallback { finishedSession ->
-            if (!completed.compareAndSet(false, true)) return@FFmpegSessionCompleteCallback
+            if (terminal.get() || cancelled.get()) return@FFmpegSessionCompleteCallback
             if (ReturnCode.isSuccess(finishedSession.returnCode)) {
                 Log.i(
                     LOG_TAG,
-                    "event=ffmpegkit_export_completed returnCode=${finishedSession.returnCode?.getValue()}",
+                    "event=ffmpegkit_render_completed returnCode=${finishedSession.returnCode?.getValue()}",
                 )
-                runCatching {
-                    val inspected = inspectOutput(outputFile)
-                    copyFileToUri(outputFile, destinationUri, inspected.fileSizeBytes)
-                    inspected.copy(outputUri = destinationUri)
-                }.onSuccess { result ->
-                    if (continuation.isActive) continuation.resume(result)
-                }.onFailure { error ->
-                    if (continuation.isActive) continuation.resumeWithException(error)
+                copyJob = CoroutineScope(continuation.context + Dispatchers.IO).launch {
+                    try {
+                        ensureActive()
+                        val inspected = inspectOutput(outputFile)
+                        copyFileToUri(
+                            outputFile,
+                            destinationUri,
+                            inspected.fileSizeBytes,
+                            ownsDestination = destinationState == ExportDestinationState.NEW,
+                        )
+                        ensureActive()
+                        if (terminal.compareAndSet(false, true) && continuation.isActive && !cancelled.get()) {
+                            Log.i(LOG_TAG, "event=ffmpegkit_target_copy_completed bytes=${inspected.fileSizeBytes}")
+                            continuation.resume(inspected.copy(outputUri = destinationUri))
+                        } else if (destinationState == ExportDestinationState.NEW) {
+                            // Cancellation can race with the final resume after the
+                            // destination has been fully copied. It is still owned by
+                            // this task until the result is delivered.
+                            deleteOwnedDestination(destinationUri)
+                        }
+                    } catch (error: Throwable) {
+                        if (destinationState == ExportDestinationState.NEW) {
+                            deleteOwnedDestination(destinationUri)
+                        }
+                        if (terminal.compareAndSet(false, true) && continuation.isActive) {
+                            continuation.resumeWithException(error)
+                        }
+                    }
                 }
             } else {
                 val returnCode = finishedSession.returnCode?.getValue()
@@ -106,14 +143,17 @@ class FfmpegKitSubtitleExporter(
                 } else {
                     "FFmpeg export failed (returnCode=$returnCode)."
                 }
-                if (continuation.isActive) continuation.resumeWithException(IllegalStateException(reason))
+                fail(IllegalStateException(reason))
             }
         }
 
         continuation.invokeOnCancellation {
             cancelled.set(true)
-            if (completed.compareAndSet(false, true)) {
-                session?.let { FFmpegKit.cancel(it.sessionId) }
+            terminal.set(true)
+            copyJob?.cancel()
+            session?.let { FFmpegKit.cancel(it.sessionId) }
+            if (destinationState == ExportDestinationState.NEW) {
+                deleteOwnedDestination(destinationUri)
             }
         }
 
@@ -170,23 +210,58 @@ class FfmpegKitSubtitleExporter(
         }
     }
 
-    private fun copyUriToFile(sourceUri: Uri, targetFile: File) {
+    private suspend fun copyUriToFile(sourceUri: Uri, targetFile: File) {
+        coroutineContext.ensureActive()
         val input = appContext.contentResolver.openInputStream(sourceUri)
             ?: error("Could not open the selected video.")
         input.use { source ->
-            targetFile.outputStream().use { destination -> source.copyTo(destination) }
+            targetFile.outputStream().use { destination ->
+                val buffer = ByteArray(DEFAULT_COPY_BUFFER_SIZE)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val count = source.read(buffer)
+                    if (count < 0) break
+                    destination.write(buffer, 0, count)
+                }
+            }
         }
         check(targetFile.length() > 0L) { "The selected video is empty." }
     }
 
-    private fun copyFileToUri(sourceFile: File, destinationUri: Uri, expectedBytes: Long) {
+    private suspend fun copyFileToUri(
+        sourceFile: File,
+        destinationUri: Uri,
+        expectedBytes: Long,
+        ownsDestination: Boolean,
+    ) {
+        coroutineContext.ensureActive()
         val output = appContext.contentResolver.openOutputStream(destinationUri, "w")
             ?: error("Could not open the selected output file.")
-        val copiedBytes = output.use { destination ->
-            sourceFile.inputStream().use { source -> source.copyTo(destination) }
+        try {
+            val copiedBytes = output.use { destination ->
+                sourceFile.inputStream().use { source ->
+                    copyStreamCancellable(source, destination)
+                }
+            }
+            coroutineContext.ensureActive()
+            check(copiedBytes == expectedBytes) {
+                "The exported video was not fully written to the selected destination."
+            }
+        } catch (error: Throwable) {
+            if (ownsDestination) {
+                deleteOwnedDestination(destinationUri)
+            }
+            throw error
         }
-        check(copiedBytes == expectedBytes) {
-            "The exported video was not fully written to the selected destination."
+    }
+
+    private fun deleteOwnedDestination(destinationUri: Uri) {
+        runCatching {
+            if (destinationUri.scheme == "file") {
+                File(destinationUri.path.orEmpty()).delete()
+            } else {
+                appContext.contentResolver.delete(destinationUri, null, null)
+            }
         }
     }
 
@@ -241,6 +316,23 @@ class FfmpegKitSubtitleExporter(
         const val LOG_TAG = "FfmpegKitSubtitleExporter"
         const val MAX_LOG_MESSAGE_CHARS = 3_000
         const val MIN_VALID_OUTPUT_BYTES = 1_024L
+        const val DEFAULT_COPY_BUFFER_SIZE = 64 * 1024
+    }
+}
+
+internal suspend fun copyStreamCancellable(
+    source: InputStream,
+    destination: OutputStream,
+): Long {
+    val buffer = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        coroutineContext.ensureActive()
+        val count = source.read(buffer)
+        if (count < 0) return total
+        coroutineContext.ensureActive()
+        destination.write(buffer, 0, count)
+        total += count
     }
 }
 

@@ -4,6 +4,7 @@
 
 - Stage: `V2-IMPORT-002`
 - Status: `IMPORT_SIMULATOR_VERIFIED / DEVICE_DEFERRED`
+- Review baseline: `65ac915` with code-fix baseline `6b9fd99`
 - Verification mode: `SIMULATOR_ONLY_TEMPORARY`
 - Device: `emulator-5554` / Pixel_8 / `1080x2400` / `420 dpi`
 - Next stage: `V2-E2E-002 / DEFERRED_DEVICE_GATE`
@@ -18,7 +19,7 @@
 - Preserve source media, `third_party/ffmpeg-kit`, existing untracked content, models, archive semantics, and the existing navigation/processing architecture.
 - No physical device may be connected or tested in this stage. Physical evidence remains reserved for `V2-E2E-002` and must not be reported as `DEVICE_VERIFIED`.
 
-## Closure evidence (2026-08-01)
+## Closure evidence (2026-08-02)
 
 - `emulator-5554` entered DocumentsUI from the product, selected a real MP4, returned to the app, imported two SRT cues, changed subtitle style, saved a project, and produced a non-zero export.
 - Export: `71,203` bytes, `4,011 ms`, H.264 `video/avc`, AAC `audio/mp4a-latm`; Media3 playback and controls were ready.
@@ -26,10 +27,12 @@
 - Valid saved-project restore crossed an external force-stop/relaunch boundary and returned `media=PERSISTED`, with Media3 play/pause/seek verification.
 - Invalid URI restore exposed unavailable state; relink measured caption and style state equality and export invalidation; picker cancel measured an identical before/after state snapshot.
 - Instrumentation results returned `INSTRUMENTATION_CODE: -1` for prepare, valid restore, and invalid/relink/cancel runs. No true device was used.
+- Illegal-media product entry rejected non-video, empty, unreadable, and over-five-minute fixtures while preserving the baseline project/caption/style/export state; retained fixture hashes were unchanged.
+- Real `ggml-small.en-q5_1.bin` JNI cancellation returned in `91,298 ms` with native abort/full-exit/cancel logs and deleted temporary WAV.
 
 ## Regression matrix
 
-- `100` JVM tests: passed, 0 failures/errors/skips.
+- `101` JVM tests: passed, 0 failures/errors/skips.
 - `python tools\\asr_evaluate_test.py`: `6` passed.
 - `lintDebug`: passed.
 - `assembleDebug`: passed.
@@ -39,7 +42,7 @@
 ## Scope disposition
 
 - Fixed in this closure: relink state retention after no-video/invalid restore, source-safe instrumentation hashing and fixture handling, export destination/source safety, failure/cancel destination preservation, bounded asynchronous SRT/lyrics reads, background model/ONNX work, and Whisper JNI cancellation.
-- Deferred: physical ARM64 selection, preview, restart recovery, relink, and export evidence; these belong to `V2-E2E-002 / DEFERRED_DEVICE_GATE`.
+- Deferred: physical-phone ARM64 selection, restart recovery, relink, and export evidence; these belong to `V2-E2E-002 / DEFERRED_DEVICE_GATE`.
 - Not changed: Whisper/translation strategy, UI visual system, Media3/FFmpegKit business logic, AARs, dependencies, archive semantics, and `third_party/ffmpeg-kit`.
 
 ## Prior verified stages
