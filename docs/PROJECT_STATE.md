@@ -2,10 +2,10 @@
 
 ## 当前门禁
 
-- 当前阶段：`V2_UI_SIMULATOR_VERIFIED`
-- 当前任务：`V2-UI-001 / UI_SIMULATOR_VERIFIED`
-- 当前目标：在不改变底层产品链路的前提下完成中文界面和主流程层级整理
-- 下一任务：继续保持 ASR 质量门禁，准备至少 3 段 30-60 秒英文歌曲音频、人工准确歌词、时间范围和统一预处理条件
+- 当前阶段：`V2_PREVIEW_IMPLEMENTING`
+- 当前任务：`V2-PREVIEW-001 / IMPLEMENTING`
+- 当前目标：在现有产品链路中完成全屏 Media3 预览、实时字幕叠加和字幕样式持久化
+- 下一任务：完成模拟器全链路验收后进入 `PREVIEW_SIMULATOR_VERIFIED`
 
 ## 仓库快照
 
@@ -54,8 +54,9 @@ V1 已在个人 ARM64 设备完成真实五分钟工作流：
 3. `V2-LOCAL-AI-001`：`LOCAL_AI_SIMULATOR_VERIFIED`，双本地模型模拟器闭环已通过。
 4. `V2-ASR-002`：当前活动任务，英文歌曲和英文单词识别提质；等待固定英文歌曲 fixture。
 5. `V2-TRN-002`：中文翻译提质。
-6. `V2-UI-001`、`V2-PREVIEW-001`：中文界面、全屏预览和字幕样式编辑。
-7. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收。
+6. `V2-UI-001`：`UI_SIMULATOR_VERIFIED`，中文界面与主流程层级整理已通过。
+7. `V2-PREVIEW-001`：`IMPLEMENTING`，全屏预览和字幕样式编辑。
+8. `V2-E2E-002`：用户重新授权后的 ARM64 最终验收。
 
 ## 质量与删除决策
 

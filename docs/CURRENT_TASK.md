@@ -1,12 +1,20 @@
-# 当前任务：V2-UI-001
+# 当前任务：V2-PREVIEW-001
 
 ## 状态
 
-- Revision: `3`
-- Status: `UI_SIMULATOR_VERIFIED`
+- Revision: `1`
+- Status: `IMPLEMENTING`
 - Owner: `Development Agent`
-- Product Gate: `V2_UI_SIMULATOR_ACCEPTANCE`
+- Product Gate: `V2_PREVIEW_SIMULATOR_ACCEPTANCE`
 - Verification Mode: `SIMULATOR_ONLY_TEMPORARY`
+
+## V2-PREVIEW-001 Current Execution Contract
+
+- The only active task is `V2-PREVIEW-001`.
+- Preserved stage states: `V2-UI-001 / UI_SIMULATOR_VERIFIED`, `V2-ASR-002 / FIXTURE_REQUIRED`, and `V2-TRN-002 / PLANNED`.
+- Scope: full-screen Media3 preview, play/pause/seek/back handling, live bilingual subtitle overlay, subtitle font/size/position/color editing, and persistence through `SubtitleStyle`, `ExportProfile`, project archives, and FFmpegKit output.
+- Explicitly out of scope: timeline, multi-track editing, filters, stickers, transitions, effects, trimming, speed changes, cover editing, and new dependencies.
+- Verification mode: only `emulator-5554` / Pixel_8; no physical device.
 
 ## V2-UI-001 实施记录（2026-07-31）
 
