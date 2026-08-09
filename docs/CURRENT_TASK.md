@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `SECURITY_AND_BYOK_DELTA / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
 - Previous stage: `V3-DEC-001 / PASS`
 - Scope: 云端歌曲/歌词匹配、AI 分段修正、本地 OPUS-MT 回退的数据合同、状态机和测试基础
 - V2 functional baseline: `8a48d88`
@@ -22,6 +22,16 @@
 | Prohibited | Real key, backend/provider expansion, online lyrics, UI redesign, Whisper/cache/media/editor/SRT cleanup, plaintext key in preferences/DataStore/archive/SavedState/logs/APK/tests. |
 | Exit | Without real key: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`; only after user-authorized real-key product-flow verification may Brain consider `READY_FOR_BRAIN / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED`. |
 | Incomplete | Missing runtime key, Keystore/device evidence or failed security proof remains `LIVE_KEY_TEST_REQUIRED`, `BLOCKED`, or `HUMAN_DECISION` as applicable. |
+
+## R1 implementation evidence (2026-08-10)
+
+- R1 checkpoint: `a18574`; implementation commits are pending final staging; no push.
+- Agent A: strict fallback allowlist and sanitized provider/validation/programming/cancellation failures in `CaptionEnhancementCoordinator.kt`.
+- Agent B: `DeepSeekByokManagerImpl` plus `AndroidKeystoreDeepSeekKeyStore`; AES-256-GCM, Android Keystore alias, random 12-byte IV, atomic private `noBackupFilesDir` record, replacement/delete/corruption/concurrency handling.
+- Agent C: injectable manager in `MainViewModel.kt` and a collapsible AI service configuration panel in `EditorScreen.kt`; password input is transient and cleared after actions/collapse; only masked suffix is exposed.
+- R1 focused security/BYOK/UI tests: 16 passed. Full `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebug`, native-equivalent `-PenableWhisperNative=true :app:assembleDebug`, and `:app:assembleDebugAndroidTest` passed.
+- `:app:assembleNativeDebug` remains absent in this checkout; native-enabled Debug exercised the configured CMake route. Kotlin daemon/NDK strip permission warnings remain environmental.
+- No real DeepSeek key, live probe, network call, device product-flow verification, provider lyrics retrieval, backup restore test, or APK/runtime secret scan with a real key was performed. Brain must keep `LIVE_KEY_TEST_REQUIRED`.
 
 ## Orchestrator implementation evidence (2026-08-10)
 

@@ -90,15 +90,18 @@ class DeepSeekByokManagerTest {
     }
 
     @Test
-    fun missingKeyBlocksDecryption() = runBlocking {
+    fun missingKeyBlocksDecryption() {
+        runBlocking {
         val manager = DeepSeekByokManagerImpl(FakeStore(), DeepSeekKeyProbe { })
         assertThrows(DeepSeekKeyUnavailableException::class.java) {
             runBlocking { manager.withDecryptedKey { error("must not run") } }
         }
+        }
     }
 
     @Test
-    fun corruptedCiphertextEntersNeedsReentryWithoutCrashing() = runBlocking {
+    fun corruptedCiphertextEntersNeedsReentryWithoutCrashing() {
+        runBlocking {
         val store = FakeStore()
         val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
         manager.validateAndSave("sk-test-corrupt-key-123456")
@@ -106,6 +109,7 @@ class DeepSeekByokManagerTest {
         assertEquals(DeepSeekKeyState.NEEDS_REENTRY, manager.status().state)
         assertThrows(DeepSeekKeyUnavailableException::class.java) {
             runBlocking { manager.withDecryptedKey { "unreachable" } }
+        }
         }
     }
 
@@ -119,7 +123,7 @@ class DeepSeekByokManagerTest {
         }.awaitAll()
         assertTrue(results.all { it.state == DeepSeekKeyState.CONFIGURED })
         assertTrue(store.decrypt() in setOf("sk-test-a-key-123456", "sk-test-b-key-123456"))
-        assertEquals(1, store.activeWrites)
+        assertEquals(1, store.maxActiveWrites)
     }
 
     @Test
@@ -139,12 +143,15 @@ class DeepSeekByokManagerTest {
         var corrupt = false
         var activeWrites = 0
             private set
+        var maxActiveWrites = 0
+            private set
 
         override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
 
         override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
             check(activeWrites == 0)
             activeWrites += 1
+            maxActiveWrites = maxOf(maxActiveWrites, activeWrites)
             try {
                 val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
                 val ciphertext = apiKey.toByteArray().mapIndexed { index, value -> (value.toInt() xor 0x5A xor iv[index % iv.size].toInt()).toByte() }.toByteArray()

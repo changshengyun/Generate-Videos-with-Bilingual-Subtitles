@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / SECURITY_AND_BYOK_DELTA / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `SECURITY_AND_BYOK_DELTA / MATRIX_DEFINED / IN_PROGRESS`
+- Current gate: `SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
 - Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: freeze R1 public interfaces/tests, dispatch bounded security/BYOK/UI agents, integrate and run the R1 matrix; real key testing remains deferred until explicit later authorization.
+- Next permitted action: Brain review; a later explicitly authorized device flow must validate a real user-owned DeepSeek key, Keystore persistence after restart, replacement/delete, and cloud authentication before any stronger status.
 
 ## Current test-first evidence
 
@@ -27,13 +27,14 @@
 - The former `docs-v3/` architecture draft was promoted into the new active `docs/` and supplemented with the required three-document state surface.
 - V2 code was not changed during this transition. `third_party/ffmpeg-kit`, models, media, test assets, and existing untracked content remain outside the documentation commit.
 
-## V3-AI-CONTRACT-001 implementation evidence (2026-08-10)
+## V3-AI-CONTRACT-001-R1 implementation evidence (2026-08-10)
 
 - Checkpoint: `bfc7751`; feature commit: `69b991e`; neither was pushed.
 - Focused four Brain contract tests, full `testDebugUnitTest`, `lintDebug`, normal Debug, native-enabled Debug (`-PenableWhisperNative=true`) and `assembleDebugAndroidTest` all completed successfully.
 - `:app:assembleNativeDebug` is not a task in this checkout; the native-enabled Debug command ran the configured CMake path instead.
 - Contract implementation is limited to provider-neutral DTO/service/state/error types, mapper/validator, coordinator fallback orchestration, atomic commit policy, processing metadata and V3 archive compatibility.
 - Live Provider/API key/network lyrics/device/UI/media/model-cache/V2-cleanup work remains deferred or prohibited by this stage.
+- R1 focused security/BYOK/UI tests (16), full JVM tests, lint, normal Debug, native-enabled Debug and AndroidTest builds passed. No real key or live DeepSeek probe was used.
 
 ## Confirmed V3 direction (2026-08-09)
 

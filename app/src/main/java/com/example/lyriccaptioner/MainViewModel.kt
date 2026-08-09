@@ -35,6 +35,14 @@ import com.example.lyriccaptioner.processing.WhisperModelStore
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatusResolver
 import com.example.lyriccaptioner.processing.UnavailableAsrModule
 import com.example.lyriccaptioner.processing.ExportDestinationPolicy
+import com.example.lyriccaptioner.processing.enhancement.byok.AndroidKeystoreDeepSeekKeyStore
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManagerImpl
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyProbe
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStatus
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiMapper
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
 import com.example.lyriccaptioner.project.AndroidProjectRepository
 import com.example.lyriccaptioner.project.MediaAccessResult
 import com.example.lyriccaptioner.project.ProjectLoadResult
@@ -50,6 +58,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private fun createDefaultDeepSeekManager(context: Context): DeepSeekByokManager =
+    DeepSeekByokManagerImpl(
+        store = AndroidKeystoreDeepSeekKeyStore(context.applicationContext),
+        probe = DeepSeekKeyProbe { throw UnsupportedOperationException("live probe deferred") },
+    )
 
 class MainViewModel(
     context: Context,
@@ -70,11 +84,16 @@ class MainViewModel(
     private val translationModule: TranslationModule = TranslationModule(
         AppPipelineFactory.createTranslationDefault(context),
     ),
+    private val deepSeekManager: DeepSeekByokManager = createDefaultDeepSeekManager(context),
 ) : ViewModel() {
     private val appContext = context.applicationContext
     private val whisperModelStore = WhisperModelStore(appContext)
     private val mutableState = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = mutableState.asStateFlow()
+    private val mutableDeepSeekKeyUi = MutableStateFlow(
+        DeepSeekKeyUiMapper.from(deepSeekManager.status()),
+    )
+    val deepSeekKeyUi: StateFlow<DeepSeekKeyUiModel> = mutableDeepSeekKeyUi.asStateFlow()
     private var exportJob: Job? = null
     private var asrJob: Job? = null
     private var translationJob: Job? = null
@@ -630,6 +649,46 @@ class MainViewModel(
         }
     }
 
+    fun saveDeepSeekKey(apiKey: String) {
+        updateDeepSeekKeyUi(DeepSeekKeyStatus(DeepSeekKeyState.VALIDATING_NEW_KEY))
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = try {
+                deepSeekManager.validateAndSave(apiKey)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                DeepSeekKeyStatus(DeepSeekKeyState.VALIDATION_FAILED, detail = "Validation unavailable")
+            }
+            withContext(Dispatchers.Main.immediate) { updateDeepSeekKeyUi(result) }
+        }
+    }
+
+    fun replaceDeepSeekKey(apiKey: String) {
+        updateDeepSeekKeyUi(DeepSeekKeyStatus(DeepSeekKeyState.VALIDATING_NEW_KEY))
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = try {
+                deepSeekManager.replace(apiKey)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                DeepSeekKeyStatus(DeepSeekKeyState.VALIDATION_FAILED, detail = "Validation unavailable")
+            }
+            withContext(Dispatchers.Main.immediate) { updateDeepSeekKeyUi(result) }
+        }
+    }
+
+    fun cancelDeepSeekKeyInput() {
+        updateDeepSeekKeyUi(deepSeekManager.cancelInput())
+    }
+
+    fun deleteDeepSeekKey() {
+        updateDeepSeekKeyUi(deepSeekManager.delete())
+    }
+
+    private fun updateDeepSeekKeyUi(status: DeepSeekKeyStatus) {
+        mutableDeepSeekKeyUi.value = DeepSeekKeyUiMapper.from(status)
+    }
+
     fun saveSidecarSrt(uri: Uri, srt: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -872,7 +931,11 @@ class MainViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             val pipeline = AppPipelineFactory.createDefault(context)
-            return MainViewModel(context, pipeline) as T
+            return MainViewModel(
+                context = context,
+                pipeline = pipeline,
+                deepSeekManager = createDefaultDeepSeekManager(context),
+            ) as T
         }
     }
 

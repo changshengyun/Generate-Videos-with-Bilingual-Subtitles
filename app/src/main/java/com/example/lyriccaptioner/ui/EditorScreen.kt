@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -44,6 +45,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -87,6 +90,8 @@ import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
 import com.example.lyriccaptioner.model.VideoImportMode
 import com.example.lyriccaptioner.processing.TranslationModelState
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
@@ -101,6 +106,7 @@ private fun uniqueDocumentName(requestedName: String): String {
 @Composable
 fun EditorScreen(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsState()
+    val deepSeekKeyUi by viewModel.deepSeekKeyUi.collectAsState()
     val context = LocalContext.current
     val editorSnapshot = buildEditorSnapshot(state)
     var showPasteLyrics by remember { mutableStateOf(false) }
@@ -207,6 +213,13 @@ fun EditorScreen(viewModel: MainViewModel) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Header()
+                DeepSeekKeySettingsPanel(
+                    model = deepSeekKeyUi,
+                    onSave = viewModel::saveDeepSeekKey,
+                    onReplace = viewModel::replaceDeepSeekKey,
+                    onDelete = viewModel::deleteDeepSeekKey,
+                    onCancelInput = viewModel::cancelDeepSeekKeyInput,
+                )
                 VideoPreview(
                     videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
                     captions = state.captions,
@@ -346,6 +359,126 @@ fun EditorScreen(viewModel: MainViewModel) {
             )
         }
     }
+}
+
+@Composable
+private fun DeepSeekKeySettingsPanel(
+    model: DeepSeekKeyUiModel,
+    onSave: (String) -> Unit,
+    onReplace: (String) -> Unit,
+    onDelete: () -> Unit,
+    onCancelInput: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var apiKeyInput by remember { mutableStateOf("") }
+    val hasExistingKey = model.maskedKey != null
+    val showReplace = model.showReplace || (hasExistingKey && model.state == DeepSeekKeyState.VALIDATION_FAILED)
+    val showDelete = model.showDelete || (hasExistingKey && model.state == DeepSeekKeyState.VALIDATION_FAILED)
+    val showSave = model.showSave && !showReplace
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282D35)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("AI 服务配置", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Provider: ${model.provider}", style = MaterialTheme.typography.bodySmall)
+                    Text("状态：${deepSeekKeyStatusLabel(model)}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF9EA5B1))
+                }
+                TextButton(onClick = {
+                    expanded = !expanded
+                    if (!expanded) apiKeyInput = ""
+                }) {
+                    Text(if (expanded) "收起" else "配置")
+                }
+            }
+            if (model.maskedKey != null) {
+                Text(
+                    text = "API Key：${model.maskedKey}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.semantics { contentDescription = "deepseek_key_masked" },
+                )
+            }
+            if (expanded) {
+                Text("Base URL：${model.baseUrl}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF9EA5B1))
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "deepseek_api_key_input" },
+                    value = apiKeyInput,
+                    onValueChange = { apiKeyInput = it },
+                    label = { Text("DeepSeek API Key") },
+                    placeholder = { Text("sk-…") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (showSave) {
+                        Button(
+                            modifier = Modifier.weight(1f).semantics { contentDescription = "deepseek_key_save" },
+                            enabled = apiKeyInput.isNotBlank() && model.state != DeepSeekKeyState.VALIDATING_NEW_KEY,
+                            onClick = {
+                                val key = apiKeyInput
+                                apiKeyInput = ""
+                                onSave(key)
+                            },
+                        ) { Text("保存并验证") }
+                    }
+                    if (showReplace) {
+                        Button(
+                            modifier = Modifier.weight(1f).semantics { contentDescription = "deepseek_key_replace" },
+                            enabled = apiKeyInput.isNotBlank() && model.state != DeepSeekKeyState.VALIDATING_NEW_KEY,
+                            onClick = {
+                                val key = apiKeyInput
+                                apiKeyInput = ""
+                                onReplace(key)
+                            },
+                        ) { Text("更换 API Key") }
+                    }
+                }
+                if (showDelete) {
+                    OutlinedButton(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentDescription = "deepseek_key_delete" },
+                        onClick = {
+                            apiKeyInput = ""
+                            onDelete()
+                        },
+                    ) { Text("删除 API Key") }
+                }
+                if (model.state == DeepSeekKeyState.CONFIGURED || model.state == DeepSeekKeyState.VALIDATION_FAILED || model.state == DeepSeekKeyState.NEEDS_REENTRY) {
+                    TextButton(
+                        modifier = Modifier.semantics { contentDescription = "deepseek_key_cancel" },
+                        onClick = {
+                            apiKeyInput = ""
+                            onCancelInput()
+                        },
+                    ) { Text("取消") }
+                }
+            }
+        }
+    }
+}
+
+private fun deepSeekKeyStatusLabel(model: DeepSeekKeyUiModel): String = when (model.state) {
+    DeepSeekKeyState.UNCONFIGURED -> "未配置"
+    DeepSeekKeyState.INPUT_NEW_KEY -> "请输入新 Key"
+    DeepSeekKeyState.VALIDATING_NEW_KEY -> "验证中…"
+    DeepSeekKeyState.CONFIGURED -> "已配置"
+    DeepSeekKeyState.VALIDATION_FAILED -> "验证失败，旧 Key 保持不变"
+    DeepSeekKeyState.NEEDS_REENTRY -> "需要重新输入"
 }
 
 @Composable

@@ -20,6 +20,20 @@ class CaptionEnhancementCoordinator(
     private val validator: CaptionEnhancementResponseValidator = CaptionEnhancementResponseValidator(),
     private val mapper: CaptionEnhancementRequestMapper = CaptionEnhancementRequestMapper(),
 ) : CaptionEnhancementService {
+    /**
+     * Only transport/provider failures in this explicit allowlist may use the local path.
+     * Do not consult [CaptionEnhancementException.recoverable] here: that property is part of
+     * the public exception type and a provider implementation must not be able to opt an
+     * authentication, unknown, or programming failure into a silent downgrade.
+     */
+    private val fallbackErrorKinds = setOf(
+        CaptionEnhancementErrorKind.OFFLINE,
+        CaptionEnhancementErrorKind.CONNECTION,
+        CaptionEnhancementErrorKind.TIMEOUT,
+        CaptionEnhancementErrorKind.RETRYABLE_SERVER,
+        CaptionEnhancementErrorKind.INVALID_RESPONSE,
+    )
+
     suspend fun enhance(
         jobId: String,
         captions: List<CaptionCue>,
@@ -73,18 +87,61 @@ class CaptionEnhancementCoordinator(
                 processingVersion = validated.processingVersion,
                 songMatch = validated.songMatch,
             )
-        } catch (error: CancellationException) {
+        } catch (_: CancellationException) {
             emit(CaptionEnhancementState.CANCELLED, onStateChanged)
-            throw error
+            // Do not re-expose a provider/coroutine cancellation message or cause: cancellation
+            // is intentionally observable only through the state and cancellation type.
+            throw safeCancellationException()
         } catch (error: CaptionEnhancementException) {
-            if (!error.recoverable) throw error
+            if (error.kind !in fallbackErrorKinds) {
+                // A provider may have put arbitrary detail in its exception message. Rebuild
+                // non-fallback failures with a fixed, non-sensitive message before exposing
+                // them to the caller. The original cause is already discarded by the contract.
+                throw safeNonFallbackException(error)
+            }
             return applyLocalFallback(
                 originalCaptions = originalCaptions,
                 providerError = error,
                 onStateChanged = onStateChanged,
             )
+        } catch (_: Throwable) {
+            // Validation/provider implementations can still throw an unchecked programming or
+            // transport exception. Keep the failure visible as UNKNOWN, never start fallback,
+            // and do not leak its message, cause, wire payload, credentials, or paths.
+            throw CaptionEnhancementProviderException(
+                kind = CaptionEnhancementErrorKind.UNKNOWN,
+                safeDetail = safeMessageFor(CaptionEnhancementErrorKind.UNKNOWN),
+            )
         }
     }
+
+    private fun safeNonFallbackException(error: CaptionEnhancementException): CaptionEnhancementException =
+        if (error is CaptionEnhancementProviderException) {
+            CaptionEnhancementProviderException(
+                kind = error.kind,
+                safeDetail = safeMessageFor(error.kind),
+            )
+        } else {
+            CaptionEnhancementException(
+                kind = error.kind,
+                recoverable = false,
+                message = safeMessageFor(error.kind),
+            )
+        }
+
+    private fun safeMessageFor(kind: CaptionEnhancementErrorKind): String = when (kind) {
+        CaptionEnhancementErrorKind.AUTHENTICATION -> "Provider authentication failed."
+        CaptionEnhancementErrorKind.UNKNOWN -> "Caption enhancement provider request failed."
+        CaptionEnhancementErrorKind.LOCAL_TRANSLATION -> "Local caption translation failed."
+        CaptionEnhancementErrorKind.OFFLINE -> "Caption enhancement is offline."
+        CaptionEnhancementErrorKind.CONNECTION -> "Caption enhancement connection failed."
+        CaptionEnhancementErrorKind.TIMEOUT -> "Caption enhancement request timed out."
+        CaptionEnhancementErrorKind.RETRYABLE_SERVER -> "Caption enhancement service is temporarily unavailable."
+        CaptionEnhancementErrorKind.INVALID_RESPONSE -> "Caption enhancement response was invalid."
+    }
+
+    private fun safeCancellationException(): CancellationException =
+        CancellationException("Caption enhancement cancelled.")
 
     private suspend fun applyLocalFallback(
         originalCaptions: List<CaptionCue>,
@@ -105,9 +162,9 @@ class CaptionEnhancementCoordinator(
                 state = CaptionEnhancementState.LOCAL_FALLBACK_APPLIED,
                 errorKind = providerError.kind,
             )
-        } catch (error: CancellationException) {
+        } catch (_: CancellationException) {
             emit(CaptionEnhancementState.CANCELLED, onStateChanged)
-            throw error
+            throw safeCancellationException()
         } catch (error: Throwable) {
             val cause = if (error is TranslationBatchException) error else error
             throw CaptionEnhancementException(
