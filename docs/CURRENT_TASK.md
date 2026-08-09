@@ -1,60 +1,113 @@
-# Current Task: V3-DEC-001
+# Current Task: V3-AI-CONTRACT-001
 
 ## Current status
 
-- Stage: `V3-DEC-001`
-- Status: `AWAITING_USER_RESPONSES`
-- Scope: V3 产品交互、字幕布局/样式、媒体默认入口、Whisper 缓存和云端增强决策冻结
+- Stage: `V3-AI-CONTRACT-001`
+- Status: `TEST_FILES_ADDED / RED_BASELINE_CAPTURED`
+- Previous stage: `V3-DEC-001 / PASS`
+- Scope: 云端歌曲/歌词匹配、AI 分段修正、本地 OPUS-MT 回退的数据合同、状态机和测试基础
 - V2 functional baseline: `8a48d88`
-- Implementation authorization: `NOT_YET_GRANTED`
-- Next action: 用户按决策表逐行回答；Brain 据此生成可立即执行的首个 V3 Developer Prompt
+- Documentation baseline: `3117eb1`
+- Implementation authorization: `APPROVED_BY_USER`
+- Live API status: `DEFERRED_UNTIL_PROVIDER_AND_KEY_CONFIGURATION`
+- Review workflow: 不启用独立 Review 窗口；Developer 完成自测并把矩阵证据交回 Brain 判定
+- Next action: Development Orchestrator 将已冻结的活动文档与 20 项 Brain 合同测试建立阶段 checkpoint；随后先串行冻结公共合同骨架，再按独占文件清单调用并行实现 Agent
 
-## Confirmed requirements
+## Confirmed product decisions
 
-- V2 已由用户手动验收关闭，不再补做测试或设备证据。
-- Whisper 继续使用当前 `ggml-small.en-q5_1.bin`，V3 增加进程级模型上下文缓存；不得把缓存收益写成准确率提升。
-- 字幕生成成功后自动进入字幕编辑栏目，字幕列表移动到该栏目内。
-- 所有字幕共享一个视频内文本框范围；每段字幕可独立修改字体样式。
-- 普通预览、横屏/全屏预览和导出必须使用同一源视频坐标与字号解析规则。
-- 导入和导出默认走系统相册体验，同时保留用户主动选择其他位置的入口。
-- V3 UI 必须从测试 Demo 升级为正式产品，移除“歌词字幕工作台”、左侧 `V2` 等开发/版本展示。
-- 先冻结交互，再据此修改 UI；视觉样式不能反过来改变已确认工作流。
-- 已有 V3 云端结构化 AI 增强草案继续保留，但关键服务、隐私和离线决策未完成前不得实施。
+1. 本地 Whisper 先生成带 `cue_id/start_ms/end_ms/raw_english` 的分段字幕；后端不重新识别音频。
+2. 完整原始字幕批次通过 API 交给 AI。AI 根据现有识别文本匹配对应歌曲和在线歌词，再按原 cue 修正英文并返回中文翻译。
+3. 云端响应不得改变 cue ID 或时间区间，不得静默增删、合并、拆分或重排字幕。
+4. 云端不可用、超时、服务错误或响应校验失败时，保留 Whisper 原始英文，并使用现有本地 OPUS-MT 生成中文；结果必须标记为 `LOCAL_FALLBACK`。
+5. Whisper 使用单模型进程级缓存：识别结束后保留 context 3-5 分钟；空闲超时、模型切换、严重内存压力或取消后状态不安全时释放；同一 context 串行使用。
+6. 字幕文本框统一调整宽度、水平位置和垂直位置；高度根据中英文、字号、行距和内边距自动计算，并动态限制最小宽度/安全边界，禁止文字裁切或覆盖。
+7. 每段字幕可独立覆盖字体、字号、中英文字色、描边色、粗体、斜体和对齐；V2 样式迁移为项目默认样式，新增设置只保存差异覆盖。
+8. 导入只使用系统相册/Photo Picker；导出只保存到系统相册/MediaStore，不再提供自定义位置。
+9. 删除 App 顶栏，但保留系统状态栏、导航栏和 Window Insets。
+10. 识别成功后不自动跳转，只显示“识别成功”；用户自行点击现有“编辑字幕”入口。
+11. API 模式的非敏感配置可自动保存；供应商 API Key 不得写入 APK、Git、文档、日志或普通持久化配置。真实 Provider 阶段必须先给出安全保存位置，由用户配置后再测试。
+12. V3 最终只保留两条产品处理链路：主链路“视频导入 -> 模型识别 -> 云端匹配/修正/翻译 -> 字幕编辑确认 -> 导出”和降级链路“云端不可用 -> 本地 OPUS-MT -> 编辑确认 -> 导出”。SRT 插入及其他替代导出分支在独立 `V3-CLEAN-001` 清单和回归门禁后删除。
 
-## Proposed V3 execution task
+## Stage state machine
 
-用户完成下方决策后，首个实施任务建议拆为 `V3-ASR-CACHE-001`，只实现 Whisper 缓存和可测量的冷/热启动基线，不同时重做 UI。随后执行 `V3-UX-001` 和 `V3-MEDIA-001`，最后基于已验证交互进入 `V3-UI-001`。云端增强阶段保持决策门禁，不与本地性能和交互改造混在同一提交。
+```text
+V3-DEC-001 / PASS
+  -> V3-AI-CONTRACT-001 / MATRIX_DEFINED / IN_PROGRESS
+  -> BRAIN_TEST_SPEC_FROZEN
+  -> TEST_FILES_ADDED
+  -> RED_BASELINE_CAPTURED
+  -> CHECKPOINT_CREATED
+  -> PARALLEL_IMPLEMENTING
+  -> SERIAL_INTEGRATION
+  -> FOCUSED_TESTS_PASSED
+  -> FULL_STAGE_MATRIX_PASSED
+  -> READY_FOR_BRAIN
+       -> PASS / COMPONENT_VERIFIED / LIVE_API_DEFERRED
+       -> PARTIAL_PASS
+       -> BLOCKED
+       -> HUMAN_DECISION
+```
 
-## Decision table
+## Brain test-first baseline
 
-请按 ID 回复，例如：`D01 采用建议；D03 只调宽度和上下位置；D07 中文名叫……`。
+- Added 20 deterministic JVM contract tests across four new test files; no production Kotlin was added or modified.
+- Focused command: `./gradlew.bat :app:testDebugUnitTest --tests "com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementContractTest" --tests "com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementCoordinatorTest" --tests "com.example.lyriccaptioner.model.CaptionBatchCommitPolicyTest" --tests "com.example.lyriccaptioner.project.ProjectArchiveV3ContractTest"`.
+- Expected-red result: `:app:compileDebugUnitTestKotlin FAILED` because the new production contract, validator, coordinator, processing snapshot and commit policy do not yet exist. The compiler reported `unresolved reference` for those frozen symbols; this is the intended test-first boundary.
+- Environment note: the Kotlin daemon also hit `AccessDeniedException` under the user-local daemon directory, then Gradle used its fallback compiler and emitted the expected missing-production-symbol errors. This does not convert the red baseline into an implementation defect or PASS.
+- Test privacy wording excludes the necessary network wire payload and user-saved project archive; it applies to diagnostics, logs, exceptions, debug strings, telemetry and automatic snapshots.
 
-| ID | 待决定事项 | 建议默认值 | 影响 |
-|---|---|---|---|
-| `D01` | V3 是否继续包含现有“自有后端 + 云端结构化 AI 英文纠错/中文翻译”路线 | 保留，但与缓存/UI 分阶段实施 | 决定 OPUS-MT 是否最终退出产品路径 |
-| `D02` | Whisper 缓存在何时释放 | 单模型常驻；模型切换、显式关闭或严重内存压力时释放；普通页面切换与任务结束不释放 | 影响热启动速度、RAM 和进程被系统回收概率 |
-| `D03` | 统一字幕文本框允许用户调哪些维度 | 调整宽度、水平位置和垂直位置；高度随文本自动计算，不允许任意拉伸 | 避免逐段字幕高度差异和导出换行失控 |
-| `D04` | 每段字幕可独立覆盖哪些样式 | 字体、字号、英文色、中文色、描边色、粗体、斜体、对齐；文本框范围保持全局 | 决定编辑器复杂度和数据迁移范围 |
-| `D05` | 新字幕与旧 V2 项目的样式继承方式 | 项目保存默认样式；每段只保存差异覆盖；V2 全局样式迁移为 V3 默认样式 | 减少重复数据并保持旧项目视觉一致 |
-| `D06` | “默认系统相册”的具体行为 | 导入用 Android Photo Picker；导出自动保存到 `Movies/LyricCaptioner` 并进入系统相册；高级操作允许另选文件位置 | Android 系统没有“用相册选择导出路径”的对称 API，需要确定产品语义 |
-| `D07` | 正式产品名称和顶栏内容 | 顶栏只显示 `LyricCaptioner` 或用户指定中文名；删除“歌词字幕工作台”和 `V2/V3` | 决定品牌文本、图标和导航层级 |
-| `D08` | 自动进入字幕编辑的触发规则 | 仅在新识别/增强成功后自动跳转一次；打开旧项目或后台恢复不强制抢焦点 | 避免恢复项目时打断用户当前操作 |
-| `D09` | 云端增强失败或断网时的产品行为 | 保留原始英文 ASR，可继续编辑、预览和导出；不回退到 Demo | 决定离线可用性和错误恢复 |
-| `D10` | 云端 API、后端、隐私和歌词来源 | 自有后端持有密钥；默认不持久化歌词；无授权歌词来源时只做上下文纠错/翻译，不声称精确歌曲匹配 | 这是进入 `V3-API-001` 前的架构门禁 |
+没有独立 Review Agent/Review 窗口。Developer 不自称正式验收，只提交测试与证据；Brain 按验收矩阵决定最终状态和下一阶段。
 
-## Technical baseline: preview/export typography
+## Acceptance matrix
 
-竖屏视频在横屏播放器中出现黑边时，字幕不能按整个播放器高度计算。统一方式如下：
+| 类别 | `V3-AI-CONTRACT-001` 固定内容 |
+|---|---|
+| 主链路 | 固定的 Whisper cue 批次进入 `CaptionEnhancementService` -> 生成严格请求 -> Provider 返回歌曲匹配与逐 cue 英文修正/中文翻译 -> 本地完整校验 -> 整批原子提交；Provider 不可用或响应无效时，用原始英文调用 `LocalTranslator` -> 整批本地中文结果提交并标记来源 |
+| 必须证据 | 测试先于生产实现；下方 T01-T14 全部通过；新增/修改行为有单元或契约测试；相关 JVM 测试、`testDebugUnitTest`、`lintDebug`、普通 Debug、Native Debug 与 AndroidTest 构建通过；报告测试数量、命令结果和关键状态机日志；证明无真实 API Key、完整歌词或私有媒体路径泄露 |
+| 禁止事项 | 不接入真实 AI Provider、不创建或选择后端技术栈、不要求用户提供 API Key、不抓取真实在线歌词、不修改 UI、Whisper native/cache、Media3、FFmpegKit、字幕坐标、系统相册流程或 V2 清理范围；不删除 SRT/旧分支；不使用 Demo/fixed lyrics 冒充云端成功 |
+| 退出状态 | 所有合同、校验、原子提交、云端失败映射、本地回退、取消和日志隐私测试通过，完整构建矩阵通过，且 Git 只包含本阶段合同/测试/三份活动文档和已授权治理变更时，允许 `PASS / COMPONENT_VERIFIED / LIVE_API_DEFERRED` |
+| 未完成状态 | 合同实现和测试完成但完整构建未通过：`PARTIAL_PASS / BUILD_REQUIRED`；核心状态机或原子性测试失败：`BLOCKED`；必须选择真实 Provider、后端栈、歌词来源授权或密钥方案才能继续：`HUMAN_DECISION`；没有真实 Provider/Key 只保持 `LIVE_API_DEFERRED`，不阻止本合同阶段 PASS |
 
-1. 读取源视频 `width/height`，以源视频像素建立规范坐标。
-2. 字号保存为源视频高度比例：`fontSizeRatio = fontSizePx / sourceVideoHeight`。
-3. 普通/全屏预览先计算实际视频有效矩形，排除黑边，再用 `displayedVideoHeight / sourceVideoHeight` 缩放字号和文本框。
-4. FFmpegKit/ASS 使用源视频尺寸作为 `PlayResX/PlayResY`，按相同 `fontSizeRatio` 还原导出字号。
-5. 三种渲染路径必须调用同一个样式解析器和布局转换器，禁止各自使用独立 magic number。
+## Test cases to write before production code
 
-## Boundaries
+| ID | 测试内容 | 必须断言 |
+|---|---|---|
+| `T01` | 请求映射 | `job_id/schema_version` 合法，cue ID、顺序、时间区间和原始英文完整保留 |
+| `T02` | 云端成功 | 每个请求 cue 恰好获得一条修正英文和中文，来源为 `CLOUD_AI`，整批一次提交 |
+| `T03` | 歌曲匹配信息 | 歌名、歌手、匹配置信度和来源可选且受长度/枚举约束；无可靠匹配时不得伪造已确认歌曲 |
+| `T04` | cue 集合异常 | 缺失、额外或重复 cue ID 时拒绝整批响应，不部分覆盖 |
+| `T05` | 时间轴被修改 | 任一 `start_ms/end_ms` 与请求不同即拒绝整批响应 |
+| `T06` | 字段与大小限制 | 空英文、非法 Unicode/枚举、超长文本、错误 schema/job ID 被拒绝 |
+| `T07` | 云端不可用 | 离线、连接失败、超时、可重试 5xx 和无效 Schema 进入本地翻译回退 |
+| `T08` | 本地回退输入 | OPUS-MT 使用原始 Whisper 英文；输出来源为 `LOCAL_FALLBACK`，不声称英文已被 AI 修正 |
+| `T09` | 云端成功不回退 | 有效云端结果提交后不得再调用本地 translator |
+| `T10` | 用户取消 | 取消进入 `CANCELLED`，不自动启动本地回退，不覆盖当前字幕 |
+| `T11` | 本地回退失败 | 保留完整原始英文和既有项目状态，不提交半批中文，返回可恢复错误 |
+| `T12` | 原子性 | 云端或本地任一 cue 失败时，整批不提交；旧导出失效只在完整新字幕提交后触发 |
+| `T13` | 来源与状态持久化 | `CLOUD_AI/LOCAL_FALLBACK/RAW_ASR`、处理版本和错误状态能保存恢复，不混淆来源 |
+| `T14` | 隐私与密钥 | 诊断日志、异常、debug string、遥测事件和自动测试快照不包含 API Key、完整歌词批次或用户私有媒体路径；实际网络 wire payload 必须携带原始英文、用户主动保存的项目归档允许持久化字幕，二者不属于该日志隐私断言；仅允许非敏感 API 模式配置持久化 |
 
-- 当前任务只允许完善活动文档和收集用户决策，不允许修改业务代码或启动 V3 实施。
-- 不启用 GPU、不替换 Whisper 模型、不下载大型依赖。
-- 不把 UI 重做、模型缓存和云端后端塞进一个实现阶段。
-- 用户完成决策后，Developer Prompt 必须立即执行对应阶段，不再次要求确认。
+## Authorized implementation scope
+
+- 新增或调整 Provider-neutral 的请求/响应 DTO、`CaptionEnhancementService` 接口、响应校验器、结果来源枚举、状态机和错误映射。
+- 使用 fake Provider 与 fake/local translator 编写确定性测试。
+- 在不接真实网络的前提下实现云端成功与本地回退的 orchestration 边界。
+- 必要时对 `CaptionCue`/项目状态增加最小兼容字段，但不得在本阶段重做 UI 或迁移全部历史项目结构。
+- 先增加测试和失败基线，再实现生产代码；普通失败按 `AGENTS.md` 自主 Debug。
+
+## API key boundary
+
+- 本阶段只定义 secret reference/config contract，不保存真实 Key。
+- 真实 API 阶段必须让 Provider Key 位于自有后端的环境变量或 secret manager 中；Android APK 只持有后端地址和短期会话凭据。
+- 如果后续用户明确选择“设备直连供应商 API”，必须先返回 `HUMAN_DECISION`，说明 APK 反编译、密钥滥用和费用风险，并得到新的架构授权。
+
+## Final report format
+
+1. 候选状态及证据等级，不自称正式验收；
+2. 验收矩阵五项逐条结果；
+3. T01-T14 及完整构建矩阵的实际命令、数量和结果；
+4. 实现文件、测试文件和明确未修改范围；
+5. 云端成功、本地回退、取消、原子失败的状态转换证据；
+6. API Key/歌词/路径未泄露检查；
+7. checkpoint、功能 Commit、是否 push 和最终 Git 状态；
+8. `LIVE_API_DEFERRED` 的剩余条件，以及下一阶段建议。

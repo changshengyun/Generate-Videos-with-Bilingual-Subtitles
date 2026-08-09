@@ -4,12 +4,21 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-DEC-001 / AWAITING_USER_RESPONSES`
+- Current task: `V3-AI-CONTRACT-001 / TEST_FILES_ADDED / RED_BASELINE_CAPTURED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `PLANNING_ONLY`
-- Implementation authorization: not granted; user requested review of the V3 task before development
-- Next permitted action: collect row-by-row answers from `CURRENT_TASK.md`, reconcile them into the V3 architecture, then generate the first executable Developer Prompt
+- Current gate: `COMPONENT_CONTRACT_ONLY / LIVE_API_DEFERRED`
+- Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
+- Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
+- Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
+- Next permitted action: create a stage checkpoint containing the frozen matrix and 20 Brain-authored tests; freeze the shared production contract serially; dispatch bounded parallel implementation Agents with exclusive file ownership; integrate and run the full Android matrix serially
+
+## Current test-first evidence
+
+- Brain added four new JVM test files containing 20 tests for T01-T14 and did not modify production Kotlin.
+- Focused Gradle execution reached `:app:compileDebugUnitTestKotlin` and failed on the intentionally absent V3 contract symbols, establishing the expected-red baseline.
+- The Kotlin daemon encountered a user-local `AccessDeniedException`, but Gradle fallback compilation completed far enough to emit the expected `unresolved reference` contract errors.
+- No live Provider, API key, network lyrics retrieval, UI change, Whisper cache, media change, cleanup, device test, Git commit or push was performed.
 
 ## Version transition
 
@@ -18,22 +27,36 @@
 - The former `docs-v3/` architecture draft was promoted into the new active `docs/` and supplemented with the required three-document state surface.
 - V2 code was not changed during this transition. `third_party/ffmpeg-kit`, models, media, test assets, and existing untracked content remain outside the documentation commit.
 
-## Confirmed V3 direction
+## Confirmed V3 direction (2026-08-09)
 
-- Add a process-level cache for the current Whisper model context; keep model state separate from task state and serialize use of one context.
+- Add a single-model process-level Whisper cache; retain context for 3-5 minutes after recognition, serialize one task per context, and release on idle timeout, model switch, severe memory pressure, or unsafe cancellation state.
 - Redesign interaction before visual styling.
-- After successful subtitle generation, navigate to subtitle editing and keep the subtitle list inside that section.
+- After successful subtitle generation, stay on the current section and show only the success state; the user enters subtitle editing through the existing explicit action.
 - Use one project-level caption text box within the active video image and cue-level style overrides.
 - Resolve subtitle position and font size in source-video coordinates so preview, fullscreen, aspect-ratio changes, and export agree.
-- Prefer system gallery/media experiences for default import and export, with an advanced location override.
-- Replace test-workbench presentation with a product UI and remove visible development/version labels.
-- Preserve the existing cloud structured-caption enhancement proposal behind explicit API/backend/privacy decisions.
+- Use Photo Picker as the only video import entry and MediaStore/system gallery as the only export destination; do not offer an alternate location picker.
+- Remove the entire app top bar and visible development/version labels while preserving system status/navigation bars and Window Insets.
+- Send complete local Whisper cue batches to an AI API for song/online-lyrics matching, per-cue English correction, and Chinese translation without re-running audio ASR or changing timestamps.
+- Keep the current OPUS-MT/ONNX local translator as the real offline/network-failure fallback and label its output separately from cloud AI.
+- Persist only non-sensitive API mode settings. Provider API keys stay outside the APK/Git/logs and must be configured in a backend secret/environment location before live testing.
+- The final product keeps only the model-recognition main path and the local-translation fallback path. SRT import and other export branches are removed only in a later audit-first `V3-CLEAN-001` stage.
+- The detailed `V3_PRODUCT_ARCHITECTURE.md` remains secondary reference; where its earlier draft conflicts with these three active documents, the active documents and latest user decisions control until the reference is synchronized.
+
+## Development process rule
+
+- Every new stage must define its acceptance matrix in `docs/CURRENT_TASK.md` before checkpoint creation or implementation.
+- The required rows are: main user path, mandatory evidence, prohibited changes/fallbacks, exact PASS exit conditions, and deterministic incomplete states.
+- A missing matrix forces `MATRIX_REQUIRED`. Missing device, fixture, screenshot, log, artifact, or runtime evidence must resolve to the state declared before implementation; code or build completion cannot silently raise the stage above that evidence ceiling.
+- The matrix may only change before further implementation and with a recorded reason. It cannot be weakened retroactively to convert a failed result into PASS.
+- Completion reports must map every claimed status to the corresponding matrix evidence.
 
 ## Evidence and claim boundaries
 
 - Whisper caching may improve repeated-task startup time but does not itself improve core inference speed or recognition accuracy.
 - User-observed V2 recognition usability is accepted as product feedback, not fixture-backed WER/CER evidence.
 - OPUS-MT works locally but its Chinese naturalness is not accepted as final product quality.
+- Cloud song/lyrics matching is not yet live-verified; the current stage can verify only contracts, validation, atomicity and deterministic fallback behavior.
+- Online lyrics provenance/licensing and the concrete AI Provider/backend remain a later `HUMAN_DECISION` before live integration; tests must not scrape or bundle real copyrighted lyrics.
 - GPU availability on the phone does not authorize a GPU backend; any GPU work requires an independent Spike and regression evidence.
 - Preview/export visual equivalence must exclude letterbox/pillarbox regions and use the source video as the common coordinate system.
 
@@ -42,18 +65,21 @@
 - Do not clean, reset, stage, or commit the existing dirty `third_party/ffmpeg-kit` state.
 - Do not commit models, `.emulator-test-assets/`, `tools/opus-mt-en-zh/`, `._cache_adb.exe`, or unrelated untracked content.
 - Do not push unless the user explicitly requests it.
-- Do not start V3 business-code implementation until `V3-DEC-001` is resolved.
+- Preserve the user-approved but uncommitted `AGENTS.md` acceptance-matrix rule and three-document updates when creating the stage checkpoint.
+- Do not stage unrelated dirty/untracked content in the checkpoint or feature commit.
+- Do not implement live Provider calls, API-key storage, model caching, UI/media changes or V2 cleanup inside `V3-AI-CONTRACT-001`.
 
 ## Stage routing
 
 | Stage | State |
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
-| V3-DEC-001 | `AWAITING_USER_RESPONSES` |
-| V3-ASR-CACHE-001 | `PLANNED` |
-| V3-UX-001 | `PLANNED` |
+| V3-DEC-001 | `PASS` |
+| V3-AI-CONTRACT-001 | `MATRIX_DEFINED / IN_PROGRESS` |
+| V3-ASR-SESSION-001 | `PLANNED` |
+| V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
-| V3-API-001 | `BLOCKED_BY_DECISION` |
-| V3-AI-001 | `BLOCKED_BY_DECISION` |
+| V3-AI-001 | `LIVE_API_DEFERRED` |
+| V3-CLEAN-001 | `PLANNED` |
 | V3-E2E-003 | `PLANNED` |
