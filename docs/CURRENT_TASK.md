@@ -25,7 +25,7 @@
 
 ## R1 implementation evidence (2026-08-10)
 
-- R1 checkpoint: `a18574`; implementation commits are pending final staging; no push.
+- R1 checkpoint: `a18574`; implementation commits: `6e77550`, `d9addce`; no push.
 - Agent A: strict fallback allowlist and sanitized provider/validation/programming/cancellation failures in `CaptionEnhancementCoordinator.kt`.
 - Agent B: `DeepSeekByokManagerImpl` plus `AndroidKeystoreDeepSeekKeyStore`; AES-256-GCM, Android Keystore alias, random 12-byte IV, atomic private `noBackupFilesDir` record, replacement/delete/corruption/concurrency handling.
 - Agent C: injectable manager in `MainViewModel.kt` and a collapsible AI service configuration panel in `EditorScreen.kt`; password input is transient and cleared after actions/collapse; only masked suffix is exposed.
