@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / FULL_STAGE_MATRIX_PASSED / READY_FOR_BRAIN`
+- Current task: `V3-AI-CONTRACT-001 / R1 / SECURITY_AND_BYOK_DELTA / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `READY_FOR_BRAIN / COMPONENT_VERIFIED / LIVE_API_DEFERRED`
+- Current gate: `SECURITY_AND_BYOK_DELTA / MATRIX_DEFINED / IN_PROGRESS`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
 - Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: Brain reviews the evidence and adjudicates the stage; live Provider/backend/key configuration remains deferred.
+- Next permitted action: freeze R1 public interfaces/tests, dispatch bounded security/BYOK/UI agents, integrate and run the R1 matrix; real key testing remains deferred until explicit later authorization.
 
 ## Current test-first evidence
 

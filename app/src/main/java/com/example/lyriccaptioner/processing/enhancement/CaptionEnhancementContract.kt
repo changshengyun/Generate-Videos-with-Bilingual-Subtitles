@@ -122,7 +122,12 @@ open class CaptionEnhancementException(
     val recoverable: Boolean,
     message: String,
     cause: Throwable? = null,
-) : IllegalStateException(message, cause)
+) : IllegalStateException(message) {
+    // Causes may contain request bodies, credentials, paths, or provider responses. They are
+    // intentionally not retained on the public exception object.
+    @Suppress("UNUSED_PARAMETER")
+    private val sanitizedCause: Throwable? = cause?.let { null }
+}
 
 class CaptionEnhancementProviderException(
     kind: CaptionEnhancementErrorKind,
@@ -130,9 +135,15 @@ class CaptionEnhancementProviderException(
     cause: Throwable? = null,
 ) : CaptionEnhancementException(
     kind = kind,
-    recoverable = kind != CaptionEnhancementErrorKind.AUTHENTICATION,
+    recoverable = kind in setOf(
+        CaptionEnhancementErrorKind.OFFLINE,
+        CaptionEnhancementErrorKind.CONNECTION,
+        CaptionEnhancementErrorKind.TIMEOUT,
+        CaptionEnhancementErrorKind.RETRYABLE_SERVER,
+        CaptionEnhancementErrorKind.INVALID_RESPONSE,
+    ),
     message = safeDetail,
-    cause = cause,
+    cause = null,
 )
 
 class CaptionEnhancementValidationException(

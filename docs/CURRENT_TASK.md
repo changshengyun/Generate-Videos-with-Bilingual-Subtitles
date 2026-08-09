@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `FULL_STAGE_MATRIX_PASSED / READY_FOR_BRAIN / COMPONENT_VERIFIED / LIVE_API_DEFERRED`
+- Status: `SECURITY_AND_BYOK_DELTA / MATRIX_DEFINED / IN_PROGRESS`
 - Previous stage: `V3-DEC-001 / PASS`
 - Scope: 云端歌曲/歌词匹配、AI 分段修正、本地 OPUS-MT 回退的数据合同、状态机和测试基础
 - V2 functional baseline: `8a48d88`
@@ -12,6 +12,16 @@
 - Live API status: `DEFERRED_UNTIL_PROVIDER_AND_KEY_CONFIGURATION`
 - Review workflow: 不启用独立 Review 窗口；Developer 完成自测并把矩阵证据交回 Brain 判定
 - Next action: Development Orchestrator 将已冻结的活动文档与 20 项 Brain 合同测试建立阶段 checkpoint；随后先串行冻结公共合同骨架，再按独占文件清单调用并行实现 Agent
+
+## V3-AI-CONTRACT-001-R1 acceptance matrix
+
+| Category | R1 requirement |
+|---|---|
+| Main path | App AI service settings -> masked DeepSeek BYOK input -> minimal validation -> Android Keystore AES-256-GCM encryption -> `noBackupFilesDir` ciphertext/IV record -> short-lived decrypt only for request construction. |
+| Mandatory evidence | Sanitized exception chain tests; fallback allowlist tests; Keystore round-trip/IV/rotation/failure/cancel/delete/corruption/concurrency tests; masked settings UI tests; focused/full JVM and Android builds; secret scan. |
+| Prohibited | Real key, backend/provider expansion, online lyrics, UI redesign, Whisper/cache/media/editor/SRT cleanup, plaintext key in preferences/DataStore/archive/SavedState/logs/APK/tests. |
+| Exit | Without real key: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`; only after user-authorized real-key product-flow verification may Brain consider `READY_FOR_BRAIN / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED`. |
+| Incomplete | Missing runtime key, Keystore/device evidence or failed security proof remains `LIVE_KEY_TEST_REQUIRED`, `BLOCKED`, or `HUMAN_DECISION` as applicable. |
 
 ## Orchestrator implementation evidence (2026-08-10)
 
