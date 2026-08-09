@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / TEST_FILES_ADDED / RED_BASELINE_CAPTURED`
+- Current task: `V3-AI-CONTRACT-001 / FULL_STAGE_MATRIX_PASSED / READY_FOR_BRAIN`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `COMPONENT_CONTRACT_ONLY / LIVE_API_DEFERRED`
+- Current gate: `READY_FOR_BRAIN / COMPONENT_VERIFIED / LIVE_API_DEFERRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
 - Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: create a stage checkpoint containing the frozen matrix and 20 Brain-authored tests; freeze the shared production contract serially; dispatch bounded parallel implementation Agents with exclusive file ownership; integrate and run the full Android matrix serially
+- Next permitted action: Brain reviews the evidence and adjudicates the stage; live Provider/backend/key configuration remains deferred.
 
 ## Current test-first evidence
 
@@ -26,6 +26,14 @@
 - The prior active `docs/` was archived to `docs-v2/`.
 - The former `docs-v3/` architecture draft was promoted into the new active `docs/` and supplemented with the required three-document state surface.
 - V2 code was not changed during this transition. `third_party/ffmpeg-kit`, models, media, test assets, and existing untracked content remain outside the documentation commit.
+
+## V3-AI-CONTRACT-001 implementation evidence (2026-08-10)
+
+- Checkpoint: `bfc7751`; feature commit: `69b991e`; neither was pushed.
+- Focused four Brain contract tests, full `testDebugUnitTest`, `lintDebug`, normal Debug, native-enabled Debug (`-PenableWhisperNative=true`) and `assembleDebugAndroidTest` all completed successfully.
+- `:app:assembleNativeDebug` is not a task in this checkout; the native-enabled Debug command ran the configured CMake path instead.
+- Contract implementation is limited to provider-neutral DTO/service/state/error types, mapper/validator, coordinator fallback orchestration, atomic commit policy, processing metadata and V3 archive compatibility.
+- Live Provider/API key/network lyrics/device/UI/media/model-cache/V2-cleanup work remains deferred or prohibited by this stage.
 
 ## Confirmed V3 direction (2026-08-09)
 
@@ -75,7 +83,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `MATRIX_DEFINED / IN_PROGRESS` |
+| V3-AI-CONTRACT-001 | `READY_FOR_BRAIN / COMPONENT_VERIFIED / LIVE_API_DEFERRED` |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |

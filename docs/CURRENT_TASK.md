@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `TEST_FILES_ADDED / RED_BASELINE_CAPTURED`
+- Status: `FULL_STAGE_MATRIX_PASSED / READY_FOR_BRAIN / COMPONENT_VERIFIED / LIVE_API_DEFERRED`
 - Previous stage: `V3-DEC-001 / PASS`
 - Scope: 云端歌曲/歌词匹配、AI 分段修正、本地 OPUS-MT 回退的数据合同、状态机和测试基础
 - V2 functional baseline: `8a48d88`
@@ -12,6 +12,15 @@
 - Live API status: `DEFERRED_UNTIL_PROVIDER_AND_KEY_CONFIGURATION`
 - Review workflow: 不启用独立 Review 窗口；Developer 完成自测并把矩阵证据交回 Brain 判定
 - Next action: Development Orchestrator 将已冻结的活动文档与 20 项 Brain 合同测试建立阶段 checkpoint；随后先串行冻结公共合同骨架，再按独占文件清单调用并行实现 Agent
+
+## Orchestrator implementation evidence (2026-08-10)
+
+- Checkpoint commit: `bfc7751` (`test(v3): freeze caption enhancement contract`).
+- Feature commit: `69b991e` (`feat(v3): implement caption enhancement contract`). No push performed.
+- Agent A owns request mapping and response validation; Agent B owns coordinator/error mapping/local fallback; Agent C owns processing snapshot, atomic commit policy, editor/project state and V3 archive compatibility.
+- Focused four-test command: PASS. Full `:app:testDebugUnitTest`: PASS. `:app:lintDebug`: PASS. `:app:assembleDebug`: PASS. Native-equivalent `-PenableWhisperNative=true :app:assembleDebug`: PASS. `:app:assembleDebugAndroidTest`: PASS.
+- The requested `:app:assembleNativeDebug` task does not exist in this checkout; the native-enabled Debug command above exercised the configured CMake native path. Kotlin daemon and NDK strip permission warnings were environmental; fallback compilation/build completed successfully.
+- No live Provider, API key, network lyrics retrieval, device run, UI/media change, model/cache change, or V2 cleanup was performed. Brain must adjudicate the stage; this is not a formal product acceptance claim.
 
 ## Confirmed product decisions
 
