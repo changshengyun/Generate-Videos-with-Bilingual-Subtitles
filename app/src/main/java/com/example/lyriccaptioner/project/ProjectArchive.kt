@@ -2,10 +2,16 @@ package com.example.lyriccaptioner.project
 
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionProcessingSnapshot
 import com.example.lyriccaptioner.model.ExportProfile
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SubtitleStyle
 import com.example.lyriccaptioner.model.validated
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementErrorKind
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
+import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.SongMatch
+import com.example.lyriccaptioner.processing.enhancement.SongMatchStatus
 import java.util.Base64
 
 /** Versioned, text-based project archive codec. Media bytes are never copied into an archive. */
@@ -13,7 +19,7 @@ class ProjectArchive(
     private val srtParser: SrtParser = SrtParser(),
 ) {
     fun write(snapshot: ProjectSnapshot): String = buildString {
-        appendLine(MAGIC_V2)
+        appendLine(MAGIC_V3)
         appendField("videoUri", snapshot.videoUri?.let(::encode))
         appendField("videoDurationMs", snapshot.videoDurationMs?.toString())
         appendField("outputName", encode(snapshot.exportProfile.outputName))
@@ -25,6 +31,15 @@ class ProjectArchive(
         appendField("outlineColorHex", encode(snapshot.exportProfile.subtitleStyle.outlineColorHex))
         appendField("fontFamily", encode(snapshot.exportProfile.subtitleStyle.fontFamily))
         appendField("captions", encodeCaptions(snapshot.captions))
+        appendField("captionState", snapshot.captionProcessing.state.name)
+        appendField("captionSource", snapshot.captionProcessing.source.name)
+        appendField("captionProcessingVersion", snapshot.captionProcessing.processingVersion?.let(::encode))
+        appendField("captionErrorKind", snapshot.captionProcessing.lastErrorKind?.name)
+        appendField("songMatchStatus", snapshot.captionProcessing.songMatch?.status?.name)
+        appendField("songMatchTitle", snapshot.captionProcessing.songMatch?.title?.let(::encode))
+        appendField("songMatchArtist", snapshot.captionProcessing.songMatch?.artist?.let(::encode))
+        appendField("songMatchConfidence", snapshot.captionProcessing.songMatch?.confidence?.toString())
+        appendField("songMatchSource", snapshot.captionProcessing.songMatch?.source?.let(::encode))
     }
 
     fun read(raw: String): ProjectSnapshot {
@@ -33,6 +48,7 @@ class ProjectArchive(
         return when {
             header == MAGIC_V1 -> readV1(normalized)
             header == MAGIC_V2 -> readV2(normalized)
+            header == MAGIC_V3 -> readV3(normalized)
             header.startsWith("# LyricCaptionerProject v") ->
                 throw UnsupportedProjectArchiveVersionException("Unsupported project archive version.")
             else -> throw ProjectArchiveFormatException("Invalid project archive magic.")
@@ -64,6 +80,7 @@ class ProjectArchive(
             videoDurationMs = values.optionalLong("videoDurationMs", null),
             captions = captions,
             exportProfile = profile,
+            captionProcessing = CaptionProcessingSnapshot(),
         )
     }
 
@@ -87,6 +104,31 @@ class ProjectArchive(
             videoDurationMs = values.optionalLong("videoDurationMs", null),
             captions = decodeCaptions(values["captions"]),
             exportProfile = profile,
+            captionProcessing = CaptionProcessingSnapshot(),
+        )
+    }
+
+    private fun readV3(raw: String): ProjectSnapshot {
+        val (values, _) = splitHeader(raw)
+        val style = SubtitleStyle(
+            fontSizeSp = values.optionalInt("fontSizeSp", 24),
+            bottomMarginPercent = values.optionalInt("bottomMarginPercent", 12),
+            primaryColorHex = values.decodeOptional("primaryColorHex", "#FFFFFF"),
+            secondaryColorHex = values.decodeOptional("secondaryColorHex", "#F4E7A1"),
+            outlineColorHex = values.decodeOptional("outlineColorHex", "#000000"),
+            fontFamily = values.decodeOptional("fontFamily", "sans"),
+        ).validated()
+        val profile = ExportProfile(
+            outputName = values.decodeOptional("outputName", "lyric-captioner-output.mp4"),
+            subtitleStyle = style,
+            burnInSubtitles = values.optionalBoolean("burnInSubtitles", true),
+        )
+        return ProjectSnapshot(
+            videoUri = values.decodeOptionalNullable("videoUri"),
+            videoDurationMs = values.optionalLong("videoDurationMs", null),
+            captions = decodeCaptions(values["captions"]),
+            exportProfile = profile,
+            captionProcessing = values.readCaptionProcessing(),
         )
     }
 
@@ -164,6 +206,47 @@ class ProjectArchive(
     private fun Map<String, String>.decodeOptionalNullable(key: String): String? =
         get(key)?.takeIf { it.isNotBlank() }?.let { decode(it, key).ifBlank { null } }
 
+    private fun Map<String, String>.readCaptionProcessing(): CaptionProcessingSnapshot {
+        val source = optionalEnum("captionSource", CaptionResultSource.RAW_ASR)
+        val state = optionalEnum("captionState", CaptionEnhancementState.RAW_ASR_READY)
+        val errorKind = optionalEnumOrNull<CaptionEnhancementErrorKind>("captionErrorKind")
+        val songStatus = optionalEnumOrNull<SongMatchStatus>("songMatchStatus")
+        val songMatch = songStatus?.let { status ->
+            val title = decodeOptionalNullable("songMatchTitle")
+            val artist = decodeOptionalNullable("songMatchArtist")
+            val confidence = get("songMatchConfidence")?.takeIf { it.isNotBlank() }
+                ?.requiredFloat("songMatchConfidence")
+            val matchSource = decodeOptionalNullable("songMatchSource")
+            if (status == SongMatchStatus.NOT_FOUND && (title != null || artist != null || confidence != null)) {
+                throw ProjectArchiveFormatException("Song match metadata is inconsistent.")
+            }
+            SongMatch(status, title, artist, confidence, matchSource)
+        }
+        return CaptionProcessingSnapshot(
+            state = state,
+            source = source,
+            processingVersion = decodeOptionalNullable("captionProcessingVersion"),
+            lastErrorKind = errorKind,
+            songMatch = songMatch,
+        )
+    }
+
+    private inline fun <reified T : Enum<T>> Map<String, String>.optionalEnum(
+        key: String,
+        default: T,
+    ): T = get(key)?.takeIf { it.isNotBlank() }?.let { value ->
+        runCatching { enumValueOf<T>(value) }.getOrElse {
+            throw ProjectArchiveFormatException("Invalid value for $key.", it)
+        }
+    } ?: default
+
+    private inline fun <reified T : Enum<T>> Map<String, String>.optionalEnumOrNull(key: String): T? =
+        get(key)?.takeIf { it.isNotBlank() }?.let { value ->
+            runCatching { enumValueOf<T>(value) }.getOrElse {
+                throw ProjectArchiveFormatException("Invalid value for $key.", it)
+            }
+        }
+
     private fun String?.orDefault(default: String): String = this?.ifBlank { default } ?: default
     private fun String.requiredLong(field: String): Long = toLongOrNull()
         ?: throw ProjectArchiveFormatException("Invalid number for $field.")
@@ -181,6 +264,7 @@ class ProjectArchive(
     private companion object {
         const val MAGIC_V1 = "# LyricCaptionerProject v1"
         const val MAGIC_V2 = "# LyricCaptionerProject v2"
+        const val MAGIC_V3 = "# LyricCaptionerProject v3"
         const val FIELD_SEPARATOR = "\u001F"
         const val RECORD_SEPARATOR = "\u001E"
         const val CANDIDATE_SEPARATOR = ","

@@ -46,6 +46,15 @@ fun interface CaptionEnhancementProvider {
     suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse
 }
 
+/** Application-facing boundary for one complete, atomic caption enhancement batch. */
+interface CaptionEnhancementService {
+    suspend fun enhance(
+        jobId: String,
+        captions: List<CaptionCue>,
+        onStateChanged: (CaptionEnhancementState) -> Unit = {},
+    ): CaptionEnhancementOutcome
+}
+
 enum class CaptionResultSource {
     RAW_ASR,
     CLOUD_AI,

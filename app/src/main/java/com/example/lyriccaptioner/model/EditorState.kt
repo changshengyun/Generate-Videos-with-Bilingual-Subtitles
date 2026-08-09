@@ -9,6 +9,7 @@ data class EditorState(
     val mediaState: MediaState = MediaState.NONE,
     val requiresVideoAssociation: Boolean = false,
     val captions: List<CaptionCue> = emptyList(),
+    val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
     val selectedCaptionId: String? = null,
     val modelState: ModelState = ModelState(),
     val exportProfile: ExportProfile = ExportProfile(),
