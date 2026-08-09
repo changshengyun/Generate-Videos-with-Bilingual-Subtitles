@@ -24,6 +24,12 @@ class CaptionEnhancementSecurityR1Test {
         assertFalse(error.message.orEmpty().contains(secret))
         assertFalse(error.toString().contains(secret))
         assertFalse(error.stackTraceToString().contains(secret))
+
+        val unsafeDetail = CaptionEnhancementProviderException(
+            CaptionEnhancementErrorKind.UNKNOWN,
+            sensitive,
+        )
+        assertFalse(unsafeDetail.message.orEmpty().contains(secret))
     }
 
     @Test

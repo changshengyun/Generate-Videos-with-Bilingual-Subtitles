@@ -122,7 +122,7 @@ open class CaptionEnhancementException(
     val recoverable: Boolean,
     message: String,
     cause: Throwable? = null,
-) : IllegalStateException(message) {
+) : IllegalStateException(sanitizeExceptionMessage(message)) {
     // Causes may contain request bodies, credentials, paths, or provider responses. They are
     // intentionally not retained on the public exception object.
     @Suppress("UNUSED_PARAMETER")
@@ -142,7 +142,7 @@ class CaptionEnhancementProviderException(
         CaptionEnhancementErrorKind.RETRYABLE_SERVER,
         CaptionEnhancementErrorKind.INVALID_RESPONSE,
     ),
-    message = safeDetail,
+    message = "Caption enhancement provider request failed.",
     cause = null,
 )
 
@@ -152,6 +152,12 @@ class CaptionEnhancementValidationException(
 ) : CaptionEnhancementException(
     kind = CaptionEnhancementErrorKind.INVALID_RESPONSE,
     recoverable = true,
-    message = message,
+    message = "Caption enhancement response validation failed.",
     cause = cause,
 )
+
+private fun sanitizeExceptionMessage(value: String): String = value
+    .replace(Regex("(?i)authorization\\s*:\\s*bearer\\s+\\S+"), "Authorization: [REDACTED]")
+    .replace(Regex("(?i)bearer\\s+\\S+"), "Bearer [REDACTED]")
+    .replace(Regex("sk-[A-Za-z0-9_-]+"), "[REDACTED_KEY]")
+    .replace(Regex("(?:content|file)://\\S+"), "[REDACTED_PATH]")
