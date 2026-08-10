@@ -54,17 +54,27 @@ class AsrModuleTest {
     @Test
     fun recognizerRejectsMissingJniAndPropagatesJniFailure() = runBlocking {
         val audio = ExtractedAudio(TestUri("file:///tmp/audio.wav"), 16_000, 1, "/tmp/audio.wav")
-        val unavailable = WhisperLocalSpeechRecognizer("model", FakeNativeClient(false))
+        val unavailableRuntime = WhisperSessionRuntime(FakeNativeClient(false))
+        val unavailable = WhisperLocalSpeechRecognizer("model", unavailableRuntime)
         assertThrows(WhisperJniUnavailableException::class.java) {
             runBlocking { unavailable.recognize(audio) }
         }
 
-        val failure = IllegalStateException("native boom")
-        val failing = WhisperLocalSpeechRecognizer("model", FakeNativeClient(true, failure = failure))
-        val thrown = assertThrows(IllegalStateException::class.java) {
-            runBlocking { failing.recognize(audio) }
+        val model = File.createTempFile("whisper-model", ".bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val failingRuntime = WhisperSessionRuntime(
+            FakeNativeClient(true, failure = IllegalStateException("native boom")),
+        )
+        try {
+            val failing = WhisperLocalSpeechRecognizer(model.absolutePath, failingRuntime)
+            val thrown = assertThrows(IllegalStateException::class.java) {
+                runBlocking { failing.recognize(audio) }
+            }
+            assertEquals("native boom", thrown.message)
+        } finally {
+            unavailableRuntime.close()
+            failingRuntime.close()
+            model.delete()
         }
-        assertEquals("native boom", thrown.message)
     }
 
     @Test
@@ -166,9 +176,11 @@ class AsrModuleTest {
     private class FakeNativeClient(
         override val isAvailable: Boolean,
         private val failure: Throwable? = null,
-    ) : WhisperNativeClient {
+    ) : WhisperSessionNativeClient {
+        override fun createContext(modelPath: String): Long = 1L
+
         override fun transcribe(
-            modelPath: String,
+            contextHandle: Long,
             audioPath: String,
             sampleRate: Int,
             channels: Int,
@@ -177,5 +189,9 @@ class AsrModuleTest {
             failure?.let { throw it }
             return listOf(WhisperSegment(0, 100, "ok", 0.9f))
         }
+
+        override fun requestAbort(contextHandle: Long) = Unit
+
+        override fun freeContext(contextHandle: Long) = Unit
     }
 }

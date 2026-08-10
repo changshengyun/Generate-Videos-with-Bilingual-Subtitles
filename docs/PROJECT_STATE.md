@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-ASR-SESSION-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-ASR-SESSION-001 / PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`（Developer candidate）
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `MATRIX_DEFINED / CHECKPOINT_REQUIRED_BEFORE_IMPLEMENTATION`
+- Current gate: `READY_FOR_BRAIN / PHYSICAL_DEVICE_RUNTIME_REQUIRED`
 - Process gate: `V3-ASR-SESSION-001_ACCEPTANCE_MATRIX_FROZEN`
 - Implementation authorization: granted for the bounded Whisper process-level single-model context/session cache, necessary tests and the one authorized physical device
-- Review workflow: Developer may return only a candidate result; Brain retains formal acceptance authority
-- Next permitted action: create the three-document checkpoint, then freeze shared interfaces/file ownership and implement the bounded session cache without starting the lyrics flow.
+- Review workflow: Developer has completed component implementation and local verification; Brain retains formal acceptance authority
+- Next permitted action: when only authorized device `fcf4b0cb` is visible again, run the already-built production native/session instrumentation for A13/A15 and return the evidence to Brain; do not start another V3 stage.
 
 ## Current V3-ASR-SESSION-001 matrix summary
 
@@ -22,6 +22,15 @@
 - Highest Developer candidate with complete evidence is `PASS / WHISPER_SESSION_CACHE_VERIFIED / PHYSICAL_DEVICE_RUNTIME_VERIFIED`; missing physical native evidence caps the result at `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`.
 - Unsafe native lifetime is `BLOCKED / NATIVE_LIFETIME_SAFETY_REQUIRED`; failure to prove second-task reuse is `BLOCKED / CACHE_REUSE_NOT_PROVEN`.
 - Cache evidence may claim only lower repeated context-loading cost. It must not claim accuracy, WER/CER, or core inference-speed improvement.
+
+## Current V3-ASR-SESSION-001 implementation evidence
+
+- Process-level `WhisperProcessSession` owns one `WhisperSessionRuntime`; model identity is canonical path + file size + SHA-256, idle timeout is 5 minutes from full task completion, and a `Mutex` serializes inference.
+- Native uses opaque registry handles and explicit create/transcribe/requestAbort/free. Free is idempotent and waits for the native inference mutex; cancellation/failed transcription marks the handle non-reusable before Kotlin releases it after worker return.
+- Focused runtime: 14 passed. Full JVM: 169 passed, 0 failures/errors/skipped. ASR Python: 6 passed. Lint: 0 errors/33 warnings. Normal Debug, native-enabled Debug for arm64-v8a+x86_64, and AndroidTest builds passed.
+- App APK is 383,030,793 bytes; AndroidTest APK is 118,877 bytes. Secret scan found 0 app Key tokens, 4 existing synthetic AndroidTest tokens, 0 credential-bearing Bearer values and 0 stage-source credential tokens.
+- A01–A12 pass at component level; A14 and A16 pass at component/regression level. A13 and A15 remain required because the authorized device disconnected before install and stayed absent through three checks. No device run or performance numbers are claimed.
+- Checkpoint is `3aec389`. Current candidate is `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`; not a Brain verdict or formal product PASS.
 
 ## Current R1 live-key evidence
 
@@ -116,7 +125,7 @@
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
-| V3-ASR-SESSION-001 | `MATRIX_DEFINED / IN_PROGRESS` |
+| V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`（Developer candidate） |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |

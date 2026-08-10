@@ -3,15 +3,15 @@
 ## Current status
 
 - Stage: `V3-ASR-SESSION-001`
-- Status: `V3-ASR-SESSION-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`（Developer 候选；等待 Brain 裁决）
 - Previous stage: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；已关闭）
 - Scope: 当前 `ggml-small.en-q5_1.bin` 的单模型、进程级 Whisper context/session 缓存，含串行推理、安全取消、失效、空闲超时与严重内存压力释放
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
 - Runtime target: only `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`
-- Review workflow: Developer 完成矩阵后只回交候选状态，Brain 负责正式验收
-- Next action: checkpoint 后冻结共享接口和文件所有权，执行 Kotlin runtime、JNI/native 生命周期、Android runtime 证据与 Orchestrator 集成
+- Review workflow: Developer 已完成组件实现和本地矩阵，只回交候选状态；Brain 负责正式验收
+- Next action: 唯一授权真机 `fcf4b0cb` 恢复 ADB 后运行已构建的 production native/session instrumentation，补齐 A13/A15，再交 Brain 复核；不得自行启动下一阶段
 
 ## V3-ASR-SESSION-001 acceptance matrix
 
@@ -55,6 +55,37 @@
 - 严重内存压力下空闲 context 立即释放，活跃 context 标记 pending release 并在任务退出后释放。
 - create、transcribe 或 free 失败不得留下可复用的半有效 handle；release/close 必须幂等。
 - Orchestrator 独占三份活动文档、Git、共享接口及 `WhisperLocalSpeechRecognizer.kt`、`AppPipelineFactory.kt`、`MainViewModel.kt` 等集成热点。
+
+## Developer evidence and A01–A16 result (2026-08-10)
+
+| ID | Result | Evidence |
+|---|---|---|
+| A01 | `PASS` | focused fake-native runtime 证明冷任务只 create 一次，完成后 snapshot 进入 idle cache。 |
+| A02 | `PASS` | 注入 clock 前进 3 分钟后第二任务复用同一 handle，create count 仍为 1。 |
+| A03 | `PASS` | 注入 scheduler 在 5 分钟边界释放旧 handle，下一任务 create 新 handle；JVM 未真实等待。 |
+| A04 | `PASS` | 两个并发请求经 `Mutex` 严格串行，fake native max concurrency 为 1；JNI 另有 per-session inference mutex。 |
+| A05 | `PASS` | focused 测试以不同音频标识、取消状态和结果证明任务临时数据不进入 cache。 |
+| A06 | `PASS` | canonical path、size、SHA-256 三类变化分别触发旧 context 失效。 |
+| A07 | `PASS` | 活跃模型切换只标记 pending invalidation，native 退出后才 free。 |
+| A08 | `PASS`（组件级） | fake-native 顺序证明 abort -> native exit -> free，取消后下一任务新建；真实设备 native 顺序尚未执行。 |
+| A09 | `PASS` | 空闲严重内存压力立即释放；活跃压力标记 pending release 并在任务退出后释放。 |
+| A10 | `PASS` | create/transcribe/free 失败均移除半有效缓存，后续任务恢复。 |
+| A11 | `PASS` | 重复 close/free 幂等，JNI registry 对未知/已释放 handle 忽略重复 free。 |
+| A12 | `PASS` | 新 runtime 实例从空 snapshot 开始，不复用另一 runtime 的 handle。 |
+| A13 | `REQUIRED` | 已构建真实 native instrumentation，但 `fcf4b0cb` 在安装前断连，未取得连续两次真实识别及 handle 复用结果。 |
+| A14 | `PASS`（组件级） | JVM 覆盖合法 cue 时间戳、顺序和跨任务隔离；真机缓存前后 cue 证据随 A13 待补。 |
+| A15 | `REQUIRED` | diagnostics 已实现 load/inference/total、VmRSS/VmHWM、温度、空结果和崩溃字段；因真机断连无实际冷/热数值。 |
+| A16 | `PASS`（回归级） | focused 14/14；完整 JVM 169/169；ASR Python 6/6；lint 0 errors/33 warnings；普通 Debug、native-enabled Debug、AndroidTest 构建全部通过。 |
+
+- Native lifecycle：JNI 使用 registry-backed opaque positive handle、显式 create/transcribe/requestAbort/free、native atomic abort、per-session inference mutex；free 等待 active `whisper_full` 临界区退出，取消/失败 handle 立即禁止复用，重复 free 不 double-free。
+- Production integration：`AppPipelineFactory` 通过 `WhisperProcessSession` 复用进程级单模型 runtime；严重 `ComponentCallbacks2` 内存压力转发到 runtime。任务音频、取消令牌、临时状态和结果不保存在 cache。
+- 完整 JVM：169 tests、0 failures、0 errors、0 skipped；`python tools\\asr_evaluate_test.py`：6 passed；lint：0 errors/33 warnings。
+- `assembleDebug`、`-PenableWhisperNative=true assembleDebug`（arm64-v8a + x86_64）、`assembleDebugAndroidTest` 均通过。沙箱内 NDK `clang++.exe` 权限失败后，在允许访问本机 NDK 的执行环境用同一 native 命令通过。
+- 当前 app APK：383,030,793 bytes；AndroidTest APK：118,877 bytes。
+- Secret scan：app APK 0 Key token/0 credential-bearing Bearer；AndroidTest APK 4 个既有允许 synthetic Key token/0 credential-bearing Bearer；本阶段源文件 0/0。
+- 真机在阶段开始时核对为 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`，但安装前 ADB/USB 断连；三次后续检查均无设备。APK 未安装，session instrumentation 未启动，未读取、复制或提交任何用户媒体。
+- Checkpoint：`3aec389`（`文档(v3-asr)：冻结 Whisper 会话缓存验收矩阵`）。功能提交使用标题 `功能(v3-asr)：实现 Whisper 进程级会话缓存`；不 push。
+- 当前仅允许 Developer 候选 `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`；不得声明物理设备 runtime 已验证、正式 PASS、准确率/WER/CER 或核心推理速度提升。
 
 ## Historical closed stage: V3-AI-CONTRACT-001 / R1
 

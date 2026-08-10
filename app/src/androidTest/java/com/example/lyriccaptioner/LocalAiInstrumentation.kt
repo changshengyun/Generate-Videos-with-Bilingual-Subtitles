@@ -24,6 +24,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.lyriccaptioner.model.ExportProfile
+import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
@@ -33,6 +34,10 @@ import com.example.lyriccaptioner.processing.TranslationBatchResult
 import com.example.lyriccaptioner.processing.TranslationModule
 import com.example.lyriccaptioner.processing.WhisperLocalSpeechRecognizer
 import com.example.lyriccaptioner.processing.WhisperModelStore
+import com.example.lyriccaptioner.processing.WhisperProcessSession
+import com.example.lyriccaptioner.processing.WhisperNativeSessionBridge
+import com.example.lyriccaptioner.processing.WhisperSessionRuntime
+import com.example.lyriccaptioner.processing.WhisperSegment
 import com.example.lyriccaptioner.processing.WhisperAsrModule
 import com.example.lyriccaptioner.project.ProjectArchive
 import com.example.lyriccaptioner.audio.Pcm16WavWriter
@@ -88,6 +93,8 @@ class LocalAiInstrumentation : Instrumentation() {
                 } else {
                     runImportAcceptance(results)
                 }
+            } else if (inputArguments.getString(ARG_WHISPER_SESSION)?.toBoolean() == true) {
+                runBlocking { runWhisperSessionAcceptance(results) }
             } else if (inputArguments.getString(ARG_WHISPER_CANCEL)?.toBoolean() == true) {
                 runBlocking { runWhisperCancellationAcceptance(results) }
             } else if (inputArguments.getString(ARG_ILLEGAL_MEDIA)?.toBoolean() == true) {
@@ -609,7 +616,10 @@ class LocalAiInstrumentation : Instrumentation() {
                     deleteFileAfterUse = true,
                 )
             },
-            speechRecognizer = WhisperLocalSpeechRecognizer(store.modelFile.absolutePath),
+            speechRecognizer = WhisperLocalSpeechRecognizer(
+                store.modelFile.absolutePath,
+                WhisperProcessSession.get(targetContext),
+            ),
         )
         val job = CoroutineScope(Dispatchers.Default).launch {
             try {
@@ -648,6 +658,188 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putString("whisperTempAudio", "deleted")
         results.putString("whisperModel", store.selectedModel?.fileName.orEmpty())
     }
+
+    private suspend fun runWhisperSessionAcceptance(results: Bundle) {
+        val appContext = targetContext.applicationContext
+        val store = WhisperModelStore(appContext)
+        store.ensureBundledModel()
+        check(store.status().localRecognitionReady) {
+            "Whisper session acceptance requires the selected model and JNI library."
+        }
+        readShell("logcat -c")
+
+        val diagnostics = WhisperSessionDeviceDiagnostics(appContext)
+        val runtime = WhisperSessionRuntime(
+            nativeClient = WhisperNativeSessionBridge,
+            observer = diagnostics,
+        )
+        val shortAudio = createWhisperSessionFixture("short", seconds = 3)
+        val longAudio = createWhisperSessionFixture("long", seconds = 12)
+        try {
+            val coldStart = diagnostics.beginRun("cold")
+            val coldSegments = runtime.transcribe(
+                store.modelFile.absolutePath,
+                shortAudio.absolutePath,
+                16_000,
+                1,
+            )
+            val cold = diagnostics.finishRun(coldStart, coldSegments.toEvidenceCues())
+
+            val hotStart = diagnostics.beginRun("hot")
+            val hotSegments = runtime.transcribe(
+                store.modelFile.absolutePath,
+                shortAudio.absolutePath,
+                16_000,
+                1,
+            )
+            val hot = diagnostics.finishRun(hotStart, hotSegments.toEvidenceCues())
+            diagnostics.assertColdThenHot(cold, hot)
+            diagnostics.writeTo(results, "whisper_cold", cold)
+            diagnostics.writeTo(results, "whisper_hot", hot)
+
+            val cachedHandle = requireNotNull(runtime.snapshot().contextHandle)
+            runtime.onCriticalMemoryPressure()
+            check(runtime.snapshot().contextHandle == null) {
+                "Critical memory pressure did not immediately release an idle context."
+            }
+
+            val rebuiltStart = diagnostics.beginRun("after_idle_pressure")
+            val rebuiltSegments = runtime.transcribe(
+                store.modelFile.absolutePath,
+                shortAudio.absolutePath,
+                16_000,
+                1,
+            )
+            val rebuilt = diagnostics.finishRun(rebuiltStart, rebuiltSegments.toEvidenceCues())
+            check(rebuilt.session?.reusedContext == false)
+            check(rebuilt.session?.contextHandle != cachedHandle)
+            diagnostics.writeTo(results, "whisper_after_idle_pressure", rebuilt)
+
+            val reuseLog = readShell("logcat -d -s WhisperJNI:I *:S")
+            var nativeCreateCount = reuseLog.countMarker("event=whisper_context_created")
+            var nativeFreeCount = reuseLog.countMarker("event=whisper_context_freed")
+
+            readShell("logcat -c")
+            val cancellationFailure = AtomicReference<Throwable?>(null)
+            val cancelJob = CoroutineScope(Dispatchers.Default).launch {
+                runCatching {
+                    runtime.transcribe(
+                        store.modelFile.absolutePath,
+                        longAudio.absolutePath,
+                        16_000,
+                        1,
+                    )
+                }.onFailure(cancellationFailure::set)
+            }
+            check(waitForNativeLog("event=whisper_jni_inference_started", 90_000L)) {
+                "Whisper session cancellation did not enter native inference."
+            }
+            cancelJob.cancel()
+            withTimeout(120_000L) { cancelJob.join() }
+            check(cancelJob.isCancelled)
+            check(runtime.snapshot().contextHandle == null) {
+                "Cancelled Whisper context remained cached."
+            }
+            val cancelMetrics = requireNotNull(diagnostics.pollCompletedMetrics())
+            check(cancelMetrics.cancelled) { "Cancelled session metrics were not marked cancelled." }
+            val cancelLog = readShell("logcat -d -s WhisperJNI:I *:S")
+            val abortIndex = cancelLog.indexOf("event=whisper_abort_requested")
+            val fullExitIndex = cancelLog.indexOf("event=whisper_full_exited")
+            val freeIndex = cancelLog.indexOf("event=whisper_context_freed")
+            check(abortIndex >= 0 && fullExitIndex > abortIndex && freeIndex > fullExitIndex) {
+                "Cancellation did not preserve abort -> whisper_full exit -> free ordering."
+            }
+            check(cancellationFailure.get() is java.util.concurrent.CancellationException) {
+                "Cancelled native session did not surface CancellationException."
+            }
+            nativeCreateCount += cancelLog.countMarker("event=whisper_context_created")
+            nativeFreeCount += cancelLog.countMarker("event=whisper_context_freed")
+            results.putString("whisper_cancel_order", "abort_then_whisper_full_exit_then_worker_join_then_free")
+            results.putLong("whisper_cancel_handle", cancelMetrics.contextHandle)
+
+            val postCancelStart = diagnostics.beginRun("after_cancel")
+            val postCancelSegments = runtime.transcribe(
+                store.modelFile.absolutePath,
+                shortAudio.absolutePath,
+                16_000,
+                1,
+            )
+            val postCancel = diagnostics.finishRun(postCancelStart, postCancelSegments.toEvidenceCues())
+            check(postCancel.session?.reusedContext == false)
+            check(postCancel.session?.contextHandle != cancelMetrics.contextHandle)
+            diagnostics.writeTo(results, "whisper_after_cancel", postCancel)
+
+            readShell("logcat -c")
+            val pressureFailure = AtomicReference<Throwable?>(null)
+            val pressureJob = CoroutineScope(Dispatchers.Default).launch {
+                runCatching {
+                    runtime.transcribe(
+                        store.modelFile.absolutePath,
+                        longAudio.absolutePath,
+                        16_000,
+                        1,
+                    )
+                }.onFailure(pressureFailure::set)
+            }
+            check(waitForNativeLog("event=whisper_jni_inference_started", 90_000L)) {
+                "Whisper active-memory-pressure run did not enter native inference."
+            }
+            runtime.onCriticalMemoryPressure()
+            check(runtime.snapshot().pendingInvalidation) {
+                "Active context was not marked pending release under critical memory pressure."
+            }
+            withTimeout(120_000L) { pressureJob.join() }
+            pressureFailure.get()?.let { throw it }
+            check(runtime.snapshot().contextHandle == null) {
+                "Active context was not released after inference completed."
+            }
+            val pressureLog = readShell("logcat -d -s WhisperJNI:I *:S")
+            check(
+                pressureLog.indexOf("event=whisper_context_freed") >
+                    pressureLog.indexOf("event=whisper_full_exited"),
+            ) { "Active memory-pressure release occurred before whisper_full exited." }
+            nativeCreateCount += pressureLog.countMarker("event=whisper_context_created")
+            nativeFreeCount += pressureLog.countMarker("event=whisper_context_freed")
+
+            results.putInt("whisper_native_create_count", nativeCreateCount)
+            results.putInt("whisper_native_free_count", nativeFreeCount)
+            results.putString("whisper_idle_pressure", "idle_context_released")
+            results.putString("whisper_active_pressure", "release_deferred_until_inference_exit")
+            results.putString("whisper_model", store.selectedModel?.fileName.orEmpty())
+        } finally {
+            runtime.close()
+            shortAudio.delete()
+            longAudio.delete()
+        }
+    }
+
+    private fun createWhisperSessionFixture(label: String, seconds: Int): File {
+        val file = File(targetContext.cacheDir, "whisper-session-$label-${System.nanoTime()}.wav")
+        val samples = ShortArray(16_000) { index ->
+            (kotlin.math.sin(index * 2.0 * Math.PI * 440.0 / 16_000.0) * 8_000.0).toInt().toShort()
+        }
+        Pcm16WavWriter(file, sampleRate = 16_000, channelCount = 1).use { writer ->
+            repeat(seconds) { writer.write(samples) }
+        }
+        check(file.isFile && file.length() > 44L) { "Could not create the test-owned Whisper fixture." }
+        return file
+    }
+
+    private fun List<WhisperSegment>.toEvidenceCues(): List<CaptionCue> = mapIndexedNotNull { index, segment ->
+        val text = segment.text.trim()
+        if (text.isEmpty()) return@mapIndexedNotNull null
+        CaptionCue(
+            id = "session-$index-${segment.startMs}",
+            startMs = segment.startMs,
+            endMs = segment.endMs,
+            english = text,
+            chinese = "",
+            confidence = segment.confidence.coerceIn(0f, 1f),
+        )
+    }
+
+    private fun String.countMarker(marker: String): Int =
+        lineSequence().count { marker in it }
 
     private fun readShell(command: String): String {
         val descriptor = uiAutomation.executeShellCommand(command)
@@ -1778,6 +1970,7 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_IMPORT_PROJECT_PREFIX = "importProjectPrefix"
         const val ARG_IMPORT_PROJECT_SUFFIX = "importProjectSuffix"
         const val ARG_WHISPER_CANCEL = "whisperCancel"
+        const val ARG_WHISPER_SESSION = "whisperSession"
         const val ARG_ILLEGAL_MEDIA = "illegalMedia"
         const val ARG_ILLEGAL_VALID = "illegalValid"
         const val ARG_ILLEGAL_SRT = "illegalSrt"

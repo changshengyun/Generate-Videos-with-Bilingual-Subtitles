@@ -1,61 +1,22 @@
 package com.example.lyriccaptioner.processing
 
 import com.example.lyriccaptioner.model.CaptionCue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 class WhisperLocalSpeechRecognizer(
     private val modelPath: String,
-    private val bridge: WhisperNativeClient = WhisperNativeBridge,
+    private val sessionRuntime: WhisperSessionRuntime,
 ) : LocalSpeechRecognizer {
-    override suspend fun recognize(audio: ExtractedAudio): List<CaptionCue> = withContext(Dispatchers.Default) {
-        if (!bridge.isAvailable) {
-            throw WhisperJniUnavailableException(
-                "Whisper native library is not available. Build with enableWhisperNative before using local ASR.",
-            )
-        }
+    override suspend fun recognize(audio: ExtractedAudio): List<CaptionCue> {
         val audioPath = requireNotNull(audio.filePath) {
             "Whisper requires extracted audio as a readable local file path, not a content URI."
         }
-        val coroutineContext = currentCoroutineContext()
-        val cancellationRequested = AtomicBoolean(false)
-        suspendCancellableCoroutine<List<WhisperSegment>> { continuation ->
-            continuation.invokeOnCancellation { cancellationRequested.set(true) }
-            runCatching {
-                bridge.transcribe(
-                    modelPath = modelPath,
-                    audioPath = audioPath,
-                    sampleRate = audio.sampleRate,
-                    channels = audio.channels,
-                    cancellationToken = WhisperCancellationToken {
-                        cancellationRequested.get() || !coroutineContext.isActive
-                    },
-                )
-            }.onSuccess { segments ->
-                if (continuation.isActive) continuation.resume(segments)
-            }.onFailure { error ->
-                if (continuation.isActive) continuation.resumeWithException(error)
-            }
-        }.let(WhisperSegmentConverter::toCaptions)
+        return sessionRuntime.transcribe(
+            modelPath = modelPath,
+            audioPath = audioPath,
+            sampleRate = audio.sampleRate,
+            channels = audio.channels,
+        ).let(WhisperSegmentConverter::toCaptions)
     }
-}
-
-interface WhisperNativeClient {
-    val isAvailable: Boolean
-
-    fun transcribe(
-        modelPath: String,
-        audioPath: String,
-        sampleRate: Int,
-        channels: Int,
-        cancellationToken: WhisperCancellationToken = WhisperCancellationToken { false },
-    ): List<WhisperSegment>
 }
 
 fun interface WhisperCancellationToken {
@@ -69,33 +30,6 @@ data class WhisperSegment(
     val confidence: Float,
 )
 
-object WhisperNativeBridge : WhisperNativeClient {
-    override val isAvailable: Boolean
-
-    init {
-        isAvailable = runCatching {
-            System.loadLibrary("lyriccaptioner_whisper")
-        }.isSuccess
-    }
-
-    override fun transcribe(
-        modelPath: String,
-        audioPath: String,
-        sampleRate: Int,
-        channels: Int,
-        cancellationToken: WhisperCancellationToken,
-    ): List<WhisperSegment> {
-        return nativeTranscribe(modelPath, audioPath, sampleRate, channels, cancellationToken).toList()
-    }
-
-    private external fun nativeTranscribe(
-        modelPath: String,
-        audioPath: String,
-        sampleRate: Int,
-        channels: Int,
-        cancellationToken: WhisperCancellationToken,
-    ): Array<WhisperSegment>
-}
 
 class WhisperJniUnavailableException(message: String) : IllegalStateException(message)
 

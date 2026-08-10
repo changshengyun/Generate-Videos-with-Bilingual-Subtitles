@@ -40,7 +40,10 @@ object AppPipelineFactory {
         return WhisperAsrModule(
             runtimeStatus = runtimeStatus,
             audioExtractor = AndroidAudioExtractor(context),
-            speechRecognizer = WhisperLocalSpeechRecognizer(modelPath = whisperModelPath),
+            speechRecognizer = WhisperLocalSpeechRecognizer(
+                modelPath = whisperModelPath,
+                sessionRuntime = WhisperProcessSession.get(context),
+            ),
         )
     }
 }

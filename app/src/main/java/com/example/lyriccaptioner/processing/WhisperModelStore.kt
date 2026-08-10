@@ -24,7 +24,7 @@ class WhisperModelStore(
     fun status(): WhisperRuntimeStatus {
         val model = activeModel()
         val installed = model != null
-        val nativeReady = WhisperNativeBridge.isAvailable
+        val nativeReady = WhisperNativeSessionBridge.isAvailable
         return WhisperRuntimeStatusResolver.resolve(
             modelInstalled = installed,
             nativeLibraryReady = nativeReady,
