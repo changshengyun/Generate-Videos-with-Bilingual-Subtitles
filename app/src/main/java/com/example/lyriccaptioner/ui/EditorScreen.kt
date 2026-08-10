@@ -217,6 +217,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     model = deepSeekKeyUi,
                     onSave = viewModel::saveDeepSeekKey,
                     onReplace = viewModel::replaceDeepSeekKey,
+                    onTestConnection = viewModel::testDeepSeekConnection,
                     onDelete = viewModel::deleteDeepSeekKey,
                     onCancelInput = viewModel::cancelDeepSeekKeyInput,
                 )
@@ -366,6 +367,7 @@ internal fun DeepSeekKeySettingsPanel(
     model: DeepSeekKeyUiModel,
     onSave: (String) -> Unit,
     onReplace: (String) -> Unit,
+    onTestConnection: () -> Unit,
     onDelete: () -> Unit,
     onCancelInput: () -> Unit,
 ) {
@@ -375,6 +377,8 @@ internal fun DeepSeekKeySettingsPanel(
     val showReplace = model.showReplace || (hasExistingKey && model.state == DeepSeekKeyState.VALIDATION_FAILED)
     val showDelete = model.showDelete || (hasExistingKey && model.state == DeepSeekKeyState.VALIDATION_FAILED)
     val showSave = model.showSave && !showReplace
+    val operationInProgress = model.state == DeepSeekKeyState.VALIDATING_NEW_KEY ||
+        model.state == DeepSeekKeyState.TESTING_CONNECTION
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -409,6 +413,14 @@ internal fun DeepSeekKeySettingsPanel(
                     modifier = Modifier.semantics { contentDescription = "deepseek_key_masked" },
                 )
             }
+            if (model.detail != null) {
+                Text(
+                    text = model.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF9EA5B1),
+                    modifier = Modifier.semantics { contentDescription = "deepseek_key_detail" },
+                )
+            }
             if (expanded) {
                 Text("Base URL：${model.baseUrl}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF9EA5B1))
                 OutlinedTextField(
@@ -427,7 +439,7 @@ internal fun DeepSeekKeySettingsPanel(
                     if (showSave) {
                         Button(
                             modifier = Modifier.weight(1f).semantics { contentDescription = "deepseek_key_save" },
-                            enabled = apiKeyInput.isNotBlank() && model.state != DeepSeekKeyState.VALIDATING_NEW_KEY,
+                            enabled = apiKeyInput.isNotBlank() && !operationInProgress,
                             onClick = {
                                 val key = apiKeyInput
                                 apiKeyInput = ""
@@ -438,7 +450,7 @@ internal fun DeepSeekKeySettingsPanel(
                     if (showReplace) {
                         Button(
                             modifier = Modifier.weight(1f).semantics { contentDescription = "deepseek_key_replace" },
-                            enabled = apiKeyInput.isNotBlank() && model.state != DeepSeekKeyState.VALIDATING_NEW_KEY,
+                            enabled = apiKeyInput.isNotBlank() && !operationInProgress,
                             onClick = {
                                 val key = apiKeyInput
                                 apiKeyInput = ""
@@ -446,6 +458,15 @@ internal fun DeepSeekKeySettingsPanel(
                             },
                         ) { Text("更换 API Key") }
                     }
+                }
+                if (model.showTestConnection) {
+                    OutlinedButton(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentDescription = "deepseek_key_test_connection" },
+                        enabled = !operationInProgress,
+                        onClick = onTestConnection,
+                    ) { Text("测试连接") }
                 }
                 if (showDelete) {
                     OutlinedButton(
@@ -476,6 +497,7 @@ private fun deepSeekKeyStatusLabel(model: DeepSeekKeyUiModel): String = when (mo
     DeepSeekKeyState.UNCONFIGURED -> "未配置"
     DeepSeekKeyState.INPUT_NEW_KEY -> "请输入新 Key"
     DeepSeekKeyState.VALIDATING_NEW_KEY -> "验证中…"
+    DeepSeekKeyState.TESTING_CONNECTION -> "正在测试连接…"
     DeepSeekKeyState.CONFIGURED -> "已配置"
     DeepSeekKeyState.VALIDATION_FAILED -> "验证失败，旧 Key 保持不变"
     DeepSeekKeyState.NEEDS_REENTRY -> "需要重新输入"

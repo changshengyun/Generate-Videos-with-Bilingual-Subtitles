@@ -7,6 +7,7 @@ enum class DeepSeekKeyState {
     UNCONFIGURED,
     INPUT_NEW_KEY,
     VALIDATING_NEW_KEY,
+    TESTING_CONNECTION,
     CONFIGURED,
     VALIDATION_FAILED,
     NEEDS_REENTRY,
@@ -26,7 +27,9 @@ data class DeepSeekKeyUiModel(
     val showSave: Boolean,
     val showReplace: Boolean,
     val showDelete: Boolean,
+    val showTestConnection: Boolean,
     val showCancel: Boolean,
+    val detail: String? = null,
 )
 
 object DeepSeekKeyUiMapper {
@@ -36,10 +39,17 @@ object DeepSeekKeyUiMapper {
         showSave = status.state != DeepSeekKeyState.CONFIGURED,
         showReplace = status.state == DeepSeekKeyState.CONFIGURED,
         showDelete = status.state == DeepSeekKeyState.CONFIGURED || status.state == DeepSeekKeyState.NEEDS_REENTRY,
+        showTestConnection = status.maskedKey != null && (
+            status.state == DeepSeekKeyState.CONFIGURED ||
+                status.state == DeepSeekKeyState.TESTING_CONNECTION ||
+                status.state == DeepSeekKeyState.VALIDATION_FAILED
+            ),
         showCancel = status.state == DeepSeekKeyState.VALIDATING_NEW_KEY ||
+            status.state == DeepSeekKeyState.TESTING_CONNECTION ||
             status.state == DeepSeekKeyState.CONFIGURED ||
             status.state == DeepSeekKeyState.VALIDATION_FAILED ||
             status.state == DeepSeekKeyState.NEEDS_REENTRY,
+        detail = status.detail,
     )
 }
 
@@ -107,6 +117,7 @@ interface DeepSeekByokManager {
     fun status(): DeepSeekKeyStatus
     suspend fun validateAndSave(apiKey: String): DeepSeekKeyStatus
     suspend fun replace(apiKey: String): DeepSeekKeyStatus
+    suspend fun testConnection(): DeepSeekKeyStatus
     suspend fun cancelInput(): DeepSeekKeyStatus
     suspend fun delete(): DeepSeekKeyStatus
     suspend fun <T> withDecryptedKey(block: suspend (String) -> T): T
@@ -117,6 +128,20 @@ class DeepSeekKeyUnavailableException(
 ) : IllegalStateException(message)
 
 class DeepSeekKeyStorageException : IllegalStateException("Secure API key operation failed.")
+
+enum class DeepSeekAuthFailureCategory {
+    AUTHENTICATION_REJECTED,
+    ACCOUNT_RESTRICTED,
+    RATE_LIMITED,
+    PROVIDER_UNAVAILABLE,
+    NETWORK_UNAVAILABLE,
+    UNEXPECTED_HTTP_RESPONSE,
+}
+
+class DeepSeekAuthenticationException(
+    val category: DeepSeekAuthFailureCategory,
+    val httpStatusCode: Int? = null,
+) : IllegalStateException("DeepSeek authentication probe failed: ${category.name}")
 
 object DeepSeekKeyMasker {
     fun mask(apiKey: String): String = "••••••••" + apiKey.takeLast(4)

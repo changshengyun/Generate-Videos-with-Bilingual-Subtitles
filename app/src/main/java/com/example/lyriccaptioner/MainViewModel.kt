@@ -38,11 +38,11 @@ import com.example.lyriccaptioner.processing.ExportDestinationPolicy
 import com.example.lyriccaptioner.processing.enhancement.byok.AndroidKeystoreDeepSeekKeyStore
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManagerImpl
-import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyProbe
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStatus
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiMapper
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekModelsAuthenticationProbe
 import com.example.lyriccaptioner.project.AndroidProjectRepository
 import com.example.lyriccaptioner.project.MediaAccessResult
 import com.example.lyriccaptioner.project.ProjectLoadResult
@@ -63,7 +63,7 @@ import kotlinx.coroutines.withContext
 private fun createDefaultDeepSeekManager(context: Context): DeepSeekByokManager =
     DeepSeekByokManagerImpl(
         store = AndroidKeystoreDeepSeekKeyStore(context.applicationContext),
-        probe = DeepSeekKeyProbe { throw UnsupportedOperationException("live probe deferred") },
+        probe = DeepSeekModelsAuthenticationProbe(),
     )
 
 class MainViewModel(
@@ -671,6 +671,17 @@ class MainViewModel(
             ),
         ) {
             deepSeekManager.replace(apiKey)
+        }
+    }
+
+    fun testDeepSeekConnection() {
+        launchDeepSeekKeyOperation(
+            initialStatus = DeepSeekKeyStatus(
+                DeepSeekKeyState.TESTING_CONNECTION,
+                mutableDeepSeekKeyUi.value.maskedKey,
+            ),
+        ) {
+            deepSeekManager.testConnection()
         }
     }
 

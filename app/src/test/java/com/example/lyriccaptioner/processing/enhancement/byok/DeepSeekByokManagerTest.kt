@@ -72,6 +72,59 @@ class DeepSeekByokManagerTest {
     }
 
     @Test
+    fun savedKeyConnectionTestUsesDecryptedKeyOnceAndPreservesRecord() = runBlocking {
+        val store = FakeStore()
+        var probedKey: String? = null
+        val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { probedKey = it })
+        val key = "sk-test-saved-connection-123456"
+        manager.validateAndSave(key)
+        val before = requireNotNull(store.readEncrypted()).copy(
+            ciphertext = requireNotNull(store.readEncrypted()).ciphertext.copyOf(),
+            iv = requireNotNull(store.readEncrypted()).iv.copyOf(),
+        )
+        store.decryptCount = 0
+        probedKey = null
+
+        val result = manager.testConnection()
+
+        assertEquals(DeepSeekKeyState.CONFIGURED, result.state)
+        assertEquals("Connection verified (HTTP 2xx).", result.detail)
+        assertEquals(key, probedKey)
+        assertEquals(1, store.decryptCount)
+        assertEquals(before, store.readEncrypted())
+    }
+
+    @Test
+    fun failedReplacementKeepsOldKeyUsableForConnectionTest() = runBlocking {
+        val store = FakeStore()
+        var reject = false
+        val manager = DeepSeekByokManagerImpl(
+            store,
+            DeepSeekKeyProbe {
+                if (reject) {
+                    throw DeepSeekAuthenticationException(
+                        DeepSeekAuthFailureCategory.AUTHENTICATION_REJECTED,
+                        401,
+                    )
+                }
+            },
+        )
+        val oldKey = "sk-test-preserved-live-key-123456"
+        manager.validateAndSave(oldKey)
+        val before = requireNotNull(store.readEncrypted())
+        reject = true
+
+        val replacement = manager.replace("sk-test-synthetic-invalid-123456")
+
+        assertEquals(DeepSeekKeyState.VALIDATION_FAILED, replacement.state)
+        assertEquals("Authentication rejected (HTTP 401).", replacement.detail)
+        assertEquals(before, store.readEncrypted())
+        assertEquals(oldKey, store.decrypt())
+        reject = false
+        assertEquals(DeepSeekKeyState.CONFIGURED, manager.testConnection().state)
+    }
+
+    @Test
     fun cancelInputPreservesExistingKey() = runBlocking {
         val store = FakeStore()
         val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
@@ -145,6 +198,7 @@ class DeepSeekByokManagerTest {
             private set
         var maxActiveWrites = 0
             private set
+        var decryptCount = 0
 
         override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
 
@@ -194,7 +248,10 @@ class DeepSeekByokManagerTest {
             }
         }
 
-        override fun decrypt(): String? = if (corrupt) null else plainForTest
+        override fun decrypt(): String? {
+            decryptCount += 1
+            return if (corrupt) null else plainForTest
+        }
         override fun delete() { record = null; plainForTest = null }
     }
 }

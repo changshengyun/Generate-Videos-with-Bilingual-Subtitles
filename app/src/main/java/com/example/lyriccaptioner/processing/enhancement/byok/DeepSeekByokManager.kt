@@ -20,7 +20,10 @@ class DeepSeekByokManagerImpl(
 
     override fun status(): DeepSeekKeyStatus = synchronized(stateLock) {
         val transient = transientStatus
-        if (transient?.state == DeepSeekKeyState.VALIDATING_NEW_KEY) return@synchronized transient
+        if (
+            transient?.state == DeepSeekKeyState.VALIDATING_NEW_KEY ||
+            transient?.state == DeepSeekKeyState.TESTING_CONNECTION
+        ) return@synchronized transient
         if (transient?.state == DeepSeekKeyState.NEEDS_REENTRY) return@synchronized transient
         val persistent = persistentStatus()
         val status = if (transient?.state == DeepSeekKeyState.VALIDATION_FAILED) transient else persistent
@@ -60,6 +63,7 @@ class DeepSeekByokManagerImpl(
             DeepSeekKeyStatus(
                 DeepSeekKeyState.CONFIGURED,
                 maskedKey = DeepSeekKeyMasker.mask(apiKey),
+                detail = "Authentication verified (HTTP 2xx).",
             ).also { transientStatus = it }
         } catch (cancelled: CancellationException) {
             try {
@@ -74,7 +78,7 @@ class DeepSeekByokManagerImpl(
                 ).also { transientStatus = it }
                 throw DeepSeekKeyStorageException()
             }
-        } catch (_: Throwable) {
+        } catch (failure: Throwable) {
             val rollbackFailed = runCatching { transaction?.rollback() }.isFailure
             if (rollbackFailed) {
                 return@withLock DeepSeekKeyStatus(
@@ -87,10 +91,38 @@ class DeepSeekByokManagerImpl(
             DeepSeekKeyStatus(
                 DeepSeekKeyState.VALIDATION_FAILED,
                 maskedKey = before.maskedKey,
-                detail = "Validation or secure storage failed.",
+                detail = safeFailureDetail(failure),
             ).also { transientStatus = it }
         }
         return result
+    }
+
+    override suspend fun testConnection(): DeepSeekKeyStatus {
+        val before = persistentStatus()
+        if (before.state != DeepSeekKeyState.CONFIGURED) return before
+        transientStatus = DeepSeekKeyStatus(DeepSeekKeyState.TESTING_CONNECTION, before.maskedKey)
+        return try {
+            withDecryptedKey { apiKey -> probe.validate(apiKey) }
+            DeepSeekKeyStatus(
+                DeepSeekKeyState.CONFIGURED,
+                before.maskedKey,
+                detail = "Connection verified (HTTP 2xx).",
+            ).also { transientStatus = it }
+        } catch (cancelled: CancellationException) {
+            transientStatus = before
+            throw cancelled
+        } catch (failure: Throwable) {
+            val persistent = persistentStatus()
+            if (persistent.state != DeepSeekKeyState.CONFIGURED) {
+                persistent.also { transientStatus = it }
+            } else {
+                DeepSeekKeyStatus(
+                    DeepSeekKeyState.VALIDATION_FAILED,
+                    persistent.maskedKey,
+                    detail = safeFailureDetail(failure),
+                ).also { transientStatus = it }
+            }
+        }
     }
 
     override suspend fun cancelInput(): DeepSeekKeyStatus = operationMutex.withLock {
@@ -152,6 +184,20 @@ class DeepSeekByokManagerImpl(
                 DeepSeekKeyState.NEEDS_REENTRY,
                 health.maskedKey,
             )
+        }
+    }
+
+    private fun safeFailureDetail(failure: Throwable): String {
+        val authenticationFailure = failure as? DeepSeekAuthenticationException
+            ?: return "Validation or secure storage failed."
+        val suffix = authenticationFailure.httpStatusCode?.let { " (HTTP $it)." }.orEmpty()
+        return when (authenticationFailure.category) {
+            DeepSeekAuthFailureCategory.AUTHENTICATION_REJECTED -> "Authentication rejected$suffix"
+            DeepSeekAuthFailureCategory.ACCOUNT_RESTRICTED -> "Account or balance prevents authentication$suffix"
+            DeepSeekAuthFailureCategory.RATE_LIMITED -> "Authentication rate limited$suffix"
+            DeepSeekAuthFailureCategory.PROVIDER_UNAVAILABLE -> "DeepSeek service unavailable$suffix"
+            DeepSeekAuthFailureCategory.NETWORK_UNAVAILABLE -> "Network connection failed."
+            DeepSeekAuthFailureCategory.UNEXPECTED_HTTP_RESPONSE -> "Unexpected authentication response$suffix"
         }
     }
 }

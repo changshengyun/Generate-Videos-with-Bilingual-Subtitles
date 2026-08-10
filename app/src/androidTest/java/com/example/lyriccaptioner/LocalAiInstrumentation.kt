@@ -356,6 +356,11 @@ class LocalAiInstrumentation : Instrumentation() {
         activity = startByokTestActivity(ByokSecurityTestActivity.MODE_CONFIGURED)
         waitForIdleSync()
         clickNode(waitForText("配置", 30_000L))
+        clickSemanticAction("deepseek_key_test_connection")
+        waitForIdleSync()
+        check(ByokSecurityTestActivity.testConnectionInvoked.get()) {
+            "Configured saved-key connection action was not invoked."
+        }
         enterSyntheticPassword()
         hideKeyboard(activity)
         clickSemanticAction("deepseek_key_replace")
@@ -370,6 +375,7 @@ class LocalAiInstrumentation : Instrumentation() {
             ByokSecurityTestActivity.deleteInvoked.get() && passwordTextIsEmpty()
         }
         activity.finish()
+        results.putString("byokUiTestConnection", "configured-and-invoked")
         results.putString("byokUiAllInputClears", "save-replace-collapse-cancel-delete")
     }
 

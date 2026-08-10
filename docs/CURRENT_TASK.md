@@ -3,15 +3,15 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS`
+- Status: `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Developer 候选；等待 Brain 裁决）
 - Previous stage: `V3-DEC-001 / PASS`
 - Scope: R1 真机 DeepSeek 最小认证、Android Keystore 加密保存、重启恢复、测试连接、same-key rotation、失败替换保留旧 Key 与最终删除
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
-- Live API status: `DEEPSEEK_AUTH_TEST_AUTHORIZED / LIVE_LYRICS_FLOW_DEFERRED`
-- Review workflow: Developer 按专项矩阵实施和自测后回交 Brain 裁决，不自称正式 PASS
-- Next action: 在唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 实现并验证真实 DeepSeek BYOK 最小认证产品流
+- Live API status: `DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`
+- Review workflow: Developer 已按专项矩阵实施并回交候选证据；Brain 决定正式状态
+- Next action: Brain 按 LIVE-KEY 矩阵裁决；不得由本候选证据启动歌词/逐 cue 链路或声明正式产品 PASS
 
 ## V3-AI-CONTRACT-001-R1 live-key acceptance matrix
 
@@ -22,6 +22,19 @@
 | Prohibited | 不发送视频、字幕、歌词、媒体路径或用户内容；不记录 Authorization header、Key、请求对象、响应正文或完整 URL 查询；不通过聊天、终端、环境变量、ADB、剪贴板脚本或自动化文件输入真实 Key；不截图密码输入过程；不测试歌词/逐 cue/Whisper/媒体/SRT；不新增大型依赖、后端或代理，不连接其他设备，不清理既有脏状态，不 push。 |
 | Exit | 全矩阵通过后只允许回交候选状态 `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`，由 Brain 正式裁决；不得自称正式产品 PASS。 |
 | Incomplete | Key 无效或额度/账号状态阻止认证：`PARTIAL_PASS / DEEPSEEK_ACCOUNT_ACTION_REQUIRED / LIVE_LYRICS_FLOW_DEFERRED`，只提示用户在 App 内重输或处理账号；设备/网络/构建或安全证据缺失：对应 `BLOCKED` 专项状态；需要新架构、大型依赖、第二个真实凭据或扩大到歌词链路：`HUMAN_DECISION`。 |
+
+## R1 live-key candidate evidence (2026-08-10)
+
+- Device: `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36 / qcom`；唯一授权真机，用户只在 App 内手动输入真实 Key，未通过聊天、终端、环境变量、ADB、剪贴板脚本、源码或测试文件传递。
+- Production probe 固定为 `GET https://api.deepseek.com/models`，禁止重定向，不带 query、不发送请求正文或用户内容，也不读取/记录响应正文；首次保存、重启后的“测试连接”和 same-key rotation 均得到脱敏 `HTTP 2xx` 分类。
+- 首次成功后 production `noBackupFilesDir` record 为 147 bytes，仅恢复 masked `CONFIGURED`；二次使用同一有效 Key 替换后 record SHA-256 与 12-byte GCM IV 均改变，明确只证明 same-key rotation，不冒充第二个凭据。
+- synthetic invalid Key 替换得到脱敏 `HTTP 401`，原 record SHA-256 与 IV 保持不变；随后“测试连接”仍以旧真实 Key 得到 `HTTP 2xx`。
+- 删除后 production record 不存在；强停重启为 `UNCONFIGURED`、无 masked Key。结合 production health 对“record 缺失但 alias 存在”固定返回 `NEEDS_REENTRY`，该结果证明 production record 与 alias 均已删除；App 最终再次强停。
+- R1 focused JVM：31 tests、0 failures、0 skipped；完整 `:app:testDebugUnitTest`：155 tests、0 failures、0 errors、0 skipped；`python tools\asr_evaluate_test.py`：6 tests passed。
+- `lintDebug`：0 errors / 33 warnings；普通 Debug、native-enabled Debug、AndroidTest 构建全部通过。最终 stripped app APK 为 382,081,973 bytes，AndroidTest APK 为 91,700 bytes；真机 synthetic production Keystore/UI instrumentation 通过。
+- Secret scan：app APK 0 Key token；AndroidTest APK 4 个允许的 synthetic token、0 disallowed；源码 25 个允许的 test/synthetic token、0 disallowed；测试输出 0；logcat 1 个允许的 synthetic token、0 disallowed、0 credential-bearing Bearer、0 DeepSeek query URL；本阶段未创建截图文件，production record 最终不存在。
+- Checkpoint: `1567402`（`文档(v3-r1)：冻结真实 Key 验证矩阵`）；实现与证据提交使用标题 `功能(v3-r1)：验证 DeepSeek 真机 BYOK 认证`，不 push。
+- 候选状态仅为 `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`；未测试在线歌词、逐 cue 增强、Whisper、媒体、SRT 或完整产品链路，不自称正式 PASS。
 
 ## V3-AI-CONTRACT-001-R1 acceptance matrix
 

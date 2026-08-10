@@ -4,21 +4,24 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS`
+- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Developer candidate）
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `LIVE_KEY_MATRIX_DEFINED / DEVICE_AND_NETWORK_AUTHORIZED / IN_PROGRESS`
+- Current gate: `LIVE_KEY_EVIDENCE_RETURNED / READY_FOR_BRAIN_ADJUDICATION / LIVE_LYRICS_FLOW_DEFERRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for bounded production DeepSeek authentication probe, saved-key connection test, necessary tests and authorized physical-device verification
-- Review workflow: Developer implements and verifies the live-key matrix, then returns a candidate state to Brain without claiming formal PASS
-- Next permitted action: implement the frozen LIVE-KEY matrix and verify only the authorized authentication/storage lifecycle on `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`; live lyrics and cue enhancement remain deferred.
+- Review workflow: Developer has returned the LIVE-KEY candidate evidence; Brain retains formal adjudication
+- Next permitted action: Brain adjudicates the returned LIVE-KEY matrix. Lyrics matching, cue enhancement and formal product PASS remain prohibited claims.
 
-## Current R1 live-key authorization
+## Current R1 live-key evidence
 
-- The user authorized the currently connected physical device, real network access to `https://api.deepseek.com`, and manual real-Key entry only inside the App.
-- The Key must never pass through chat, terminal arguments, environment variables, ADB input, clipboard automation, source, test files or screenshots of the input process.
-- The product flow must verify minimal authentication, Keystore ciphertext persistence without plaintext, masked restart recovery, saved-key connection testing, same-key rotation with a new IV, failed synthetic-invalid replacement preserving the old real Key, and final record+alias deletion followed by `UNCONFIGURED` after restart.
-- The highest candidate state is `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`; Brain retains formal adjudication.
+- Physical device: `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36 / qcom`. The real Key was manually entered only inside the App and was never supplied through chat, terminal, environment variables, ADB input, clipboard automation, source, test files or screenshots.
+- The production probe uses only `GET https://api.deepseek.com/models`, follows no redirects, sends no body/user content and reads or records no response body. Initial save, restart-time saved-key connection testing and same-key rotation each returned sanitized `HTTP 2xx`; a synthetic invalid replacement returned sanitized `HTTP 401`.
+- The first encrypted record was 147 bytes and contained no plaintext `sk-` prefix. Same-key rotation changed both record SHA-256 and the 12-byte GCM IV. The failed synthetic-invalid replacement preserved the rotated record and IV exactly, after which the old real Key still authenticated with `HTTP 2xx`.
+- Delete removed the production record; restart returned `UNCONFIGURED` with no masked Key. Because production health returns `NEEDS_REENTRY` when an alias remains without a record, this proves both production record and alias absence. The App was force-stopped afterward.
+- R1 focused JVM: 31 passed; full JVM: 155 passed with 0 failures/0 errors/0 skipped; ASR baseline: 6 passed; lint: 0 errors/33 warnings; normal Debug, native-enabled Debug and AndroidTest builds passed. Physical-device synthetic Keystore/UI instrumentation passed.
+- Final stripped app APK: 382,081,973 bytes; AndroidTest APK: 91,700 bytes. Secret scan found 0 app-APK Key tokens, 0 disallowed AndroidTest/source/test-output/log tokens, 0 credential-bearing Bearer values, 0 DeepSeek query URLs and no new screenshot artifact. The production record is absent.
+- Checkpoint `1567402` froze the matrix. The returned status is only the Developer candidate `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`; no lyrics matching, cue enhancement or formal product PASS is claimed.
 
 ## Current R1 security rework evidence
 
@@ -83,7 +86,7 @@
 - User-observed V2 recognition usability is accepted as product feedback, not fixture-backed WER/CER evidence.
 - OPUS-MT works locally but its Chinese naturalness is not accepted as final product quality.
 - Cloud song/lyrics matching is not yet live-verified; the current stage can verify only contracts, validation, atomicity and deterministic fallback behavior.
-- DeepSeek with `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED` is frozen. Remaining later decisions/evidence are online-lyrics provenance/licensing, real DeepSeek integration/authentication and distribution strategy; tests must not scrape or bundle real copyrighted lyrics.
+- DeepSeek with `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED` is frozen. Real DeepSeek authentication now has returned physical-device candidate evidence; remaining later decisions/evidence are online-lyrics provenance/licensing, lyrics/cue integration and distribution strategy. Tests must not scrape or bundle real copyrighted lyrics.
 - GPU availability on the phone does not authorize a GPU backend; any GPU work requires an independent Spike and regression evidence.
 - Preview/export visual equivalence must exclude letterbox/pillarbox regions and use the source video as the common coordinate system.
 
@@ -102,7 +105,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS`（physical device `fcf4b0cb`, DeepSeek authentication only; lyrics flow deferred） |
+| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Developer candidate; pending Brain adjudication） |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |

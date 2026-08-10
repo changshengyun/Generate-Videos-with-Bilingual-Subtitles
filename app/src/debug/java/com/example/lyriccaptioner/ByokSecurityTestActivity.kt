@@ -21,6 +21,7 @@ class ByokSecurityTestActivity : ComponentActivity() {
         cancelInvoked.set(false)
         saveInvoked.set(false)
         replaceInvoked.set(false)
+        testConnectionInvoked.set(false)
         deleteInvoked.set(false)
         val mode = intent.getStringExtra(EXTRA_MODE).orEmpty()
         val status = when (mode) {
@@ -35,6 +36,7 @@ class ByokSecurityTestActivity : ComponentActivity() {
                         model = DeepSeekKeyUiMapper.from(status),
                         onSave = { saveInvoked.set(true) },
                         onReplace = { replaceInvoked.set(true) },
+                        onTestConnection = { testConnectionInvoked.set(true) },
                         onDelete = { deleteInvoked.set(true) },
                         onCancelInput = { cancelInvoked.set(true) },
                     )
@@ -50,6 +52,7 @@ class ByokSecurityTestActivity : ComponentActivity() {
         val cancelInvoked = AtomicBoolean(false)
         val saveInvoked = AtomicBoolean(false)
         val replaceInvoked = AtomicBoolean(false)
+        val testConnectionInvoked = AtomicBoolean(false)
         val deleteInvoked = AtomicBoolean(false)
     }
 }

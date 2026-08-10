@@ -27,6 +27,7 @@ class DeepSeekKeyUiContractTest {
         assertFalse(model.showSave)
         assertTrue(model.showReplace)
         assertTrue(model.showDelete)
+        assertTrue(model.showTestConnection)
         assertTrue(model.showCancel)
         assertFalse(model.maskedKey!!.contains(key))
     }
@@ -39,5 +40,20 @@ class DeepSeekKeyUiContractTest {
 
         assertTrue(model.showCancel)
         assertFalse(model.maskedKey.orEmpty().contains("sk-"))
+    }
+
+    @Test
+    fun failedReplacementKeepsSanitizedConnectionAndRecoveryActionsVisible() {
+        val model = DeepSeekKeyUiMapper.from(
+            DeepSeekKeyStatus(
+                DeepSeekKeyState.VALIDATION_FAILED,
+                "••••••••3456",
+                "Authentication rejected (HTTP 401).",
+            ),
+        )
+
+        assertTrue(model.showTestConnection)
+        assertTrue(model.showCancel)
+        assertEquals("Authentication rejected (HTTP 401).", model.detail)
     }
 }

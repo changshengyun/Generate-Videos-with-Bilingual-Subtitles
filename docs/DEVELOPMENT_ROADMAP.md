@@ -22,7 +22,7 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | 阶段 | 状态 | 目标 |
 |---|---|---|
 | `V3-DEC-001` | `PASS` | 交互、样式、媒体入口、缓存生命周期、云端匹配、本地回退、密钥边界和清理范围已由用户确认 |
-| `V3-AI-CONTRACT-001` | `LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS` | 在唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 实现 DeepSeek 最小认证 probe，并验证 App 内手动输入、Keystore 保存、重启、测试连接、same-key rotation、失败替换保留旧 Key 与删除；歌词/逐 cue 链路继续延后 |
+| `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Developer 候选） | 唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 已证明 `GET /models` 最小真实认证、Keystore 密文保存、masked 重启恢复、测试连接、same-key rotation、synthetic invalid 替换失败保留旧 Key 与最终删除；完整回归和 secret scan 通过，等待 Brain 裁决，歌词/逐 cue 链路继续延后 |
 | `V3-ASR-SESSION-001` | `PLANNED` | 实现 3-5 分钟单模型进程级缓存、串行推理、取消安全、失效与内存策略，并测量冷/热识别 |
 | `V3-EDITOR-001` | `PLANNED` | 识别成功反馈、主动进入编辑、字幕列表归位、统一文本框、逐段样式和 V2 样式迁移 |
 | `V3-MEDIA-001` | `PLANNED` | Photo Picker 唯一导入入口和 MediaStore 唯一导出目的地，保持源/目标文件安全 |

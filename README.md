@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-V2 已由用户手动验收并归档，当前进入 V3 决策与规划阶段。活动状态以 `docs/` 为准；V2 历史状态见 `docs-v2/`。
+V2 已由用户手动验收并归档。V3 当前完成 `V3-AI-CONTRACT-001 / R1` 的 DeepSeek BYOK 真机认证候选证据，等待 Brain 正式裁决；活动状态以 `docs/` 为准，V2 历史状态见 `docs-v2/`。
 
 ## 当前使用的三份项目文档
 
@@ -21,7 +21,9 @@ V2 活动文档已归档为 `docs-v2/`；更早的原始文档备份位于 `docs
 
 - Android-only，当前配置 `minSdk 26`、`targetSdk 35`。
 - Kotlin、Jetpack Compose、Material 3、Media3、FFmpegKit 和 whisper.cpp JNI 是当前技术基础。
-- 视频导入、音频处理、Whisper 识别、预览和导出保持本地执行；V3 云端字幕增强仍受 API、后端、隐私和离线策略决策门禁约束。
+- 视频导入、音频处理、Whisper 识别、预览和导出保持本地执行。
+- DeepSeek Key 只允许在 App 内输入，以 Android Keystore AES-256-GCM 密文保存；“保存并验证”和“测试连接”使用固定 `https://api.deepseek.com/models` 最小认证请求，不发送视频、字幕、歌词、媒体路径或其他用户内容。
+- 真机认证证据不代表在线歌词匹配、逐 cue 增强或正式产品 PASS；这些能力仍受后续门禁约束。
 - 不保证自动还原原歌词；低置信度结果必须允许人工修正。
 
 ## 开发规则
