@@ -4,18 +4,25 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-001 / COMPONENT_VERIFIED / CANDIDATE_READY`
+- Current task: `V3-EDITOR-002 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `E01–E18_COMPONENT_EVIDENCE_COMPLETE / BRAIN_REVIEW_REQUIRED`
-- Process gate: `V3-EDITOR-001_COMPONENT_VERIFIED`
-- Implementation authorization: granted for the bounded editor interaction, layout/style model, archive migration, shared Compose/ASS resolver, tests and simulator verification
-- Review workflow: Brain formally accepted the ASR component verdict; Developer may return only an editor candidate result
-- Next permitted action: wait for Brain to establish the next complete acceptance matrix; do not start the lyrics chain or physical verification autonomously.
+- Current gate: `V3_EDITOR_002_MATRIX_DEFINED / IN_PROGRESS`
+- Process gate: `V3_EDITOR_002_IN_PROGRESS`
+- Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
+- Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
+- Next permitted action: execute `V3-EDITOR-002` from `docs/CURRENT_TASK.md`; DeepSeek subtitle enhancement remains a separate stage.
+
+## Current product findings (2026-08-10)
+
+- DeepSeek caption enhancement is not implemented in the product path. Production currently has secure BYOK storage and a body-free `GET /models` authentication probe only.
+- There is no production `CaptionEnhancementProvider`, `/chat/completions` call, model selection, system prompt, user prompt, messages payload or response parser. Whisper results are committed directly; the Chinese action uses local OPUS-MT.
+- `V3-AI-001` therefore remains `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`; a successful Key connection test must not be described as AI caption processing.
+- The screenshot-confirmed editor mismatch is the active task: two detached style panels must be removed and all per-cue controls moved into the corresponding caption card.
 
 ## FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG
 
-- Policy: no device connection, install, ADB wait/poll, or physical instrumentation until the user explicitly says “开始真机验证”. Device absence does not block component stages and must never be replaced with inferred data.
+- Policy: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`. Existing failure and missing-data evidence stays recorded, but the backlog no longer blocks later component work. It must not be rewritten as measured PASS.
 - ASR A13: real native consecutive recognition, cold/hot execution and handle reuse remain unverified.
 - ASR A15: real cold/hot context load, inference, total, peak RSS, temperature, empty-result and crash data remain unverified.
 - Editor UI: physical-device editor navigation, cue editing, preview and export UI evidence remain unverified; simulator/JVM/build/static evidence does not upgrade this boundary.
@@ -140,10 +147,11 @@
 | V3-DEC-001 | `PASS` |
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
-| V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER` |
+| V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
+| V3-EDITOR-002 | `MATRIX_DEFINED / READY_FOR_DEVELOPER` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
-| V3-AI-001 | `LIVE_API_DEFERRED` |
+| V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |
 | V3-CLEAN-001 | `PLANNED` |
 | V3-E2E-003 | `PLANNED` |
 

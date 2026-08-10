@@ -1,25 +1,56 @@
-# Current Task: V3-EDITOR-001
+# Current Task: V3-EDITOR-002
 
 ## Current status
 
-- Stage: `V3-EDITOR-001`
-- Status: `V3-EDITOR-001 / COMPONENT_VERIFIED / CANDIDATE_READY`
-- Previous stage: `V3-ASR-SESSION-001 / PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决；组件阶段已接受）
-- Scope: 识别成功后的主动编辑入口、字幕列表归位、项目级 `CaptionLayout`、默认样式、cue 覆盖、V2→V3 迁移，以及 Compose/ASS 共用解析
+- Stage: `V3-EDITOR-002`
+- Status: `V3-EDITOR-002 / MATRIX_DEFINED / IN_PROGRESS`
+- Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
+- Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
-- Physical-device gate: `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`；本阶段禁止连接、安装、等待或轮询真机
-- Review workflow: Developer 已完成 E01–E18 组件证据并回交候选状态；Brain 负责正式验收
-- Next action: 等待 Brain 建立下一阶段完整验收矩阵；不得自行启动歌词链路或真机验证
+- Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
+- AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
+- Review workflow: Brain 已根据用户截图和生产代码完成范围复核；Developer 按本矩阵实施并回交候选，不能自验收
+- Next action: 只执行 `V3-EDITOR-002`；真实 DeepSeek 字幕增强及其 system/user prompt 留给单独 `V3-AI-001`
 
-## Developer evidence (2026-08-10)
+## V3-EDITOR-002 acceptance matrix
 
-- Candidate: `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`
+| ID | 必须证明 |
+|---|---|
+| S01 | 字幕编辑页不再显示独立“项目默认样式”面板。 |
+| S02 | 字幕编辑页不再显示独立“当前字幕覆盖”面板。 |
+| S03 | 每条字幕卡片都有自己的可展开“字幕样式”入口；未展开卡片保持紧凑，不同时铺开全部色板。 |
+| S04 | 每条卡片可独立调整字号、字体、英文颜色、中文颜色、描边颜色、粗体、斜体和对齐。 |
+| S05 | 每条卡片可独立上移/下移；调整一条字幕的位置不改变其他字幕。 |
+| S06 | 所有写操作显式携带 `cueId`，不能依赖可能在重组期间变化的 `selectedCaptionId` 决定目标。 |
+| S07 | 修改任一 cue 的样式或位置不影响其他 cue 的文本、时间、样式、位置和确认状态。 |
+| S08 | 卡片内“恢复基础样式/位置”只清除该 cue 的覆盖，并回落到兼容性基础值。 |
+| S09 | `DefaultCaptionStyle` 与项目级 `CaptionLayout` 只作为新 cue、旧项目迁移和未覆盖字段的内部回退，不再暴露全局编辑面板。 |
+| S10 | cue 级位置通过独立 layout override 建模；Compose 与 ASS 必须通过同一 resolver 得到相同最终样式和位置。 |
+| S11 | 归档升级为 v5；v1-v4 读取时 cue layout override 为空并继承历史项目布局，不能丢字幕、时间或样式。 |
+| S12 | v5 完整 round-trip cue 样式与位置；非法、非有限或越界 layout 数据被安全拒绝。 |
+| S13 | 文本、时间、候选、确认、删除和列表选择功能保持可用，样式控件具备 cue-id 级无障碍 semantics。 |
+| S14 | focused/full JVM、ASR Python、lint、普通 Debug、native Debug 和 AndroidTest 构建通过；物理设备 UI 不作为本阶段阻断项。 |
+
+| Category | V3-EDITOR-002 requirement |
+|---|---|
+| Main path | 用户进入字幕编辑 -> 在某条字幕卡片内展开“字幕样式” -> 只调整该条字幕的字体、字号、颜色、描边、粗斜体、对齐和位置 -> 预览与导出使用同一结果 -> 保存重启后恢复。 |
+| Mandatory evidence | S01-S14；至少两条 cue 的互不影响测试；v4→v5 迁移与 v5 round-trip；Compose/ASS resolver 一致性；完整构建矩阵。 |
+| Prohibited | 不实现 DeepSeek 字幕 Provider 或 Prompt；不修改 BYOK；不接在线歌词；不更换 Whisper 模型/参数；不重做全局视觉 UI、媒体入口或清理 SRT；不伪造真机证据。 |
+| Exit | 全部组件证据通过后只允许回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 裁决。 |
+| Incomplete | cue 写错目标或互相污染：`BLOCKED / CUE_STYLE_ISOLATION_REQUIRED`；旧项目迁移丢失：`BLOCKED / ARCHIVE_MIGRATION_SAFETY_REQUIRED`；预览/导出不一致：`PARTIAL_PASS / RENDER_INTEGRATION_REQUIRED`。 |
+
+## Previous V3-EDITOR-001 physical-attempt evidence (2026-08-10)
+
+- Candidate: `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_REQUIRED`; ASR remains `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`
 - E01–E18: component-level PASS. Model/archive, Compose policy, shared render resolver and ASS per-cue mapping are covered by focused JVM tests; no formal product PASS is claimed.
 - Verification: focused editor JVM 25/25; full `testDebugUnitTest` 192/192; `python tools\\asr_evaluate_test.py` 6/6; `lintDebug` 0 errors/33 warnings; `assembleDebug`, `-PenableWhisperNative=true assembleDebug`, and `assembleDebugAndroidTest` passed.
 - Artifacts: native-enabled app APK 417,446,841 bytes; AndroidTest APK 119,027 bytes.
-- Physical boundary: no device connection, install, polling or instrumentation was performed. ASR A13/A15 and editor physical UI remain in `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`; simulator instrumentation was not run in this turn.
+- Physical boundary: only `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` was used with repository-owned synthetic WAV/SRT/video fixtures. A13/A15 stopped after native `inference_started`; no real handle reuse, completed timing, temperature, empty-result or crash evidence was obtained. No Key, DeepSeek or lyrics path was touched.
+- A13/A15 evidence: native log recorded `whisper_context_created handle=1` and `whisper_jni_inference_started`; the 250 ms and 500 ms fixtures still produced no `whisper_full_exited` within 300 s. The cancellation run recorded `abort_requested handle=1 active=1` but no native exit within 120 s. Observed process RSS was 528,136-532,564 KiB while blocked; load/inference/total, temperature, empty-result and crash fields are unavailable.
+- Editor physical UI evidence: test-owned media/SRT was installed, but import and UI smoke instrumentation timed out (120-240 s) without a result bundle or verifiable product-entry sequence. No editor PASS is claimed.
+- Current verification commands: `testDebugUnitTest` passed; native-enabled `assembleDebugAndroidTest` passed; the device runs above are the only physical evidence for this batch and are failures/incomplete, not acceptance.
 - Preserved scope: BYOK, ASR/session, media, lyrics, Whisper parameters and existing dirty/untracked state were not cleaned or broadened.
 
 ## V3-EDITOR-001 acceptance matrix
@@ -131,9 +162,9 @@
 | A10 | `PASS` | create/transcribe/free 失败均移除半有效缓存，后续任务恢复。 |
 | A11 | `PASS` | 重复 close/free 幂等，JNI registry 对未知/已释放 handle 忽略重复 free。 |
 | A12 | `PASS` | 新 runtime 实例从空 snapshot 开始，不复用另一 runtime 的 handle。 |
-| A13 | `DEFERRED_BY_USER` | 已进入 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`；未取得连续两次真实识别及 handle 复用结果。 |
+| A13 | `UNVERIFIED / NATIVE_INFERENCE_TIMEOUT` | 真机仅记录 `handle=1` 创建和首次 `inference_started`；250 ms 与 500 ms 测试音频均未在 300 s 内返回，未取得连续识别或 handle 复用。 |
 | A14 | `PASS`（组件级） | JVM 覆盖合法 cue 时间戳、顺序和跨任务隔离；真机缓存前后 cue 证据随 A13 待补。 |
-| A15 | `DEFERRED_BY_USER` | diagnostics 已实现 load/inference/total、VmRSS/VmHWM、温度、空结果和崩溃字段；实际真机数据进入最终积压。 |
+| A15 | `UNVERIFIED / METRICS_UNAVAILABLE` | 阻塞期间仅观察到 RSS 528,136-532,564 KiB；load/inference/total、温度、空结果和崩溃字段没有 instrumentation 回交，不能填写或推导。 |
 | A16 | `PASS`（回归级） | focused 14/14；完整 JVM 169/169；ASR Python 6/6；lint 0 errors/33 warnings；普通 Debug、native-enabled Debug、AndroidTest 构建全部通过。 |
 
 - Native lifecycle：JNI 使用 registry-backed opaque positive handle、显式 create/transcribe/requestAbort/free、native atomic abort、per-session inference mutex；free 等待 active `whisper_full` 临界区退出，取消/失败 handle 立即禁止复用，重复 free 不 double-free。
