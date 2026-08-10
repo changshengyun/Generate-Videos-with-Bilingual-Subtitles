@@ -22,7 +22,7 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | 阶段 | 状态 | 目标 |
 |---|---|---|
 | `V3-DEC-001` | `PASS` | 交互、样式、媒体入口、缓存生命周期、云端匹配、本地回退、密钥边界和清理范围已由用户确认 |
-| `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED` | R1 安全脱敏、回退白名单、Android Keystore BYOK 与最小配置入口已实现；真实 Key 设备流仍待授权验证 |
+| `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED` | R1 正在补齐真实取消、非请求路径无明文解密、串行删除和 production Android Keystore 运行时证据；真实 Key 测试仍延后 |
 | `V3-ASR-SESSION-001` | `PLANNED` | 实现 3-5 分钟单模型进程级缓存、串行推理、取消安全、失效与内存策略，并测量冷/热识别 |
 | `V3-EDITOR-001` | `PLANNED` | 识别成功反馈、主动进入编辑、字幕列表归位、统一文本框、逐段样式和 V2 样式迁移 |
 | `V3-MEDIA-001` | `PLANNED` | Photo Picker 唯一导入入口和 MediaStore 唯一导出目的地，保持源/目标文件安全 |

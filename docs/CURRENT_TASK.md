@@ -3,25 +3,25 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
+- Status: `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
 - Previous stage: `V3-DEC-001 / PASS`
-- Scope: 云端歌曲/歌词匹配、AI 分段修正、本地 OPUS-MT 回退的数据合同、状态机和测试基础
+- Scope: R1 安全本地 Key 存储、真实取消、非请求路径无明文解密、串行保存/替换/取消/删除、最小配置入口与 Android Keystore 运行时证明
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
 - Live API status: `DEFERRED_UNTIL_PROVIDER_AND_KEY_CONFIGURATION`
 - Review workflow: 不启用独立 Review 窗口；Developer 完成自测并把矩阵证据交回 Brain 判定
-- Next action: Development Orchestrator 将已冻结的活动文档与 20 项 Brain 合同测试建立阶段 checkpoint；随后先串行冻结公共合同骨架，再按独占文件清单调用并行实现 Agent
+- Next action: 执行 `SECURITY_AND_BYOK_REWORK_DELTA` 的 R1-R01 至 R1-R10；完整证据直接回交 Brain 裁决
 
 ## V3-AI-CONTRACT-001-R1 acceptance matrix
 
 | Category | R1 requirement |
 |---|---|
 | Main path | App AI service settings -> masked DeepSeek BYOK input -> minimal validation -> Android Keystore AES-256-GCM encryption -> `noBackupFilesDir` ciphertext/IV record -> short-lived decrypt only for request construction. |
-| Mandatory evidence | Sanitized exception chain tests; fallback allowlist tests; Keystore round-trip/IV/rotation/failure/cancel/delete/corruption/concurrency tests; masked settings UI tests; focused/full JVM and Android builds; secret scan. |
+| Mandatory evidence | R1-R01 至 R1-R10；真实取消与 write count；status/cancel decrypt count 为 0；统一串行化与可见删除失败；production `AndroidKeystoreDeepSeekKeyStore` round-trip/corruption/alias-loss/delete instrumentation；masked settings UI；focused/full JVM、lint、普通 Debug、native-enabled Debug、AndroidTest 构建与 secret scan。 |
 | Prohibited | Real key, backend/provider expansion, online lyrics, UI redesign, Whisper/cache/media/editor/SRT cleanup, plaintext key in preferences/DataStore/archive/SavedState/logs/APK/tests. |
-| Exit | Without real key: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`; only after user-authorized real-key product-flow verification may Brain consider `READY_FOR_BRAIN / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED`. |
-| Incomplete | Missing runtime key, Keystore/device evidence or failed security proof remains `LIVE_KEY_TEST_REQUIRED`, `BLOCKED`, or `HUMAN_DECISION` as applicable. |
+| Exit | R1-R01 至 R1-R10、production Android Keystore instrumentation、完整构建矩阵、secret scan 和三份文档全部通过后，仅允许回交候选状态 `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`；真实 Key 产品流仍需后续授权。 |
+| Incomplete | JVM/构建通过但 Android Keystore instrumentation 未运行：`PARTIAL_PASS / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`；安全、取消、原子删除或明文生命周期无法证明：`BLOCKED / SECURITY_PROOF_REQUIRED`。 |
 
 ## R1 implementation evidence (2026-08-10)
 
@@ -54,7 +54,7 @@
 8. 导入只使用系统相册/Photo Picker；导出只保存到系统相册/MediaStore，不再提供自定义位置。
 9. 删除 App 顶栏，但保留系统状态栏、导航栏和 Window Insets。
 10. 识别成功后不自动跳转，只显示“识别成功”；用户自行点击现有“编辑字幕”入口。
-11. API 模式的非敏感配置可自动保存；供应商 API Key 不得写入 APK、Git、文档、日志或普通持久化配置。真实 Provider 阶段必须先给出安全保存位置，由用户配置后再测试。
+11. 当前密钥路线为 `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED`：供应商 API Key 只允许由用户在设备内输入，以 Android Keystore 包装的 AES-256-GCM 密文保存；不得写入 APK、Git、文档、日志、普通 Preferences/DataStore 或项目归档。真实 Provider 认证与网络调用延后。
 12. V3 最终只保留两条产品处理链路：主链路“视频导入 -> 模型识别 -> 云端匹配/修正/翻译 -> 字幕编辑确认 -> 导出”和降级链路“云端不可用 -> 本地 OPUS-MT -> 编辑确认 -> 导出”。SRT 插入及其他替代导出分支在独立 `V3-CLEAN-001` 清单和回归门禁后删除。
 
 ## Stage state machine
@@ -87,7 +87,11 @@ V3-DEC-001 / PASS
 
 没有独立 Review Agent/Review 窗口。Developer 不自称正式验收，只提交测试与证据；Brain 按验收矩阵决定最终状态和下一阶段。
 
-## Acceptance matrix
+## 历史合同实现证据（非当前 Next action）
+
+以下原始 T01-T14 合同矩阵与实现结果作为历史证据保留，不再充当当前调度入口；当前执行面是上方 R1 安全增量矩阵。
+
+## Historical acceptance matrix
 
 | 类别 | `V3-AI-CONTRACT-001` 固定内容 |
 |---|---|
@@ -126,9 +130,9 @@ V3-DEC-001 / PASS
 
 ## API key boundary
 
-- 本阶段只定义 secret reference/config contract，不保存真实 Key。
-- 真实 API 阶段必须让 Provider Key 位于自有后端的环境变量或 secret manager 中；Android APK 只持有后端地址和短期会话凭据。
-- 如果后续用户明确选择“设备直连供应商 API”，必须先返回 `HUMAN_DECISION`，说明 APK 反编译、密钥滥用和费用风险，并得到新的架构授权。
+- 当前已确认路线为 `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED`。
+- R1 只实现用户输入、Android Keystore 包装的 AES-256-GCM 本地密文、最小配置 UI 与短生命周期解密边界；不接入真实 Provider 网络调用。
+- 真实认证、歌词匹配、完整云端链路与真实用户 Key 测试留给后续明确授权阶段。
 
 ## Final report format
 

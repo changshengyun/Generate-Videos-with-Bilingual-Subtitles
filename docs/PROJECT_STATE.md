@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
+- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
+- Current gate: `SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
 - Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: Brain review; a later explicitly authorized device flow must validate a real user-owned DeepSeek key, Keystore persistence after restart, replacement/delete, and cloud authentication before any stronger status.
+- Next permitted action: complete the frozen R1 security/BYOK rework matrix and return JVM, build, emulator Keystore, UI and secret-scan evidence directly to Brain; live Provider authentication with a real user-owned key remains deferred.
 
 ## Current test-first evidence
 
@@ -47,7 +47,7 @@
 - Remove the entire app top bar and visible development/version labels while preserving system status/navigation bars and Window Insets.
 - Send complete local Whisper cue batches to an AI API for song/online-lyrics matching, per-cue English correction, and Chinese translation without re-running audio ASR or changing timestamps.
 - Keep the current OPUS-MT/ONNX local translator as the real offline/network-failure fallback and label its output separately from cloud AI.
-- Persist only non-sensitive API mode settings. Provider API keys stay outside the APK/Git/logs and must be configured in a backend secret/environment location before live testing.
+- Current key route is `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED`: a user-entered Provider key may only be stored as Android Keystore-wrapped AES-256-GCM ciphertext and must stay outside APK/Git/logs/ordinary preferences/project archives; live authentication remains deferred.
 - The final product keeps only the model-recognition main path and the local-translation fallback path. SRT import and other export branches are removed only in a later audit-first `V3-CLEAN-001` stage.
 - The detailed `V3_PRODUCT_ARCHITECTURE.md` remains secondary reference; where its earlier draft conflicts with these three active documents, the active documents and latest user decisions control until the reference is synchronized.
 
@@ -76,7 +76,7 @@
 - Do not push unless the user explicitly requests it.
 - Preserve the user-approved but uncommitted `AGENTS.md` acceptance-matrix rule and three-document updates when creating the stage checkpoint.
 - Do not stage unrelated dirty/untracked content in the checkpoint or feature commit.
-- Do not implement live Provider calls, API-key storage, model caching, UI/media changes or V2 cleanup inside `V3-AI-CONTRACT-001`.
+- Do not implement live Provider calls, non-Keystore API-key storage, model caching, unrelated UI/media changes or V2 cleanup inside `V3-AI-CONTRACT-001`; the bounded R1 Android Keystore storage and minimal settings UI are explicitly authorized.
 
 ## Stage routing
 
@@ -84,7 +84,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `READY_FOR_BRAIN / COMPONENT_VERIFIED / LIVE_API_DEFERRED` |
+| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED` |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |
