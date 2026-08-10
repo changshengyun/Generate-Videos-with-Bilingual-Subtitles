@@ -4,14 +4,21 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
+- Current task: `V3-AI-CONTRACT-001 / R1 / LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
+- Current gate: `LIVE_KEY_MATRIX_DEFINED / DEVICE_AND_NETWORK_AUTHORIZED / IN_PROGRESS`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
-- Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
-- Review workflow: no independent Review window; Brain has completed the formal R1 adjudication from the returned matrix evidence
-- Next permitted action: keep `LIVE_KEY_TEST_REQUIRED`; any real-key, live-authentication or complete product-flow validation requires separate authorization and evidence.
+- Implementation authorization: granted for bounded production DeepSeek authentication probe, saved-key connection test, necessary tests and authorized physical-device verification
+- Review workflow: Developer implements and verifies the live-key matrix, then returns a candidate state to Brain without claiming formal PASS
+- Next permitted action: implement the frozen LIVE-KEY matrix and verify only the authorized authentication/storage lifecycle on `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`; live lyrics and cue enhancement remain deferred.
+
+## Current R1 live-key authorization
+
+- The user authorized the currently connected physical device, real network access to `https://api.deepseek.com`, and manual real-Key entry only inside the App.
+- The Key must never pass through chat, terminal arguments, environment variables, ADB input, clipboard automation, source, test files or screenshots of the input process.
+- The product flow must verify minimal authentication, Keystore ciphertext persistence without plaintext, masked restart recovery, saved-key connection testing, same-key rotation with a new IV, failed synthetic-invalid replacement preserving the old real Key, and final record+alias deletion followed by `UNCONFIGURED` after restart.
+- The highest candidate state is `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`; Brain retains formal adjudication.
 
 ## Current R1 security rework evidence
 
@@ -95,7 +102,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Brain formal verdict; API 36 emulator synthetic-Key evidence only） |
+| V3-AI-CONTRACT-001 | `LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS`（physical device `fcf4b0cb`, DeepSeek authentication only; lyrics flow deferred） |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |

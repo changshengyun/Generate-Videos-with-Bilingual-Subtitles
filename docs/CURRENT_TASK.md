@@ -3,15 +3,25 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Brain 正式裁决）
+- Status: `LIVE_KEY_TEST_AUTHORIZED / IN_PROGRESS`
 - Previous stage: `V3-DEC-001 / PASS`
-- Scope: R1 安全本地 Key 存储、真实取消、非请求路径无明文解密、串行保存/替换/取消/删除、最小配置入口与 Android Keystore 运行时证明
+- Scope: R1 真机 DeepSeek 最小认证、Android Keystore 加密保存、重启恢复、测试连接、same-key rotation、失败替换保留旧 Key 与最终删除
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
-- Live API status: `DEEPSEEK_LIVE_AUTH_AND_LYRICS_FLOW_DEFERRED`
-- Review workflow: 不启用独立 Review 窗口；Brain 已按回交矩阵证据完成正式裁决
-- Next action: 保持 `LIVE_KEY_TEST_REQUIRED`；真实 Key、云端认证与完整产品流须经后续独立授权和验证，不得由本裁决越级声明通过
+- Live API status: `DEEPSEEK_AUTH_TEST_AUTHORIZED / LIVE_LYRICS_FLOW_DEFERRED`
+- Review workflow: Developer 按专项矩阵实施和自测后回交 Brain 裁决，不自称正式 PASS
+- Next action: 在唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 实现并验证真实 DeepSeek BYOK 最小认证产品流
+
+## V3-AI-CONTRACT-001-R1 live-key acceptance matrix
+
+| Category | LIVE-KEY requirement |
+|---|---|
+| Main path | 构建安装 Debug APK -> 用户只在真机 App 内手动输入真实 DeepSeek Key -> 最小认证成功并加密保存 -> 强停重启恢复 masked `CONFIGURED` -> 使用已保存 Key“测试连接” -> 同一有效 Key 替换并确认新 IV/原子切换 -> synthetic invalid Key 替换失败且旧真实 Key 仍可认证 -> 删除 record 与 alias -> 重启后 `UNCONFIGURED`。 |
+| Mandatory evidence | R1 focused JVM、完整 `testDebugUnitTest`、`python tools\asr_evaluate_test.py`、`lintDebug`、普通 Debug、native-enabled Debug、AndroidTest 构建；production 真机 UI/Keystore/网络验证；认证端点与脱敏 HTTP 结果分类；record 无明文、重启、same-key rotation、失败保留旧 Key、删除；APK、日志、允许截图和测试输出 secret scan。 |
+| Prohibited | 不发送视频、字幕、歌词、媒体路径或用户内容；不记录 Authorization header、Key、请求对象、响应正文或完整 URL 查询；不通过聊天、终端、环境变量、ADB、剪贴板脚本或自动化文件输入真实 Key；不截图密码输入过程；不测试歌词/逐 cue/Whisper/媒体/SRT；不新增大型依赖、后端或代理，不连接其他设备，不清理既有脏状态，不 push。 |
+| Exit | 全矩阵通过后只允许回交候选状态 `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`，由 Brain 正式裁决；不得自称正式产品 PASS。 |
+| Incomplete | Key 无效或额度/账号状态阻止认证：`PARTIAL_PASS / DEEPSEEK_ACCOUNT_ACTION_REQUIRED / LIVE_LYRICS_FLOW_DEFERRED`，只提示用户在 App 内重输或处理账号；设备/网络/构建或安全证据缺失：对应 `BLOCKED` 专项状态；需要新架构、大型依赖、第二个真实凭据或扩大到歌词链路：`HUMAN_DECISION`。 |
 
 ## V3-AI-CONTRACT-001-R1 acceptance matrix
 
