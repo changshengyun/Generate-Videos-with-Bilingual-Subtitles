@@ -1,6 +1,8 @@
 package com.example.lyriccaptioner.processing.enhancement.byok
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -18,29 +20,10 @@ class DeepSeekByokManagerImpl(
     override fun status(): DeepSeekKeyStatus = synchronized(stateLock) {
         val transient = transientStatus
         if (transient?.state == DeepSeekKeyState.VALIDATING_NEW_KEY) return@synchronized transient
-
-        val record = runCatching { store.readEncrypted() }.getOrNull()
-        if (record == null) {
-            val status = if (transient?.state == DeepSeekKeyState.VALIDATION_FAILED) {
-                transient
-            } else {
-                DeepSeekKeyStatus(DeepSeekKeyState.UNCONFIGURED)
-            }
-            transientStatus = status
-            return@synchronized status
-        }
-
-        // A damaged ciphertext or an invalidated Keystore alias is recoverable by re-entry.
-        val decrypted = runCatching { store.decrypt() }.getOrNull()
-        val status = if (decrypted == null) {
-            DeepSeekKeyStatus(DeepSeekKeyState.NEEDS_REENTRY, record.maskedKey)
-        } else if (transient?.state == DeepSeekKeyState.VALIDATION_FAILED) {
-            transient
-        } else {
-            DeepSeekKeyStatus(DeepSeekKeyState.CONFIGURED, record.maskedKey)
-        }
+        val persistent = persistentStatus()
+        val status = if (transient?.state == DeepSeekKeyState.VALIDATION_FAILED) transient else persistent
         transientStatus = status
-        return@synchronized status
+        status
     }
 
     override suspend fun validateAndSave(apiKey: String): DeepSeekKeyStatus =
@@ -57,14 +40,15 @@ class DeepSeekByokManagerImpl(
             ).also { transientStatus = it }
         }
 
-        val before = status()
+        val before = persistentStatus()
         transientStatus = DeepSeekKeyStatus(
             DeepSeekKeyState.VALIDATING_NEW_KEY,
-            maskedKey = DeepSeekKeyMasker.mask(apiKey),
+            maskedKey = before.maskedKey,
         )
         val result = try {
             // Probe is intentionally performed before encryption/write, preserving the old record.
             probe.validate(apiKey)
+            currentCoroutineContext().ensureActive()
             store.writeEncrypted(apiKey)
             DeepSeekKeyStatus(
                 DeepSeekKeyState.CONFIGURED,
@@ -84,28 +68,34 @@ class DeepSeekByokManagerImpl(
         return result
     }
 
-    override fun cancelInput(): DeepSeekKeyStatus = synchronized(stateLock) {
-        val record = runCatching { store.readEncrypted() }.getOrNull()
-        val status = if (record == null) {
-            DeepSeekKeyStatus(DeepSeekKeyState.UNCONFIGURED)
-        } else if (runCatching { store.decrypt() }.getOrNull() == null) {
-            DeepSeekKeyStatus(DeepSeekKeyState.NEEDS_REENTRY, record.maskedKey)
-        } else {
-            DeepSeekKeyStatus(DeepSeekKeyState.CONFIGURED, record.maskedKey)
+    override suspend fun cancelInput(): DeepSeekKeyStatus = operationMutex.withLock {
+        val status = persistentStatus()
+        transientStatus = status
+        status
+    }
+
+    override suspend fun delete(): DeepSeekKeyStatus = operationMutex.withLock {
+        val before = persistentStatus()
+        try {
+            store.delete()
+            if (store.health().availability != DeepSeekKeyAvailability.ABSENT) {
+                throw DeepSeekKeyStorageException()
+            }
+            DeepSeekKeyStatus(DeepSeekKeyState.UNCONFIGURED).also { transientStatus = it }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            transientStatus = DeepSeekKeyStatus(
+                DeepSeekKeyState.NEEDS_REENTRY,
+                before.maskedKey,
+                detail = "Secure deletion failed.",
+            )
+            throw DeepSeekKeyStorageException()
         }
-        transientStatus = status
-        status
     }
 
-    override fun delete(): DeepSeekKeyStatus = synchronized(stateLock) {
-        runCatching { store.delete() }
-        val status = DeepSeekKeyStatus(DeepSeekKeyState.UNCONFIGURED)
-        transientStatus = status
-        status
-    }
-
-    override suspend fun <T> withDecryptedKey(block: suspend (String) -> T): T {
-        val key = operationMutex.withLock {
+    override suspend fun <T> withDecryptedKey(block: suspend (String) -> T): T = operationMutex.withLock {
+        val key = try {
             val record = runCatching { store.readEncrypted() }.getOrNull()
             val decrypted = runCatching { store.decrypt() }.getOrNull()
             if (decrypted == null) {
@@ -117,7 +107,26 @@ class DeepSeekByokManagerImpl(
                 throw DeepSeekKeyUnavailableException()
             }
             decrypted
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         }
-        return block(key)
+        block(key)
+    }
+
+    private fun persistentStatus(): DeepSeekKeyStatus {
+        val health = runCatching { store.health() }.getOrElse {
+            return DeepSeekKeyStatus(DeepSeekKeyState.NEEDS_REENTRY)
+        }
+        return when (health.availability) {
+            DeepSeekKeyAvailability.ABSENT -> DeepSeekKeyStatus(DeepSeekKeyState.UNCONFIGURED)
+            DeepSeekKeyAvailability.AVAILABLE -> DeepSeekKeyStatus(
+                DeepSeekKeyState.CONFIGURED,
+                health.maskedKey,
+            )
+            DeepSeekKeyAvailability.NEEDS_REENTRY -> DeepSeekKeyStatus(
+                DeepSeekKeyState.NEEDS_REENTRY,
+                health.maskedKey,
+            )
+        }
     }
 }

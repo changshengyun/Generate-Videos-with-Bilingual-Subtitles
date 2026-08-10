@@ -10,7 +10,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -73,9 +72,12 @@ class DeepSeekByokSecurityRegressionTest {
 
         val replacement = async { manager.replace(NEW_KEY) }
         probe.entered.await()
-        val deleted = manager.delete()
+        val deletion = async { manager.delete() }
+        delay(25)
+        assertFalse(deletion.isCompleted)
         probe.release.complete(Unit)
-        replacement.join()
+        replacement.await()
+        val deleted = deletion.await()
 
         assertEquals(DeepSeekKeyState.UNCONFIGURED, deleted.state)
         assertNull(store.readEncrypted())
@@ -91,9 +93,10 @@ class DeepSeekByokSecurityRegressionTest {
         }
         val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
 
-        val failure = assertThrows(RuntimeException::class.java) { manager.delete() }
+        val failure = runCatching { manager.delete() }.exceptionOrNull()
+        assertTrue(failure is DeepSeekKeyStorageException)
 
-        val rendered = failure.stackTraceToString()
+        val rendered = requireNotNull(failure).stackTraceToString()
         assertFalse(rendered.contains(secret))
         assertFalse(rendered.contains("private/path"))
         assertTrue(store.readEncrypted() != null)
@@ -132,6 +135,24 @@ class DeepSeekByokSecurityRegressionTest {
         assertTrue(store.decrypt() in setOf(NEW_KEY, THIRD_KEY))
     }
 
+    @Test
+    fun replacementWriteFailurePreservesOldCiphertextIvMaskAndPlaintext() = runBlocking {
+        val store = TrackingStore()
+        val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
+        manager.validateAndSave(OLD_KEY)
+        val before = requireNotNull(store.readEncrypted())
+        store.writeFailure = true
+
+        val result = manager.replace(NEW_KEY)
+
+        val after = requireNotNull(store.readEncrypted())
+        assertEquals(DeepSeekKeyState.VALIDATION_FAILED, result.state)
+        assertArrayEquals(before.ciphertext, after.ciphertext)
+        assertArrayEquals(before.iv, after.iv)
+        assertEquals(before.maskedKey, after.maskedKey)
+        assertEquals(OLD_KEY, store.decrypt())
+    }
+
     private class HangingProbe : DeepSeekKeyProbe {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -148,6 +169,7 @@ class DeepSeekByokSecurityRegressionTest {
         private var record: EncryptedDeepSeekKeyRecord? = null
         private var plaintext: String? = null
         var deleteFailure: RuntimeException? = null
+        var writeFailure = false
         val writeCount = AtomicInteger(0)
         val decryptCount = AtomicInteger(0)
         val activeWrites = AtomicInteger(0)
@@ -155,7 +177,14 @@ class DeepSeekByokSecurityRegressionTest {
 
         override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
 
+        override fun health(): DeepSeekKeyStoreHealth = if (record == null) {
+            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.ABSENT)
+        } else {
+            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record?.maskedKey)
+        }
+
         override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
+            if (writeFailure) throw IllegalStateException("private/write/path/$apiKey")
             val active = activeWrites.incrementAndGet()
             maxActiveWrites.updateAndGet { maxOf(it, active) }
             try {

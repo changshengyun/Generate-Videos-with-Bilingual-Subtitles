@@ -12,7 +12,6 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.KeyStore
-import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -22,10 +21,16 @@ import javax.crypto.spec.GCMParameterSpec
 class AndroidKeystoreDeepSeekKeyStore(
     context: Context,
     private val alias: String = DEFAULT_ALIAS,
+    private val recordFileName: String = DEFAULT_RECORD_FILE_NAME,
 ) : DeepSeekKeyStore {
+    init {
+        require(SAFE_IDENTIFIER.matches(alias)) { "Invalid secure-key alias." }
+        require(SAFE_IDENTIFIER.matches(recordFileName)) { "Invalid secure record name." }
+    }
+
     private val appContext = context.applicationContext
     private val recordFile: File
-        get() = File(appContext.noBackupFilesDir, RECORD_FILE_NAME)
+        get() = File(appContext.noBackupFilesDir, recordFileName)
 
     override fun readEncrypted(): EncryptedDeepSeekKeyRecord? {
         val file = recordFile
@@ -54,13 +59,38 @@ class AndroidKeystoreDeepSeekKeyStore(
     }
 
     override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
-        val iv = ByteArray(IV_LENGTH).also(SecureRandom()::nextBytes)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, loadOrCreateKey(), GCMParameterSpec(TAG_BITS, iv))
-        val ciphertext = cipher.doFinal(apiKey.toByteArray(StandardCharsets.UTF_8))
+        cipher.init(Cipher.ENCRYPT_MODE, loadOrCreateKey())
+        val iv = cipher.iv
+        if (iv.size != IV_LENGTH) throw DeepSeekKeyStorageException()
+        val plaintext = apiKey.toByteArray(StandardCharsets.UTF_8)
+        val ciphertext = try {
+            cipher.doFinal(plaintext)
+        } finally {
+            plaintext.fill(0)
+        }
         val record = EncryptedDeepSeekKeyRecord(ciphertext, iv, DeepSeekKeyMasker.mask(apiKey))
         persistAtomically(record)
         return record
+    }
+
+    override fun health(): DeepSeekKeyStoreHealth {
+        val record = readEncrypted()
+            ?: return DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.ABSENT)
+        if (record.iv.size != IV_LENGTH || record.ciphertext.isEmpty()) {
+            return DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.NEEDS_REENTRY, record.maskedKey)
+        }
+        val key = loadKey()
+            ?: return DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.NEEDS_REENTRY, record.maskedKey)
+        return try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, record.iv))
+            val plaintext = cipher.doFinal(record.ciphertext)
+            plaintext.fill(0)
+            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record.maskedKey)
+        } catch (_: Throwable) {
+            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.NEEDS_REENTRY, record.maskedKey)
+        }
     }
 
     override fun decrypt(): String? {
@@ -70,7 +100,12 @@ class AndroidKeystoreDeepSeekKeyStore(
             val key = loadKey() ?: return null
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, record.iv))
-            cipher.doFinal(record.ciphertext).toString(StandardCharsets.UTF_8)
+            val plaintext = cipher.doFinal(record.ciphertext)
+            try {
+                plaintext.toString(StandardCharsets.UTF_8)
+            } finally {
+                plaintext.fill(0)
+            }
         } catch (_: Throwable) {
             // Includes malformed ciphertext and Keystore alias invalidation.
             null
@@ -78,10 +113,14 @@ class AndroidKeystoreDeepSeekKeyStore(
     }
 
     override fun delete() {
-        runCatching { recordFile.delete() }
-        runCatching {
+        try {
+            val file = recordFile
+            if (file.exists() && !file.delete()) throw DeepSeekKeyStorageException()
             val keyStore = keyStore()
             if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
+            if (file.exists() || keyStore.containsAlias(alias)) throw DeepSeekKeyStorageException()
+        } catch (_: Throwable) {
+            throw DeepSeekKeyStorageException()
         }
     }
 
@@ -89,7 +128,7 @@ class AndroidKeystoreDeepSeekKeyStore(
         val destination = recordFile
         val parent = destination.parentFile ?: throw IOException("No private storage directory")
         if (!parent.exists() && !parent.mkdirs()) throw IOException("Could not create private storage directory")
-        val temporary = File(parent, "$RECORD_FILE_NAME.tmp")
+        val temporary = File(parent, "$recordFileName.tmp")
         try {
             DataOutputStream(temporary.outputStream().buffered()).use { output ->
                 output.writeInt(MAGIC)
@@ -142,7 +181,7 @@ class AndroidKeystoreDeepSeekKeyStore(
     private companion object {
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val DEFAULT_ALIAS = "lyriccaptioner.deepseek.byok.v1"
-        const val RECORD_FILE_NAME = "deepseek_byok_record.bin"
+        const val DEFAULT_RECORD_FILE_NAME = "deepseek_byok_record.bin"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val MAGIC = 0x4453424B // DSBK
         const val VERSION = 1
@@ -150,5 +189,6 @@ class AndroidKeystoreDeepSeekKeyStore(
         const val TAG_BITS = 128
         const val MAX_CIPHERTEXT = 1024 * 1024
         const val MAX_MASKED = 256
+        val SAFE_IDENTIFIER = Regex("[A-Za-z0-9._-]+")
     }
 }

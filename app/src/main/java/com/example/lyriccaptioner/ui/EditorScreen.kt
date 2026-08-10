@@ -362,7 +362,7 @@ fun EditorScreen(viewModel: MainViewModel) {
 }
 
 @Composable
-private fun DeepSeekKeySettingsPanel(
+internal fun DeepSeekKeySettingsPanel(
     model: DeepSeekKeyUiModel,
     onSave: (String) -> Unit,
     onReplace: (String) -> Unit,
@@ -458,7 +458,7 @@ private fun DeepSeekKeySettingsPanel(
                         },
                     ) { Text("删除 API Key") }
                 }
-                if (model.state == DeepSeekKeyState.CONFIGURED || model.state == DeepSeekKeyState.VALIDATION_FAILED || model.state == DeepSeekKeyState.NEEDS_REENTRY) {
+                if (model.showCancel) {
                     TextButton(
                         modifier = Modifier.semantics { contentDescription = "deepseek_key_cancel" },
                         onClick = {

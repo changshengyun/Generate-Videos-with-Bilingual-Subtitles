@@ -4,16 +4,27 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
+- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Developer candidate）
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
+- Current gate: `READY_FOR_BRAIN_REVIEW / LIVE_KEY_TEST_REQUIRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
 - Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: complete the frozen R1 security/BYOK rework matrix and return JVM, build, emulator Keystore, UI and secret-scan evidence directly to Brain; live Provider authentication with a real user-owned key remains deferred.
+- Next permitted action: Brain re-adjudicates R1-R01 through R1-R10 from the returned evidence; no later module or live-key/provider flow starts before that decision.
 
-## Current test-first evidence
+## Current R1 security rework evidence
+
+- Checkpoint `bbb9761` froze the delta matrix and captured three expected old-implementation failures: delete-after-validation write-back, swallowed delete failure and plaintext decrypt during status/cancel.
+- Focused R1 JVM: 24 passed. Full JVM: 145 passed, 0 failed, 0 skipped. ASR baseline script: 6 passed.
+- Lint, normal Debug, native-enabled Debug and AndroidTest APK builds passed. `:app:assembleNativeDebug` remains absent; the configured native path is `-PenableWhisperNative=true :app:assembleDebug`.
+- Production Keystore instrumentation passed on the existing `Pixel_8` emulator (`emulator-5554`, `sdk_gphone64_x86_64`, API 36): AES-256-GCM, 12-byte IV, restart recovery, distinct IVs, corruption/alias-loss `NEEDS_REENTRY`, re-entry and verified record+alias deletion.
+- ViewModel cancellation passed with a suspended probe: Job cancelled and joined, write count 0 after release, final persisted/UI state `UNCONFIGURED`.
+- Status/cancel do not call plaintext-returning decrypt; only `withDecryptedKey` crosses that boundary. Compose runtime proof covers password semantics, last-four mask, non-empty masked screenshot, validating cancel and input clear.
+- Secret scan found no real key, credential-bearing Authorization header, lyrics body or private runtime path in the app/debug AndroidTest APKs. Only synthetic sentinels and test-owned alias/record names were used.
+- Candidate state is not formal acceptance and does not prove a real DeepSeek key, live authentication, provider network, lyrics matching or the complete device product flow.
+
+## Historical test-first evidence
 
 - Brain added four new JVM test files containing 20 tests for T01-T14 and did not modify production Kotlin.
 - Focused Gradle execution reached `:app:compileDebugUnitTestKotlin` and failed on the intentionally absent V3 contract symbols, establishing the expected-red baseline.
@@ -27,7 +38,7 @@
 - The former `docs-v3/` architecture draft was promoted into the new active `docs/` and supplemented with the required three-document state surface.
 - V2 code was not changed during this transition. `third_party/ffmpeg-kit`, models, media, test assets, and existing untracked content remain outside the documentation commit.
 
-## V3-AI-CONTRACT-001-R1 implementation evidence (2026-08-10)
+## Historical V3-AI-CONTRACT-001-R1 implementation evidence before security rework (2026-08-10)
 
 - Checkpoint: `bfc7751`; feature commit: `69b991e`; neither was pushed.
 - Focused four Brain contract tests, full `testDebugUnitTest`, `lintDebug`, normal Debug, native-enabled Debug (`-PenableWhisperNative=true`) and `assembleDebugAndroidTest` all completed successfully.
@@ -84,7 +95,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED` |
+| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Developer candidate; pending Brain review） |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |

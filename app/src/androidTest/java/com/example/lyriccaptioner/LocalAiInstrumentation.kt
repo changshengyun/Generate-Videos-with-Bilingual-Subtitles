@@ -35,18 +35,35 @@ import com.example.lyriccaptioner.processing.WhisperModelStore
 import com.example.lyriccaptioner.processing.WhisperAsrModule
 import com.example.lyriccaptioner.project.ProjectArchive
 import com.example.lyriccaptioner.audio.Pcm16WavWriter
+import com.example.lyriccaptioner.processing.CaptionProject
+import com.example.lyriccaptioner.processing.ExportEngine
+import com.example.lyriccaptioner.processing.ExportResult
+import com.example.lyriccaptioner.processing.enhancement.byok.AndroidKeystoreDeepSeekKeyStore
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManagerImpl
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyAvailability
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyProbe
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStore
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStoreHealth
+import com.example.lyriccaptioner.processing.enhancement.byok.EncryptedDeepSeekKeyRecord
 import java.io.File
 import java.io.FileInputStream
+import java.io.RandomAccessFile
+import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import javax.crypto.SecretKeyFactory
+import android.security.keystore.KeyInfo
 
 class LocalAiInstrumentation : Instrumentation() {
     private lateinit var inputArguments: Bundle
@@ -61,7 +78,9 @@ class LocalAiInstrumentation : Instrumentation() {
         super.onStart()
         val results = Bundle()
         runCatching {
-            if (inputArguments.getString(ARG_IMPORT_ACCEPTANCE)?.toBoolean() == true) {
+            if (inputArguments.getString(ARG_BYOK_SECURITY)?.toBoolean() == true) {
+                runBlocking { runByokSecurityAcceptance(results) }
+            } else if (inputArguments.getString(ARG_IMPORT_ACCEPTANCE)?.toBoolean() == true) {
                 if (inputArguments.getString(ARG_IMPORT_PHASE) == IMPORT_PHASE_RESTORE) {
                     runImportRestoreAcceptance(results)
                 } else {
@@ -85,6 +104,217 @@ class LocalAiInstrumentation : Instrumentation() {
             runCatching { results.putString("failureScreenshot", saveScreenshot("import-failure.png")) }
             finish(Activity.RESULT_CANCELED, results)
             throw AssertionError("Instrumentation acceptance failed", error)
+        }
+    }
+
+    private suspend fun runByokSecurityAcceptance(results: Bundle) {
+        val context = targetContext.applicationContext
+        val recordFile = File(context.noBackupFilesDir, BYOK_TEST_RECORD)
+        val store = AndroidKeystoreDeepSeekKeyStore(context, BYOK_TEST_ALIAS, BYOK_TEST_RECORD)
+        runCatching { store.delete() }
+        try {
+            val first = store.writeEncrypted(BYOK_SENTINEL_ONE)
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            check(keyStore.containsAlias(BYOK_TEST_ALIAS)) { "Test-only Android Keystore alias was not created." }
+            val secretKey = keyStore.getKey(BYOK_TEST_ALIAS, null)
+            val keyInfo = SecretKeyFactory.getInstance(secretKey.algorithm, "AndroidKeyStore")
+                .getKeySpec(secretKey as javax.crypto.SecretKey, KeyInfo::class.java) as KeyInfo
+            check(keyInfo.keySize == 256) { "Android Keystore AES key size was not 256 bits." }
+            check(first.iv.size == 12) { "AES-GCM IV was not 12 bytes." }
+            check(recordFile.isFile && recordFile.length() > 0L) { "Test-owned encrypted record is missing." }
+            val encryptedRecordBytes = recordFile.length()
+            check(!recordFile.readBytes().toString(Charsets.UTF_8).contains(BYOK_SENTINEL_ONE)) {
+                "Encrypted record exposed the synthetic sentinel."
+            }
+            check(store.decrypt() == BYOK_SENTINEL_ONE) { "Production store round-trip failed." }
+            val restarted = AndroidKeystoreDeepSeekKeyStore(context, BYOK_TEST_ALIAS, BYOK_TEST_RECORD)
+            check(restarted.decrypt() == BYOK_SENTINEL_ONE) { "New store instance could not recover the record." }
+            val manager = DeepSeekByokManagerImpl(restarted, DeepSeekKeyProbe { })
+            check(manager.withDecryptedKey { it == BYOK_SENTINEL_ONE }) {
+                "withDecryptedKey did not recover the synthetic sentinel."
+            }
+
+            val second = restarted.writeEncrypted(BYOK_SENTINEL_TWO)
+            check(!first.iv.contentEquals(second.iv)) { "Replacement reused the AES-GCM IV." }
+            val secondIv = second.iv.copyOf()
+            tamperCiphertext(recordFile, second.iv.size)
+            check(manager.status().state == DeepSeekKeyState.NEEDS_REENTRY) {
+                "Ciphertext corruption did not enter NEEDS_REENTRY."
+            }
+            val recoveredFromCorruption = manager.validateAndSave(BYOK_SENTINEL_THREE)
+            check(recoveredFromCorruption.state == DeepSeekKeyState.CONFIGURED) {
+                "Re-entry after ciphertext corruption failed."
+            }
+            val recoveredRecord = requireNotNull(restarted.readEncrypted())
+            check(!secondIv.contentEquals(recoveredRecord.iv)) { "Corruption recovery reused the prior IV." }
+
+            keyStore.deleteEntry(BYOK_TEST_ALIAS)
+            check(manager.status().state == DeepSeekKeyState.NEEDS_REENTRY) {
+                "Alias loss did not enter NEEDS_REENTRY."
+            }
+            val recoveredFromAliasLoss = manager.validateAndSave(BYOK_SENTINEL_FOUR)
+            check(recoveredFromAliasLoss.state == DeepSeekKeyState.CONFIGURED) {
+                "Re-entry after alias loss failed."
+            }
+            check(KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(BYOK_TEST_ALIAS)) {
+                "Re-entry did not create a replacement alias."
+            }
+
+            val deleted = manager.delete()
+            check(deleted.state == DeepSeekKeyState.UNCONFIGURED) { "Production delete did not return UNCONFIGURED." }
+            check(!recordFile.exists()) { "Production delete left the test-owned record." }
+            check(!KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(BYOK_TEST_ALIAS)) {
+                "Production delete left the test-only alias."
+            }
+            check(
+                DeepSeekByokManagerImpl(
+                    AndroidKeystoreDeepSeekKeyStore(context, BYOK_TEST_ALIAS, BYOK_TEST_RECORD),
+                    DeepSeekKeyProbe { },
+                ).status().state == DeepSeekKeyState.UNCONFIGURED,
+            ) { "New manager instance did not observe UNCONFIGURED after delete." }
+
+            runViewModelCancellationProbe(results)
+            runByokUiSecurityProbe(results)
+            results.putString("byokKeystore", "AES-256-GCM/AndroidKeyStore")
+            results.putString("byokAlias", "test-only")
+            results.putString("byokRecordCategory", "noBackupFilesDir/test-owned")
+            results.putLong("byokRecordBytes", encryptedRecordBytes)
+            results.putString("byokIvRotation", "different")
+            results.putString("byokCorruption", "NEEDS_REENTRY/recovered")
+            results.putString("byokAliasLoss", "NEEDS_REENTRY/recovered")
+            results.putString("byokDelete", "record-and-alias-absent")
+        } finally {
+            runCatching { store.delete() }
+            runCatching { recordFile.delete() }
+        }
+    }
+
+    private suspend fun runViewModelCancellationProbe(results: Bundle) {
+        val store = InstrumentationTrackingStore()
+        val probeEntered = CompletableDeferred<Unit>()
+        val probeRelease = CompletableDeferred<Unit>()
+        val manager = DeepSeekByokManagerImpl(
+            store,
+            DeepSeekKeyProbe {
+                probeEntered.complete(Unit)
+                probeRelease.await()
+            },
+        )
+        lateinit var viewModel: MainViewModel
+        runOnMainSync {
+            viewModel = MainViewModel(
+                context = targetContext,
+                pipeline = CaptionPipeline(
+                    object : ExportEngine {
+                        override suspend fun export(project: CaptionProject, outputUri: Uri): ExportResult =
+                            error("unused")
+                    },
+                ),
+                deepSeekManager = manager,
+            )
+            viewModel.saveDeepSeekKey(BYOK_SENTINEL_ONE)
+        }
+        withTimeout(10_000L) { probeEntered.await() }
+        runOnMainSync { viewModel.cancelDeepSeekKeyInput() }
+        withTimeout(10_000L) {
+            while (viewModel.deepSeekKeyUi.value.state == DeepSeekKeyState.VALIDATING_NEW_KEY) delay(10L)
+        }
+        probeRelease.complete(Unit)
+        delay(100L)
+        check(store.writeCount.get() == 0) { "Cancelled ViewModel validation wrote a record." }
+        check(viewModel.deepSeekKeyUi.value.state == DeepSeekKeyState.UNCONFIGURED) {
+            "Cancelled ViewModel validation did not return to UNCONFIGURED."
+        }
+        results.putString("byokCancellationJob", "cancelled-and-joined")
+        results.putString("byokProbe", "entered-then-cancelled")
+        results.putInt("byokWriteCountAfterCancel", store.writeCount.get())
+    }
+
+    private fun runByokUiSecurityProbe(results: Bundle) {
+        val activity = startActivitySync(
+            Intent(targetContext, ByokSecurityTestActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+        clickNode(waitForText("配置", 10_000L))
+        val passwordField = waitForContentDescription("deepseek_api_key_input", 10_000L)
+        val passwordNode = findPasswordNode(passwordField) ?: findPasswordNode(uiAutomation.rootInActiveWindow)
+        check(passwordNode != null) {
+            "DeepSeek input is not exposed as a password field."
+        }
+        val inputArguments = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, BYOK_SENTINEL_ONE)
+        }
+        check(passwordNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, inputArguments)) {
+            "Synthetic password input could not be entered."
+        }
+        waitForIdleSync()
+        check(findAccessibilityNode(uiAutomation.rootInActiveWindow, BYOK_SENTINEL_ONE) == null) {
+            "Full synthetic key appeared in UI semantics."
+        }
+        val maskedScreenshot = uiAutomation.takeScreenshot()
+        check(maskedScreenshot.width > 0 && maskedScreenshot.height > 0) { "Masked UI screenshot was empty." }
+        clickNode(waitForContentDescription("deepseek_key_cancel", 10_000L))
+        waitForIdleSync()
+        check(ByokSecurityTestActivity.cancelInvoked.get()) { "VALIDATING_NEW_KEY cancel action was not invoked." }
+        check(findAccessibilityNode(uiAutomation.rootInActiveWindow, BYOK_SENTINEL_ONE) == null) {
+            "Full synthetic key remained after cancellation."
+        }
+        val clearedPassword = findPasswordNode(uiAutomation.rootInActiveWindow)
+        check(clearedPassword?.text.isNullOrEmpty()) { "Password input was not cleared after cancellation." }
+        results.putString("byokUiPassword", "password-semantics")
+        results.putString("byokUiMaskedSuffix", "last-four-only")
+        results.putString("byokUiCancel", "visible-and-invoked")
+        results.putString("byokUiInputClear", "cleared-after-cancel")
+        results.putString("byokUiScreenshot", "masked-and-nonempty")
+        activity.finish()
+    }
+
+    private fun findPasswordNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isPassword) return node
+        for (index in 0 until node.childCount) {
+            findPasswordNode(node.getChild(index))?.let { return it }
+        }
+        return null
+    }
+
+    private fun tamperCiphertext(recordFile: File, ivSize: Int) {
+        RandomAccessFile(recordFile, "rw").use { file ->
+            val ciphertextOffset = 20L + ivSize
+            file.seek(ciphertextOffset)
+            val original = file.read()
+            check(original >= 0) { "Test-owned ciphertext was empty." }
+            file.seek(ciphertextOffset)
+            file.write(original xor 0x01)
+        }
+    }
+
+    private class InstrumentationTrackingStore : DeepSeekKeyStore {
+        private var record: EncryptedDeepSeekKeyRecord? = null
+        private var plaintext: String? = null
+        val writeCount = AtomicInteger(0)
+
+        override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
+        override fun health(): DeepSeekKeyStoreHealth = if (record == null) {
+            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.ABSENT)
+        } else {
+            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record?.maskedKey)
+        }
+        override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
+            writeCount.incrementAndGet()
+            plaintext = apiKey
+            return EncryptedDeepSeekKeyRecord(
+                ciphertext = apiKey.encodeToByteArray().map { (it.toInt() xor 0x5A).toByte() }.toByteArray(),
+                iv = ByteArray(12) { it.toByte() },
+                maskedKey = "••••••••" + apiKey.takeLast(4),
+            ).also { record = it }
+        }
+        override fun decrypt(): String? = plaintext
+        override fun delete() {
+            record = null
+            plaintext = null
         }
     }
 
@@ -1326,6 +1556,13 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_ILLEGAL_EMPTY = "illegalEmpty"
         const val ARG_ILLEGAL_UNREADABLE = "illegalUnreadable"
         const val ARG_ILLEGAL_OVER_LIMIT = "illegalOverLimit"
+        const val ARG_BYOK_SECURITY = "byokSecurity"
+        const val BYOK_TEST_ALIAS = "lyriccaptioner.deepseek.byok.r1test"
+        const val BYOK_TEST_RECORD = "deepseek_byok_r1_test.bin"
+        const val BYOK_SENTINEL_ONE = "sk-test-r1-sentinel-one-123456"
+        const val BYOK_SENTINEL_TWO = "sk-test-r1-sentinel-two-123456"
+        const val BYOK_SENTINEL_THREE = "sk-test-r1-sentinel-three-123456"
+        const val BYOK_SENTINEL_FOUR = "sk-test-r1-sentinel-four-123456"
         const val PROJECT_PREFIX = "lyric-captioner-project"
         const val OUTPUT_PREFIX = "lyric-captioner-output"
     }

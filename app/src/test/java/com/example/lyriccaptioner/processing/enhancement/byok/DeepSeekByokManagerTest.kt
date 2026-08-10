@@ -148,6 +148,12 @@ class DeepSeekByokManagerTest {
 
         override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
 
+        override fun health(): DeepSeekKeyStoreHealth = when {
+            record == null -> DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.ABSENT)
+            corrupt -> DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.NEEDS_REENTRY, record?.maskedKey)
+            else -> DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record?.maskedKey)
+        }
+
         override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
             check(activeWrites == 0)
             activeWrites += 1

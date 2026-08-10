@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
+- Status: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Developer 候选，待 Brain 裁决）
 - Previous stage: `V3-DEC-001 / PASS`
 - Scope: R1 安全本地 Key 存储、真实取消、非请求路径无明文解密、串行保存/替换/取消/删除、最小配置入口与 Android Keystore 运行时证明
 - V2 functional baseline: `8a48d88`
@@ -11,7 +11,7 @@
 - Implementation authorization: `APPROVED_BY_USER`
 - Live API status: `DEFERRED_UNTIL_PROVIDER_AND_KEY_CONFIGURATION`
 - Review workflow: 不启用独立 Review 窗口；Developer 完成自测并把矩阵证据交回 Brain 判定
-- Next action: 执行 `SECURITY_AND_BYOK_REWORK_DELTA` 的 R1-R01 至 R1-R10；完整证据直接回交 Brain 裁决
+- Next action: Brain 按冻结的 R1-R01 至 R1-R10 证据重新裁决；不得在裁决前启动下一模块或声称真实 Key/云端认证通过
 
 ## V3-AI-CONTRACT-001-R1 acceptance matrix
 
@@ -23,7 +23,19 @@
 | Exit | R1-R01 至 R1-R10、production Android Keystore instrumentation、完整构建矩阵、secret scan 和三份文档全部通过后，仅允许回交候选状态 `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`；真实 Key 产品流仍需后续授权。 |
 | Incomplete | JVM/构建通过但 Android Keystore instrumentation 未运行：`PARTIAL_PASS / ANDROID_KEYSTORE_RUNTIME_TEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`；安全、取消、原子删除或明文生命周期无法证明：`BLOCKED / SECURITY_PROOF_REQUIRED`。 |
 
-## R1 implementation evidence (2026-08-10)
+## R1 security/BYOK rework evidence (2026-08-10)
+
+- Checkpoint: `bbb9761`；旧实现红线基线 6 项中 R1-R03、R1-R04、R1-R05 共 3 项失败，分别证明删除后写回、删除吞错和 status/cancel 明文解密缺口。
+- R1 focused JVM：24 tests passed；完整 `:app:testDebugUnitTest`：145 tests、0 failures、0 skipped；`python tools\asr_evaluate_test.py`：6 tests passed。
+- `:app:lintDebug`、`:app:assembleDebug`、`-PenableWhisperNative=true :app:assembleDebug`、`:app:assembleDebugAndroidTest` 全部通过；native build 的 NDK strip permission warning 未阻止构建。
+- production `AndroidKeystoreDeepSeekKeyStore` instrumentation 在既有 `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` 通过：AndroidKeyStore AES-256-GCM、12-byte IV、106-byte test-owned `noBackupFilesDir` record、重启恢复、IV 轮换、ciphertext corruption、alias loss、re-entry 与 delete 均通过。
+- ViewModel 取消证据：validation Job 已 cancel-and-join，probe 已进入后被取消，释放 probe 后 write count 仍为 0，最终为 `UNCONFIGURED`。
+- `status()` 与 `cancelInput()` 只调用不返回明文的 health 接口；JVM decrypt count 为 0；只有 `withDecryptedKey` 调用返回完整 Key 的 `decrypt()`，对应 decrypt count 为 1。
+- Compose instrumentation：密码 semantics、仅末四位掩码、非空掩码截图、验证中真实取消入口及取消后输入清空均通过；UI semantics 未出现完整 synthetic sentinel。
+- source/resources/test-output/APK secret scan 未发现真实 Key、实际 Authorization credential、歌词正文或私有运行路径；AndroidTest 只使用 synthetic sentinel 与测试专用 alias/record。
+- 本状态仅是 Developer 候选；没有真实 DeepSeek Key、真实 Provider 网络调用、真实认证、歌词匹配或完整设备产品流。
+
+## Historical R1 implementation evidence before security rework (2026-08-10)
 
 - R1 checkpoint: `a18574`; implementation commits: `6e77550`, `d9addce`; no push.
 - Agent A: strict fallback allowlist and sanitized provider/validation/programming/cancellation failures in `CaptionEnhancementCoordinator.kt`.

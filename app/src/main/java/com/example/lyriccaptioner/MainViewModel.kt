@@ -56,6 +56,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -97,6 +98,8 @@ class MainViewModel(
     private var exportJob: Job? = null
     private var asrJob: Job? = null
     private var translationJob: Job? = null
+    private var deepSeekKeyOperationJob: Job? = null
+    private var deepSeekKeyOperationGeneration = 0L
 
     init {
         refreshSpeechRuntimeStatus()
@@ -650,43 +653,68 @@ class MainViewModel(
     }
 
     fun saveDeepSeekKey(apiKey: String) {
-        updateDeepSeekKeyUi(DeepSeekKeyStatus(DeepSeekKeyState.VALIDATING_NEW_KEY))
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = try {
-                deepSeekManager.validateAndSave(apiKey)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Throwable) {
-                DeepSeekKeyStatus(DeepSeekKeyState.VALIDATION_FAILED, detail = "Validation unavailable")
-            }
-            withContext(Dispatchers.Main.immediate) { updateDeepSeekKeyUi(result) }
+        launchDeepSeekKeyOperation(
+            initialStatus = DeepSeekKeyStatus(
+                DeepSeekKeyState.VALIDATING_NEW_KEY,
+                mutableDeepSeekKeyUi.value.maskedKey,
+            ),
+        ) {
+            deepSeekManager.validateAndSave(apiKey)
         }
     }
 
     fun replaceDeepSeekKey(apiKey: String) {
-        updateDeepSeekKeyUi(DeepSeekKeyStatus(DeepSeekKeyState.VALIDATING_NEW_KEY))
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = try {
-                deepSeekManager.replace(apiKey)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Throwable) {
-                DeepSeekKeyStatus(DeepSeekKeyState.VALIDATION_FAILED, detail = "Validation unavailable")
-            }
-            withContext(Dispatchers.Main.immediate) { updateDeepSeekKeyUi(result) }
+        launchDeepSeekKeyOperation(
+            initialStatus = DeepSeekKeyStatus(
+                DeepSeekKeyState.VALIDATING_NEW_KEY,
+                mutableDeepSeekKeyUi.value.maskedKey,
+            ),
+        ) {
+            deepSeekManager.replace(apiKey)
         }
     }
 
     fun cancelDeepSeekKeyInput() {
-        updateDeepSeekKeyUi(deepSeekManager.cancelInput())
+        launchDeepSeekKeyOperation { deepSeekManager.cancelInput() }
     }
 
     fun deleteDeepSeekKey() {
-        updateDeepSeekKeyUi(deepSeekManager.delete())
+        launchDeepSeekKeyOperation(
+            onFailure = {
+                deepSeekManager.status().copy(detail = "Secure deletion failed.")
+            },
+        ) {
+            deepSeekManager.delete()
+        }
     }
 
     private fun updateDeepSeekKeyUi(status: DeepSeekKeyStatus) {
         mutableDeepSeekKeyUi.value = DeepSeekKeyUiMapper.from(status)
+    }
+
+    private fun launchDeepSeekKeyOperation(
+        initialStatus: DeepSeekKeyStatus? = null,
+        onFailure: () -> DeepSeekKeyStatus = {
+            DeepSeekKeyStatus(DeepSeekKeyState.VALIDATION_FAILED, detail = "Secure key operation failed.")
+        },
+        operation: suspend () -> DeepSeekKeyStatus,
+    ) {
+        val previous = deepSeekKeyOperationJob
+        val generation = ++deepSeekKeyOperationGeneration
+        initialStatus?.let(::updateDeepSeekKeyUi)
+        deepSeekKeyOperationJob = viewModelScope.launch {
+            previous?.cancelAndJoin()
+            val result = try {
+                withContext(Dispatchers.IO) { operation() }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                onFailure()
+            }
+            if (generation == deepSeekKeyOperationGeneration) {
+                updateDeepSeekKeyUi(result)
+            }
+        }
     }
 
     fun saveSidecarSrt(uri: Uri, srt: String) {

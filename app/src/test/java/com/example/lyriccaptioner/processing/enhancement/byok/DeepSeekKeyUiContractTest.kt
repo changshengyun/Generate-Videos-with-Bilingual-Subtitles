@@ -14,6 +14,7 @@ class DeepSeekKeyUiContractTest {
         assertTrue(model.showSave)
         assertFalse(model.showReplace)
         assertFalse(model.showDelete)
+        assertFalse(model.showCancel)
     }
 
     @Test
@@ -26,6 +27,17 @@ class DeepSeekKeyUiContractTest {
         assertFalse(model.showSave)
         assertTrue(model.showReplace)
         assertTrue(model.showDelete)
+        assertTrue(model.showCancel)
         assertFalse(model.maskedKey!!.contains(key))
+    }
+
+    @Test
+    fun validatingUiExposesRealCancelActionWithoutSecret() {
+        val model = DeepSeekKeyUiMapper.from(
+            DeepSeekKeyStatus(DeepSeekKeyState.VALIDATING_NEW_KEY, "••••••••3456"),
+        )
+
+        assertTrue(model.showCancel)
+        assertFalse(model.maskedKey.orEmpty().contains("sk-"))
     }
 }
