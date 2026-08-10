@@ -18,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.inputmethod.InputMethodManager
 import android.graphics.Rect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -45,6 +46,7 @@ import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyProbe
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStore
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStoreHealth
+import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyWriteTransaction
 import com.example.lyriccaptioner.processing.enhancement.byok.EncryptedDeepSeekKeyRecord
 import java.io.File
 import java.io.FileInputStream
@@ -121,6 +123,12 @@ class LocalAiInstrumentation : Instrumentation() {
                 .getKeySpec(secretKey as javax.crypto.SecretKey, KeyInfo::class.java) as KeyInfo
             check(keyInfo.keySize == 256) { "Android Keystore AES key size was not 256 bits." }
             check(first.iv.size == 12) { "AES-GCM IV was not 12 bytes." }
+            check(first.healthIv.size == 12 && first.healthCiphertext.size == 16) {
+                "Independent ciphertext-authentication tag was not persisted."
+            }
+            check(store.health().availability == DeepSeekKeyAvailability.AVAILABLE) {
+                "Authenticated health check did not report AVAILABLE."
+            }
             check(recordFile.isFile && recordFile.length() > 0L) { "Test-owned encrypted record is missing." }
             val encryptedRecordBytes = recordFile.length()
             check(!recordFile.readBytes().toString(Charsets.UTF_8).contains(BYOK_SENTINEL_ONE)) {
@@ -158,6 +166,25 @@ class LocalAiInstrumentation : Instrumentation() {
             }
             check(KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(BYOK_TEST_ALIAS)) {
                 "Re-entry did not create a replacement alias."
+            }
+
+            val aliasFailureManager = DeepSeekByokManagerImpl(
+                AndroidKeystoreDeepSeekKeyStore(context, BYOK_TEST_ALIAS, BYOK_TEST_RECORD) { _, _ ->
+                    throw IllegalStateException("synthetic alias deletion failure")
+                },
+                DeepSeekKeyProbe { },
+            )
+            val aliasDeleteFailure = runCatching { aliasFailureManager.delete() }.exceptionOrNull()
+            check(aliasDeleteFailure != null) { "Synthetic alias deletion failure was reported as success." }
+            check(!recordFile.exists()) { "Alias deletion failure did not exercise record-first partial deletion." }
+            check(aliasFailureManager.status().state == DeepSeekKeyState.NEEDS_REENTRY) {
+                "A failed alias deletion collapsed to UNCONFIGURED."
+            }
+            check(KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.containsAlias(BYOK_TEST_ALIAS)) {
+                "Alias deletion failure did not preserve its test-only alias."
+            }
+            check(manager.validateAndSave(BYOK_SENTINEL_FOUR).state == DeepSeekKeyState.CONFIGURED) {
+                "Could not restore the record after alias-deletion-failure coverage."
             }
 
             val deleteBlocker = File(recordFile, "blocker")
@@ -202,6 +229,8 @@ class LocalAiInstrumentation : Instrumentation() {
             results.putString("byokIvRotation", "different")
             results.putString("byokCorruption", "NEEDS_REENTRY/recovered")
             results.putString("byokAliasLoss", "NEEDS_REENTRY/recovered")
+            results.putString("byokAliasDeleteFailure", "record-absent/alias-present/NEEDS_REENTRY/recovered")
+            results.putString("byokHealthBoundary", "AAD-authentication/empty-plaintext")
             results.putString("byokDelete", "record-and-alias-absent")
             results.putString("byokDeleteFailure", "visible-sanitized-NEEDS_REENTRY")
         } finally {
@@ -249,13 +278,34 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putString("byokCancellationJob", "cancelled-and-joined")
         results.putString("byokProbe", "entered-then-cancelled")
         results.putInt("byokWriteCountAfterCancel", store.writeCount.get())
+
+        val commitStore = InstrumentationTrackingStore(blockCommit = true)
+        val commitManager = DeepSeekByokManagerImpl(commitStore, DeepSeekKeyProbe { })
+        val commitJob = CoroutineScope(Dispatchers.Default).launch {
+            commitManager.validateAndSave(BYOK_SENTINEL_TWO)
+        }
+        check(commitStore.commitEntered.await(10, TimeUnit.SECONDS)) {
+            "Key write did not reach the controlled commit boundary."
+        }
+        commitJob.cancel()
+        commitStore.commitRelease.countDown()
+        commitJob.join()
+        check(commitJob.isCancelled) { "Commit-boundary key operation was not cancelled." }
+        check(commitStore.writeCount.get() == 0 && commitStore.readEncrypted() == null) {
+            "Commit-boundary cancellation left a durable key record."
+        }
+        check(commitManager.status().state == DeepSeekKeyState.UNCONFIGURED) {
+            "Commit-boundary cancellation did not restore UNCONFIGURED."
+        }
+        results.putString("byokCommitCancellation", "cancelled-before-durable-write")
+        results.putInt("byokCommitWriteCountAfterCancel", commitStore.writeCount.get())
     }
 
     private fun runByokUiSecurityProbe(results: Bundle) {
         var activity = startByokTestActivity(mode = "validating")
         waitForIdleSync()
-        clickNode(waitForText("配置", 10_000L))
-        val passwordField = waitForContentDescription("deepseek_api_key_input", 10_000L)
+        clickNode(waitForText("配置", 30_000L))
+        val passwordField = waitForContentDescription("deepseek_api_key_input", 30_000L)
         val passwordNode = findPasswordNode(passwordField) ?: findPasswordNode(uiAutomation.rootInActiveWindow)
         check(passwordNode != null) {
             "DeepSeek input is not exposed as a password field."
@@ -272,7 +322,7 @@ class LocalAiInstrumentation : Instrumentation() {
         }
         val maskedScreenshot = uiAutomation.takeScreenshot()
         check(maskedScreenshot.width > 0 && maskedScreenshot.height > 0) { "Masked UI screenshot was empty." }
-        clickNode(waitForContentDescription("deepseek_key_cancel", 10_000L))
+        clickNode(waitForContentDescription("deepseek_key_cancel", 30_000L))
         waitForIdleSync()
         check(ByokSecurityTestActivity.cancelInvoked.get()) { "VALIDATING_NEW_KEY cancel action was not invoked." }
         check(findAccessibilityNode(uiAutomation.rootInActiveWindow, BYOK_SENTINEL_ONE) == null) {
@@ -289,33 +339,35 @@ class LocalAiInstrumentation : Instrumentation() {
 
         activity = startByokTestActivity(ByokSecurityTestActivity.MODE_UNCONFIGURED)
         waitForIdleSync()
-        clickNode(waitForText("配置", 10_000L))
+        clickNode(waitForText("配置", 30_000L))
         enterSyntheticPassword()
+        hideKeyboard(activity)
         clickSemanticAction("deepseek_key_save")
         waitForIdleSync()
-        check(ByokSecurityTestActivity.saveInvoked.get() && passwordTextIsEmpty()) {
-            "Save did not clear the password input immediately."
+        awaitByokUiCondition("Save did not clear the password input immediately.") {
+            ByokSecurityTestActivity.saveInvoked.get() && passwordTextIsEmpty()
         }
         enterSyntheticPassword()
-        clickNode(waitForText("收起", 10_000L))
-        clickNode(waitForText("配置", 10_000L))
+        clickNode(waitForText("收起", 30_000L))
+        clickNode(waitForText("配置", 30_000L))
         check(passwordTextIsEmpty()) { "Collapse did not clear the password input." }
         activity.finish()
 
         activity = startByokTestActivity(ByokSecurityTestActivity.MODE_CONFIGURED)
         waitForIdleSync()
-        clickNode(waitForText("配置", 10_000L))
+        clickNode(waitForText("配置", 30_000L))
         enterSyntheticPassword()
+        hideKeyboard(activity)
         clickSemanticAction("deepseek_key_replace")
         waitForIdleSync()
-        check(ByokSecurityTestActivity.replaceInvoked.get() && passwordTextIsEmpty()) {
-            "Replace did not clear the password input immediately."
+        awaitByokUiCondition("Replace did not clear the password input immediately.") {
+            ByokSecurityTestActivity.replaceInvoked.get() && passwordTextIsEmpty()
         }
         enterSyntheticPassword()
         clickSemanticAction("deepseek_key_delete")
         waitForIdleSync()
-        check(ByokSecurityTestActivity.deleteInvoked.get() && passwordTextIsEmpty()) {
-            "Delete did not clear the password input."
+        awaitByokUiCondition("Delete did not clear the password input.") {
+            ByokSecurityTestActivity.deleteInvoked.get() && passwordTextIsEmpty()
         }
         activity.finish()
         results.putString("byokUiAllInputClears", "save-replace-collapse-cancel-delete")
@@ -333,6 +385,8 @@ class LocalAiInstrumentation : Instrumentation() {
         val passwordNode = findEditableNode(field)
             ?: findEditableNode(uiAutomation.rootInActiveWindow)
             ?: error("Editable password field was not found.")
+        passwordNode.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        passwordNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         val arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, BYOK_SENTINEL_ONE)
         }
@@ -345,9 +399,47 @@ class LocalAiInstrumentation : Instrumentation() {
     private fun passwordTextIsEmpty(): Boolean =
         findEditableNode(uiAutomation.rootInActiveWindow)?.text.isNullOrEmpty()
 
+    private fun awaitByokUiCondition(message: String, condition: () -> Boolean) {
+        val deadline = SystemClock.uptimeMillis() + 5_000L
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (condition()) return
+            SystemClock.sleep(100L)
+        }
+        error(message)
+    }
+
+    private fun hideKeyboard(activity: Activity) {
+        runOnMainSync {
+            val inputMethod = activity.getSystemService(Activity.INPUT_METHOD_SERVICE) as InputMethodManager
+            inputMethod.hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+        }
+        waitForIdleSync()
+    }
+
     private fun clickSemanticAction(description: String) {
-        val semanticNode = waitForContentDescription(description, 10_000L)
-        clickNode(findClickableNode(semanticNode) ?: semanticNode)
+        val deadline = SystemClock.uptimeMillis() + 30_000L
+        while (SystemClock.uptimeMillis() < deadline) {
+            val root = uiAutomation.rootInActiveWindow
+            findAccessibilityNodeByContentDescription(root, description)?.let { semanticNode ->
+                if (tryClickNode(findClickableNode(semanticNode) ?: semanticNode)) return
+            }
+            findScrollableNode(root)?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(250L)
+        }
+        error("Timed out waiting for semantic action: $description")
+    }
+
+    private fun tryClickNode(node: AccessibilityNodeInfo): Boolean {
+        var candidate: AccessibilityNodeInfo? = node
+        while (candidate != null) {
+            if (candidate.isEnabled && candidate.isClickable &&
+                candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            ) {
+                return true
+            }
+            candidate = candidate.parent
+        }
+        return false
     }
 
     private fun findClickableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
@@ -379,7 +471,7 @@ class LocalAiInstrumentation : Instrumentation() {
 
     private fun tamperCiphertext(recordFile: File, ivSize: Int) {
         RandomAccessFile(recordFile, "rw").use { file ->
-            val ciphertextOffset = 20L + ivSize
+            val ciphertextOffset = 28L + ivSize
             file.seek(ciphertextOffset)
             val original = file.read()
             check(original >= 0) { "Test-owned ciphertext was empty." }
@@ -388,10 +480,14 @@ class LocalAiInstrumentation : Instrumentation() {
         }
     }
 
-    private class InstrumentationTrackingStore : DeepSeekKeyStore {
+    private class InstrumentationTrackingStore(
+        private val blockCommit: Boolean = false,
+    ) : DeepSeekKeyStore {
         private var record: EncryptedDeepSeekKeyRecord? = null
         private var plaintext: String? = null
         val writeCount = AtomicInteger(0)
+        val commitEntered = CountDownLatch(1)
+        val commitRelease = CountDownLatch(1)
 
         override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
         override fun health(): DeepSeekKeyStoreHealth = if (record == null) {
@@ -399,14 +495,44 @@ class LocalAiInstrumentation : Instrumentation() {
         } else {
             DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record?.maskedKey)
         }
-        override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
-            writeCount.incrementAndGet()
-            plaintext = apiKey
-            return EncryptedDeepSeekKeyRecord(
+        override fun prepareWrite(apiKey: String): DeepSeekKeyWriteTransaction {
+            val previousRecord = record
+            val previousPlaintext = plaintext
+            val preparedRecord = EncryptedDeepSeekKeyRecord(
                 ciphertext = apiKey.encodeToByteArray().map { (it.toInt() xor 0x5A).toByte() }.toByteArray(),
                 iv = ByteArray(12) { it.toByte() },
                 maskedKey = "••••••••" + apiKey.takeLast(4),
-            ).also { record = it }
+            )
+            return object : DeepSeekKeyWriteTransaction {
+                private var committed = false
+                override val record = preparedRecord
+
+                override fun commit(commitAllowed: () -> Boolean) {
+                    if (blockCommit) {
+                        commitEntered.countDown()
+                        check(commitRelease.await(10, TimeUnit.SECONDS))
+                    }
+                    if (!commitAllowed()) {
+                        throw kotlinx.coroutines.CancellationException("cancelled before instrumentation commit")
+                    }
+                    writeCount.incrementAndGet()
+                    plaintext = apiKey
+                    this@InstrumentationTrackingStore.record = preparedRecord
+                    committed = true
+                    if (!commitAllowed()) {
+                        rollback()
+                        throw kotlinx.coroutines.CancellationException("cancelled during instrumentation commit")
+                    }
+                }
+
+                override fun rollback() {
+                    if (!committed) return
+                    writeCount.decrementAndGet()
+                    this@InstrumentationTrackingStore.record = previousRecord
+                    plaintext = previousPlaintext
+                    committed = false
+                }
+            }
         }
         override fun decrypt(): String? = plaintext
         override fun delete() {

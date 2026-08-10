@@ -3,15 +3,15 @@
 ## Current status
 
 - Stage: `V3-AI-CONTRACT-001`
-- Status: `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Developer 候选，待 Brain 裁决）
+- Status: `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_RETEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`（Brain 正式裁决；重新裁决前保持）
 - Previous stage: `V3-DEC-001 / PASS`
 - Scope: R1 安全本地 Key 存储、真实取消、非请求路径无明文解密、串行保存/替换/取消/删除、最小配置入口与 Android Keystore 运行时证明
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
-- Live API status: `DEFERRED_UNTIL_PROVIDER_AND_KEY_CONFIGURATION`
+- Live API status: `DEEPSEEK_LIVE_AUTH_AND_LYRICS_FLOW_DEFERRED`
 - Review workflow: 不启用独立 Review 窗口；Developer 完成自测并把矩阵证据交回 Brain 判定
-- Next action: Brain 按冻结的 R1-R01 至 R1-R10 证据重新裁决；不得在裁决前启动下一模块或声称真实 Key/云端认证通过
+- Next action: Brain 按本增量的新证据重新裁决 R1-R01 至 R1-R10；正式裁决前保持当前状态，不得启动下一模块或声称真实 Key/云端认证通过
 
 ## V3-AI-CONTRACT-001-R1 acceptance matrix
 
@@ -25,15 +25,17 @@
 
 ## R1 security/BYOK rework evidence (2026-08-10)
 
+- Brain 已否决旧候选状态：production health 曾完整解密 Key、取消证据仅覆盖 probe、alias 删除部分失败会回落为 `UNCONFIGURED`，且 Provider 路线文档未统一；旧 `SECURE_BYOK_COMPONENT_VERIFIED` 不再有效。
+- 当前增量把 Key 密文/IV/mask 绑定为独立 AES-GCM health 标签的 AAD，health 只认证空明文标签；写入改为可回滚 prepare/commit 事务并在 commit 前后检查 Job；孤立 alias 与删除部分失败固定为 `NEEDS_REENTRY`。
 - Checkpoint: `bbb9761`；旧实现红线基线 6 项中 R1-R03、R1-R04、R1-R05 共 3 项失败，分别证明删除后写回、删除吞错和 status/cancel 明文解密缺口。
-- R1 focused JVM：24 tests passed；完整 `:app:testDebugUnitTest`：145 tests、0 failures、0 skipped；`python tools\asr_evaluate_test.py`：6 tests passed。
-- `:app:lintDebug`、`:app:assembleDebug`、`-PenableWhisperNative=true :app:assembleDebug`、`:app:assembleDebugAndroidTest` 全部通过；native build 的 NDK strip permission warning 未阻止构建。
-- production `AndroidKeystoreDeepSeekKeyStore` instrumentation 在既有 `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` 通过：AndroidKeyStore AES-256-GCM、12-byte IV、106-byte test-owned `noBackupFilesDir` record、重启恢复、IV 轮换、ciphertext corruption、alias loss、re-entry、可见且脱敏的删除失败与最终 delete 均通过。
-- ViewModel 取消证据：validation Job 已 cancel-and-join，probe 已进入后被取消，释放 probe 后 write count 仍为 0，最终为 `UNCONFIGURED`。
-- `status()` 与 `cancelInput()` 只调用不返回明文的 health 接口；JVM decrypt count 为 0；只有 `withDecryptedKey` 调用返回完整 Key 的 `decrypt()`，对应 decrypt count 为 1。
+- R1 focused JVM：27 tests、0 failures、0 skipped；完整 `:app:testDebugUnitTest`：148 tests、0 failures、0 skipped；`python tools\asr_evaluate_test.py`：6 tests passed。
+- `:app:lintDebug`、`:app:assembleDebug`、`-PenableWhisperNative=true :app:assembleDebug`、`:app:assembleDebugAndroidTest` 全部通过；最终 native build 在允许的非沙箱构建中完成 NDK strip，移除了 native 调试符号中的本机绝对路径。
+- production `AndroidKeystoreDeepSeekKeyStore` instrumentation 在既有 `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` 通过：AndroidKeyStore AES-256-GCM、12-byte Key IV、独立 12-byte health IV、142-byte test-owned `noBackupFilesDir` record、空明文 AAD health 认证、重启恢复、IV 轮换、ciphertext corruption、alias loss、alias 删除部分失败、re-entry、可见且脱敏的 record 删除失败与最终 delete 均通过。
+- 取消证据：ViewModel validation Job 已 cancel-and-join，probe 释放后 write count 仍为 0；另一个 Android runtime commit-boundary Job 在持久化前取消，write count 0、record 不存在、最终 `UNCONFIGURED`；JVM 还覆盖加密准备阶段取消和 replacement commit 取消保留旧记录。
+- `status()` 与 `cancelInput()` 只调用不返回 Key 明文的 AAD health 接口；JVM decrypt count 为 0；只有 `withDecryptedKey` 调用返回完整 Key 的 `decrypt()`，对应 decrypt count 为 1。
 - Compose instrumentation：密码 semantics、仅末四位掩码、非空掩码截图、验证中真实取消入口，以及 save/replace/collapse/cancel/delete 后输入清空均通过；UI semantics 未出现完整 synthetic sentinel。
-- source/resources/test-output/APK secret scan 未发现真实 Key、实际 Authorization credential、歌词正文或私有运行路径；AndroidTest 只使用 synthetic sentinel 与测试专用 alias/record。
-- 本状态仅是 Developer 候选；没有真实 DeepSeek Key、真实 Provider 网络调用、真实认证、歌词匹配或完整设备产品流。
+- source/resources/test-output/APK secret scan 未发现真实 Key、credential-bearing Authorization header、歌词正文或打包私有运行路径；最终 native-enabled app APK 为 382,081,953 bytes，AndroidTest APK 为 91,551 bytes，AndroidTest 只包含 synthetic sentinel 与测试专用 alias/record。lint 报告自身仍含构建工具生成的绝对工作目录元数据，不进入 APK 或 app runtime 输出。
+- 本增量只回交 Developer 候选证据；没有真实 DeepSeek Key、真实网络调用、真实认证、歌词匹配或完整设备产品流。
 
 ## Historical R1 implementation evidence before security rework (2026-08-10)
 
@@ -111,7 +113,7 @@ V3-DEC-001 / PASS
 | 必须证据 | 测试先于生产实现；下方 T01-T14 全部通过；新增/修改行为有单元或契约测试；相关 JVM 测试、`testDebugUnitTest`、`lintDebug`、普通 Debug、Native Debug 与 AndroidTest 构建通过；报告测试数量、命令结果和关键状态机日志；证明无真实 API Key、完整歌词或私有媒体路径泄露 |
 | 禁止事项 | 不接入真实 AI Provider、不创建或选择后端技术栈、不要求用户提供 API Key、不抓取真实在线歌词、不修改 UI、Whisper native/cache、Media3、FFmpegKit、字幕坐标、系统相册流程或 V2 清理范围；不删除 SRT/旧分支；不使用 Demo/fixed lyrics 冒充云端成功 |
 | 退出状态 | 所有合同、校验、原子提交、云端失败映射、本地回退、取消和日志隐私测试通过，完整构建矩阵通过，且 Git 只包含本阶段合同/测试/三份活动文档和已授权治理变更时，允许 `PASS / COMPONENT_VERIFIED / LIVE_API_DEFERRED` |
-| 未完成状态 | 合同实现和测试完成但完整构建未通过：`PARTIAL_PASS / BUILD_REQUIRED`；核心状态机或原子性测试失败：`BLOCKED`；必须选择真实 Provider、后端栈、歌词来源授权或密钥方案才能继续：`HUMAN_DECISION`；没有真实 Provider/Key 只保持 `LIVE_API_DEFERRED`，不阻止本合同阶段 PASS |
+| 未完成状态 | 合同实现和测试完成但完整构建未通过：`PARTIAL_PASS / BUILD_REQUIRED`；核心状态机或原子性测试失败：`BLOCKED`；歌词来源/授权仍可进入 `HUMAN_DECISION`；本历史矩阵原有的 Provider/后端/密钥方案未决描述已被后续 DeepSeek + `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED` 决策取代；没有真实 Key 只保持 `LIVE_API_DEFERRED`，不阻止本合同阶段 PASS |
 
 ## Test cases to write before production code
 

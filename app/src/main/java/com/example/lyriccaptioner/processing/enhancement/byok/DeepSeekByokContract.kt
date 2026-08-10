@@ -47,17 +47,43 @@ data class EncryptedDeepSeekKeyRecord(
     val ciphertext: ByteArray,
     val iv: ByteArray,
     val maskedKey: String,
+    val healthCiphertext: ByteArray = ByteArray(0),
+    val healthIv: ByteArray = ByteArray(0),
 ) {
     override fun equals(other: Any?): Boolean = other is EncryptedDeepSeekKeyRecord &&
-        ciphertext.contentEquals(other.ciphertext) && iv.contentEquals(other.iv) && maskedKey == other.maskedKey
+        ciphertext.contentEquals(other.ciphertext) &&
+        iv.contentEquals(other.iv) &&
+        maskedKey == other.maskedKey &&
+        healthCiphertext.contentEquals(other.healthCiphertext) &&
+        healthIv.contentEquals(other.healthIv)
 
-    override fun hashCode(): Int = 31 * ciphertext.contentHashCode() + 17 * iv.contentHashCode() + maskedKey.hashCode()
+    override fun hashCode(): Int = listOf(
+        ciphertext.contentHashCode(),
+        iv.contentHashCode(),
+        maskedKey.hashCode(),
+        healthCiphertext.contentHashCode(),
+        healthIv.contentHashCode(),
+    ).fold(1) { result, value -> 31 * result + value }
+}
+
+interface DeepSeekKeyWriteTransaction {
+    val record: EncryptedDeepSeekKeyRecord
+
+    /** Commits only while [commitAllowed] remains true; otherwise restores the previous record. */
+    fun commit(commitAllowed: () -> Boolean)
+
+    /** Idempotently restores the state captured before this transaction was prepared. */
+    fun rollback()
 }
 
 interface DeepSeekKeyStore {
     fun readEncrypted(): EncryptedDeepSeekKeyRecord?
     fun health(): DeepSeekKeyStoreHealth
-    fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord
+    fun prepareWrite(apiKey: String): DeepSeekKeyWriteTransaction
+    fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord = prepareWrite(apiKey).let { transaction ->
+        transaction.commit { true }
+        transaction.record
+    }
     fun decrypt(): String?
     fun delete()
 }

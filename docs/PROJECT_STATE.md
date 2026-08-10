@@ -4,25 +4,24 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Developer candidate）
+- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_RETEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `READY_FOR_BRAIN_REVIEW / LIVE_KEY_TEST_REQUIRED`
+- Current gate: `REWORK_EVIDENCE_RETURNED / READY_FOR_BRAIN_RE-ADJUDICATION / LIVE_KEY_TEST_REQUIRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
 - Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: Brain re-adjudicates R1-R01 through R1-R10 from the returned evidence; no later module or live-key/provider flow starts before that decision.
+- Next permitted action: Brain re-adjudicates R1-R01 through R1-R10 from the returned delta evidence; the formal status remains unchanged until that decision, and no later module or live-key flow may start.
 
 ## Current R1 security rework evidence
 
+- Brain rejected the prior Developer candidate because production health materialized the complete Key, cancellation did not cover encryption/commit, alias-deletion partial success could collapse to `UNCONFIGURED`, and active Provider routing text conflicted with the frozen DeepSeek route.
+- The current delta uses a separate AES-GCM empty-plaintext authentication tag whose AAD binds the Key ciphertext, IV and mask; a rollback-capable prepare/commit transaction checks coroutine cancellation before and after durable commit; missing-record/present-alias and delete-failure states remain `NEEDS_REENTRY`.
+- R1 focused JVM: 27 passed; full JVM: 148 passed with 0 failures/0 skipped; ASR baseline: 6 passed. Lint reports 0 errors/33 warnings; normal Debug, native-enabled Debug and AndroidTest builds passed.
+- Production instrumentation passed on `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36`: AES-256-GCM AndroidKeyStore, distinct Key IVs, empty-plaintext AAD health, 142-byte test record, corruption/alias-loss recovery, alias-delete partial failure retained as `NEEDS_REENTRY`, commit cancellation write count 0, UI clears, and final record+alias absence.
+- Final APK scan covered the stripped 382,081,953-byte native-enabled app APK and 91,551-byte AndroidTest APK: 0 disallowed Key tokens, 0 credential-bearing Authorization headers and 0 private runtime paths; only four synthetic test sentinels were present in AndroidTest.
 - Checkpoint `bbb9761` froze the delta matrix and captured three expected old-implementation failures: delete-after-validation write-back, swallowed delete failure and plaintext decrypt during status/cancel.
-- Focused R1 JVM: 24 passed. Full JVM: 145 passed, 0 failed, 0 skipped. ASR baseline script: 6 passed.
-- Lint, normal Debug, native-enabled Debug and AndroidTest APK builds passed. `:app:assembleNativeDebug` remains absent; the configured native path is `-PenableWhisperNative=true :app:assembleDebug`.
-- Production Keystore instrumentation passed on the existing `Pixel_8` emulator (`emulator-5554`, `sdk_gphone64_x86_64`, API 36): AES-256-GCM, 12-byte IV, restart recovery, distinct IVs, corruption/alias-loss `NEEDS_REENTRY`, re-entry, visible sanitized delete failure and verified record+alias deletion.
-- ViewModel cancellation passed with a suspended probe: Job cancelled and joined, write count 0 after release, final persisted/UI state `UNCONFIGURED`.
-- Status/cancel do not call plaintext-returning decrypt; only `withDecryptedKey` crosses that boundary. Compose runtime proof covers password semantics, last-four mask, non-empty masked screenshot, validating cancel and save/replace/collapse/cancel/delete input clear.
-- Secret scan found no real key, credential-bearing Authorization header, lyrics body or private runtime path in the app/debug AndroidTest APKs. Only synthetic sentinels and test-owned alias/record names were used.
-- Candidate state is not formal acceptance and does not prove a real DeepSeek key, live authentication, provider network, lyrics matching or the complete device product flow.
+- The prior candidate state remains revoked pending Brain re-adjudication. This rework still does not prove a real DeepSeek key, live authentication, DeepSeek network behavior, lyrics matching or the complete device product flow.
 
 ## Historical test-first evidence
 
@@ -76,7 +75,7 @@
 - User-observed V2 recognition usability is accepted as product feedback, not fixture-backed WER/CER evidence.
 - OPUS-MT works locally but its Chinese naturalness is not accepted as final product quality.
 - Cloud song/lyrics matching is not yet live-verified; the current stage can verify only contracts, validation, atomicity and deterministic fallback behavior.
-- Online lyrics provenance/licensing and the concrete AI Provider/backend remain a later `HUMAN_DECISION` before live integration; tests must not scrape or bundle real copyrighted lyrics.
+- DeepSeek with `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED` is frozen. Remaining later decisions/evidence are online-lyrics provenance/licensing, real DeepSeek integration/authentication and distribution strategy; tests must not scrape or bundle real copyrighted lyrics.
 - GPU availability on the phone does not authorize a GPU backend; any GPU work requires an independent Spike and regression evidence.
 - Preview/export visual equivalence must exclude letterbox/pillarbox regions and use the source video as the common coordinate system.
 
@@ -95,7 +94,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Developer candidate; pending Brain review） |
+| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_RETEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`（delta evidence returned; pending Brain re-adjudication） |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |

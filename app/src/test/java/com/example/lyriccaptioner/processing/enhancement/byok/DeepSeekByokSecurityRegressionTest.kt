@@ -1,7 +1,10 @@
 package com.example.lyriccaptioner.processing.enhancement.byok
 
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -63,6 +66,45 @@ class DeepSeekByokSecurityRegressionTest {
     }
 
     @Test
+    fun r1R01CancellationDuringEncryptionPreparationNeverCommitsInitialRecord() = runBlocking {
+        val store = TrackingStore().apply { blockPreparation = true }
+        val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
+
+        val validation = async(Dispatchers.Default) { manager.validateAndSave(NEW_KEY) }
+        assertTrue(store.prepareEntered.await(5, TimeUnit.SECONDS))
+        validation.cancel()
+        store.prepareRelease.countDown()
+        validation.join()
+
+        assertTrue(validation.isCancelled)
+        assertEquals(0, store.writeCount.get())
+        assertNull(store.readEncrypted())
+        assertEquals(DeepSeekKeyState.UNCONFIGURED, manager.status().state)
+    }
+
+    @Test
+    fun r1R02CancellationAtCommitBoundaryPreservesOldRecord() = runBlocking {
+        val store = TrackingStore()
+        val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
+        manager.validateAndSave(OLD_KEY)
+        val oldRecord = requireNotNull(store.readEncrypted())
+        store.blockCommit = true
+
+        val replacement = async(Dispatchers.Default) { manager.replace(NEW_KEY) }
+        assertTrue(store.commitEntered.await(5, TimeUnit.SECONDS))
+        replacement.cancel()
+        store.commitRelease.countDown()
+        replacement.join()
+
+        val preserved = requireNotNull(store.readEncrypted())
+        assertTrue(replacement.isCancelled)
+        assertEquals(1, store.writeCount.get())
+        assertEquals(oldRecord, preserved)
+        assertEquals(OLD_KEY, store.decrypt())
+        assertEquals(DeepSeekKeyState.CONFIGURED, manager.status().state)
+    }
+
+    @Test
     fun r1R03DeleteDuringValidationCannotBeFollowedByWriteBack() = runBlocking {
         val store = TrackingStore()
         val initialManager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
@@ -101,6 +143,21 @@ class DeepSeekByokSecurityRegressionTest {
         assertFalse(rendered.contains("private/path"))
         assertTrue(store.readEncrypted() != null)
         assertFalse(manager.status().state == DeepSeekKeyState.UNCONFIGURED)
+    }
+
+    @Test
+    fun r1R04AliasDeleteFailureAfterRecordRemovalStaysNeedsReentry() = runBlocking {
+        val store = TrackingStore()
+        val manager = DeepSeekByokManagerImpl(store, DeepSeekKeyProbe { })
+        manager.validateAndSave(OLD_KEY)
+        store.failAliasDeleteAfterRecordRemoval = true
+
+        val failure = runCatching { manager.delete() }.exceptionOrNull()
+
+        assertTrue(failure is DeepSeekKeyStorageException)
+        assertNull(store.readEncrypted())
+        assertTrue(store.aliasPresent)
+        assertEquals(DeepSeekKeyState.NEEDS_REENTRY, manager.status().state)
     }
 
     @Test
@@ -170,6 +227,15 @@ class DeepSeekByokSecurityRegressionTest {
         private var plaintext: String? = null
         var deleteFailure: RuntimeException? = null
         var writeFailure = false
+        var blockPreparation = false
+        var blockCommit = false
+        var failAliasDeleteAfterRecordRemoval = false
+        var aliasPresent = false
+            private set
+        val prepareEntered = CountDownLatch(1)
+        val prepareRelease = CountDownLatch(1)
+        val commitEntered = CountDownLatch(1)
+        val commitRelease = CountDownLatch(1)
         val writeCount = AtomicInteger(0)
         val decryptCount = AtomicInteger(0)
         val activeWrites = AtomicInteger(0)
@@ -178,28 +244,75 @@ class DeepSeekByokSecurityRegressionTest {
         override fun readEncrypted(): EncryptedDeepSeekKeyRecord? = record
 
         override fun health(): DeepSeekKeyStoreHealth = if (record == null) {
-            DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.ABSENT)
+            DeepSeekKeyStoreHealth(
+                if (aliasPresent) DeepSeekKeyAvailability.NEEDS_REENTRY else DeepSeekKeyAvailability.ABSENT,
+            )
         } else {
             DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record?.maskedKey)
         }
 
-        override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
+        override fun prepareWrite(apiKey: String): DeepSeekKeyWriteTransaction {
             if (writeFailure) throw IllegalStateException("private/write/path/$apiKey")
-            val active = activeWrites.incrementAndGet()
-            maxActiveWrites.updateAndGet { maxOf(it, active) }
-            try {
-                if (writeDelayMs > 0) Thread.sleep(writeDelayMs)
-                val sequence = writeCount.incrementAndGet()
-                val iv = ByteArray(12) { index -> (sequence + index).toByte() }
-                val ciphertext = apiKey.encodeToByteArray().mapIndexed { index, byte ->
+            val previousRecord = record
+            val previousPlaintext = plaintext
+            val previousAliasPresent = aliasPresent
+            aliasPresent = true
+            val sequence = writeCount.get() + 1
+            val iv = ByteArray(12) { index -> (sequence + index).toByte() }
+            val preparedRecord = EncryptedDeepSeekKeyRecord(
+                ciphertext = apiKey.encodeToByteArray().mapIndexed { index, byte ->
                     (byte.toInt() xor iv[index % iv.size].toInt()).toByte()
-                }.toByteArray()
-                return EncryptedDeepSeekKeyRecord(ciphertext, iv, DeepSeekKeyMasker.mask(apiKey)).also {
-                    record = it
-                    plaintext = apiKey
+                }.toByteArray(),
+                iv = iv,
+                maskedKey = DeepSeekKeyMasker.mask(apiKey),
+            )
+            if (blockPreparation) {
+                prepareEntered.countDown()
+                check(prepareRelease.await(5, TimeUnit.SECONDS))
+            }
+            return object : DeepSeekKeyWriteTransaction {
+                private var committed = false
+                private var rolledBack = false
+
+                override val record = preparedRecord
+
+                override fun commit(commitAllowed: () -> Boolean) {
+                    if (blockCommit) {
+                        commitEntered.countDown()
+                        check(commitRelease.await(5, TimeUnit.SECONDS))
+                    }
+                    if (!commitAllowed()) {
+                        rollback()
+                        throw kotlinx.coroutines.CancellationException("cancelled before fake commit")
+                    }
+                    val active = activeWrites.incrementAndGet()
+                    maxActiveWrites.updateAndGet { maxOf(it, active) }
+                    try {
+                        if (writeDelayMs > 0) Thread.sleep(writeDelayMs)
+                        writeCount.incrementAndGet()
+                        this@TrackingStore.record = preparedRecord
+                        plaintext = apiKey
+                        committed = true
+                        if (!commitAllowed()) {
+                            rollback()
+                            throw kotlinx.coroutines.CancellationException("cancelled during fake commit")
+                        }
+                    } finally {
+                        activeWrites.decrementAndGet()
+                    }
                 }
-            } finally {
-                activeWrites.decrementAndGet()
+
+                override fun rollback() {
+                    if (rolledBack) return
+                    if (committed) {
+                        this@TrackingStore.record = previousRecord
+                        plaintext = previousPlaintext
+                        writeCount.decrementAndGet()
+                    }
+                    aliasPresent = previousAliasPresent
+                    committed = false
+                    rolledBack = true
+                }
             }
         }
 
@@ -212,6 +325,10 @@ class DeepSeekByokSecurityRegressionTest {
             deleteFailure?.let { throw it }
             record = null
             plaintext = null
+            if (failAliasDeleteAfterRecordRemoval) {
+                throw IllegalStateException("synthetic alias delete failure")
+            }
+            aliasPresent = false
         }
     }
 

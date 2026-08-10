@@ -3,6 +3,11 @@ package com.example.lyriccaptioner
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStatus
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiMapper
@@ -25,13 +30,15 @@ class ByokSecurityTestActivity : ComponentActivity() {
         }
         setContent {
             LyricCaptionerTheme {
-                DeepSeekKeySettingsPanel(
-                    model = DeepSeekKeyUiMapper.from(status),
-                    onSave = { saveInvoked.set(true) },
-                    onReplace = { replaceInvoked.set(true) },
-                    onDelete = { deleteInvoked.set(true) },
-                    onCancelInput = { cancelInvoked.set(true) },
-                )
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                    DeepSeekKeySettingsPanel(
+                        model = DeepSeekKeyUiMapper.from(status),
+                        onSave = { saveInvoked.set(true) },
+                        onReplace = { replaceInvoked.set(true) },
+                        onDelete = { deleteInvoked.set(true) },
+                        onCancelInput = { cancelInvoked.set(true) },
+                    )
+                }
             }
         }
     }

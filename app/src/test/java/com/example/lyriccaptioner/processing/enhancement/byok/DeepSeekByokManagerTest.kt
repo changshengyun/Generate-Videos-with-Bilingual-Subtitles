@@ -154,19 +154,43 @@ class DeepSeekByokManagerTest {
             else -> DeepSeekKeyStoreHealth(DeepSeekKeyAvailability.AVAILABLE, record?.maskedKey)
         }
 
-        override fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord {
-            check(activeWrites == 0)
-            activeWrites += 1
-            maxActiveWrites = maxOf(maxActiveWrites, activeWrites)
-            try {
-                val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-                val ciphertext = apiKey.toByteArray().mapIndexed { index, value -> (value.toInt() xor 0x5A xor iv[index % iv.size].toInt()).toByte() }.toByteArray()
-                return EncryptedDeepSeekKeyRecord(ciphertext, iv, DeepSeekKeyMasker.mask(apiKey)).also {
-                    record = it
-                    plainForTest = apiKey
+        override fun prepareWrite(apiKey: String): DeepSeekKeyWriteTransaction {
+            val previousRecord = record
+            val previousPlaintext = plainForTest
+            val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
+            val preparedRecord = EncryptedDeepSeekKeyRecord(
+                apiKey.toByteArray().mapIndexed { index, value ->
+                    (value.toInt() xor 0x5A xor iv[index % iv.size].toInt()).toByte()
+                }.toByteArray(),
+                iv,
+                DeepSeekKeyMasker.mask(apiKey),
+            )
+            return object : DeepSeekKeyWriteTransaction {
+                private var committed = false
+
+                override val record = preparedRecord
+
+                override fun commit(commitAllowed: () -> Boolean) {
+                    check(commitAllowed())
+                    check(activeWrites == 0)
+                    activeWrites += 1
+                    maxActiveWrites = maxOf(maxActiveWrites, activeWrites)
+                    try {
+                        this@FakeStore.record = preparedRecord
+                        plainForTest = apiKey
+                        committed = true
+                        check(commitAllowed())
+                    } finally {
+                        activeWrites -= 1
+                    }
                 }
-            } finally {
-                activeWrites -= 1
+
+                override fun rollback() {
+                    if (!committed) return
+                    this@FakeStore.record = previousRecord
+                    plainForTest = previousPlaintext
+                    committed = false
+                }
             }
         }
 

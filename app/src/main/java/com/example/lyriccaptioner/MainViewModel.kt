@@ -679,9 +679,14 @@ class MainViewModel(
     }
 
     fun deleteDeepSeekKey() {
+        val maskedKeyBeforeDelete = mutableDeepSeekKeyUi.value.maskedKey
         launchDeepSeekKeyOperation(
             onFailure = {
-                deepSeekManager.status().copy(detail = "Secure deletion failed.")
+                DeepSeekKeyStatus(
+                    state = DeepSeekKeyState.NEEDS_REENTRY,
+                    maskedKey = maskedKeyBeforeDelete,
+                    detail = "Secure deletion failed.",
+                )
             },
         ) {
             deepSeekManager.delete()

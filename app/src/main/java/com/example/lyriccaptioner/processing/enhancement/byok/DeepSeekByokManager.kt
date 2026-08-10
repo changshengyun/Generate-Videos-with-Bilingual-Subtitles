@@ -3,6 +3,7 @@ package com.example.lyriccaptioner.processing.enhancement.byok
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -20,6 +21,7 @@ class DeepSeekByokManagerImpl(
     override fun status(): DeepSeekKeyStatus = synchronized(stateLock) {
         val transient = transientStatus
         if (transient?.state == DeepSeekKeyState.VALIDATING_NEW_KEY) return@synchronized transient
+        if (transient?.state == DeepSeekKeyState.NEEDS_REENTRY) return@synchronized transient
         val persistent = persistentStatus()
         val status = if (transient?.state == DeepSeekKeyState.VALIDATION_FAILED) transient else persistent
         transientStatus = status
@@ -45,19 +47,42 @@ class DeepSeekByokManagerImpl(
             DeepSeekKeyState.VALIDATING_NEW_KEY,
             maskedKey = before.maskedKey,
         )
+        var transaction: DeepSeekKeyWriteTransaction? = null
         val result = try {
             // Probe is intentionally performed before encryption/write, preserving the old record.
             probe.validate(apiKey)
-            currentCoroutineContext().ensureActive()
-            store.writeEncrypted(apiKey)
+            val operationContext = currentCoroutineContext()
+            operationContext.ensureActive()
+            transaction = store.prepareWrite(apiKey)
+            operationContext.ensureActive()
+            transaction.commit { operationContext.isActive }
+            operationContext.ensureActive()
             DeepSeekKeyStatus(
                 DeepSeekKeyState.CONFIGURED,
                 maskedKey = DeepSeekKeyMasker.mask(apiKey),
             ).also { transientStatus = it }
         } catch (cancelled: CancellationException) {
-            transientStatus = before
-            throw cancelled
+            try {
+                transaction?.rollback()
+                transientStatus = before
+                throw cancelled
+            } catch (_: DeepSeekKeyStorageException) {
+                DeepSeekKeyStatus(
+                    DeepSeekKeyState.NEEDS_REENTRY,
+                    maskedKey = before.maskedKey,
+                    detail = "Secure write rollback failed.",
+                ).also { transientStatus = it }
+                throw DeepSeekKeyStorageException()
+            }
         } catch (_: Throwable) {
+            val rollbackFailed = runCatching { transaction?.rollback() }.isFailure
+            if (rollbackFailed) {
+                return@withLock DeepSeekKeyStatus(
+                    DeepSeekKeyState.NEEDS_REENTRY,
+                    maskedKey = before.maskedKey,
+                    detail = "Secure write rollback failed.",
+                ).also { transientStatus = it }
+            }
             // Do not expose provider exception text (it may contain headers or request payloads).
             DeepSeekKeyStatus(
                 DeepSeekKeyState.VALIDATION_FAILED,
