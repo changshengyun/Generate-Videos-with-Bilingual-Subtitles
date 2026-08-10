@@ -14,18 +14,22 @@ class ByokSecurityTestActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         cancelInvoked.set(false)
+        saveInvoked.set(false)
+        replaceInvoked.set(false)
+        deleteInvoked.set(false)
+        val mode = intent.getStringExtra(EXTRA_MODE).orEmpty()
+        val status = when (mode) {
+            MODE_CONFIGURED -> DeepSeekKeyStatus(DeepSeekKeyState.CONFIGURED, "••••••••3456")
+            MODE_UNCONFIGURED -> DeepSeekKeyStatus(DeepSeekKeyState.UNCONFIGURED)
+            else -> DeepSeekKeyStatus(DeepSeekKeyState.VALIDATING_NEW_KEY, "••••••••3456")
+        }
         setContent {
             LyricCaptionerTheme {
                 DeepSeekKeySettingsPanel(
-                    model = DeepSeekKeyUiMapper.from(
-                        DeepSeekKeyStatus(
-                            state = DeepSeekKeyState.VALIDATING_NEW_KEY,
-                            maskedKey = "••••••••3456",
-                        ),
-                    ),
-                    onSave = {},
-                    onReplace = {},
-                    onDelete = {},
+                    model = DeepSeekKeyUiMapper.from(status),
+                    onSave = { saveInvoked.set(true) },
+                    onReplace = { replaceInvoked.set(true) },
+                    onDelete = { deleteInvoked.set(true) },
                     onCancelInput = { cancelInvoked.set(true) },
                 )
             }
@@ -33,6 +37,12 @@ class ByokSecurityTestActivity : ComponentActivity() {
     }
 
     companion object {
+        const val EXTRA_MODE = "mode"
+        const val MODE_CONFIGURED = "configured"
+        const val MODE_UNCONFIGURED = "unconfigured"
         val cancelInvoked = AtomicBoolean(false)
+        val saveInvoked = AtomicBoolean(false)
+        val replaceInvoked = AtomicBoolean(false)
+        val deleteInvoked = AtomicBoolean(false)
     }
 }

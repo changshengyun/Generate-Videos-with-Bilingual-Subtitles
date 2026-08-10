@@ -252,11 +252,7 @@ class LocalAiInstrumentation : Instrumentation() {
     }
 
     private fun runByokUiSecurityProbe(results: Bundle) {
-        val activity = startActivitySync(
-            Intent(targetContext, ByokSecurityTestActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            },
-        )
+        var activity = startByokTestActivity(mode = "validating")
         waitForIdleSync()
         clickNode(waitForText("配置", 10_000L))
         val passwordField = waitForContentDescription("deepseek_api_key_input", 10_000L)
@@ -290,6 +286,86 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putString("byokUiInputClear", "cleared-after-cancel")
         results.putString("byokUiScreenshot", "masked-and-nonempty")
         activity.finish()
+
+        activity = startByokTestActivity(ByokSecurityTestActivity.MODE_UNCONFIGURED)
+        waitForIdleSync()
+        clickNode(waitForText("配置", 10_000L))
+        enterSyntheticPassword()
+        clickSemanticAction("deepseek_key_save")
+        waitForIdleSync()
+        check(ByokSecurityTestActivity.saveInvoked.get() && passwordTextIsEmpty()) {
+            "Save did not clear the password input immediately."
+        }
+        enterSyntheticPassword()
+        clickNode(waitForText("收起", 10_000L))
+        clickNode(waitForText("配置", 10_000L))
+        check(passwordTextIsEmpty()) { "Collapse did not clear the password input." }
+        activity.finish()
+
+        activity = startByokTestActivity(ByokSecurityTestActivity.MODE_CONFIGURED)
+        waitForIdleSync()
+        clickNode(waitForText("配置", 10_000L))
+        enterSyntheticPassword()
+        clickSemanticAction("deepseek_key_replace")
+        waitForIdleSync()
+        check(ByokSecurityTestActivity.replaceInvoked.get() && passwordTextIsEmpty()) {
+            "Replace did not clear the password input immediately."
+        }
+        enterSyntheticPassword()
+        clickSemanticAction("deepseek_key_delete")
+        waitForIdleSync()
+        check(ByokSecurityTestActivity.deleteInvoked.get() && passwordTextIsEmpty()) {
+            "Delete did not clear the password input."
+        }
+        activity.finish()
+        results.putString("byokUiAllInputClears", "save-replace-collapse-cancel-delete")
+    }
+
+    private fun startByokTestActivity(mode: String): Activity = startActivitySync(
+        Intent(targetContext, ByokSecurityTestActivity::class.java).apply {
+            putExtra(ByokSecurityTestActivity.EXTRA_MODE, mode)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        },
+    )
+
+    private fun enterSyntheticPassword() {
+        val field = waitForContentDescription("deepseek_api_key_input", 10_000L)
+        val passwordNode = findEditableNode(field)
+            ?: findEditableNode(uiAutomation.rootInActiveWindow)
+            ?: error("Editable password field was not found.")
+        val arguments = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, BYOK_SENTINEL_ONE)
+        }
+        check(passwordNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)) {
+            "Synthetic password input could not be entered."
+        }
+        waitForIdleSync()
+    }
+
+    private fun passwordTextIsEmpty(): Boolean =
+        findEditableNode(uiAutomation.rootInActiveWindow)?.text.isNullOrEmpty()
+
+    private fun clickSemanticAction(description: String) {
+        val semanticNode = waitForContentDescription(description, 10_000L)
+        clickNode(findClickableNode(semanticNode) ?: semanticNode)
+    }
+
+    private fun findClickableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isClickable) return node
+        for (index in 0 until node.childCount) {
+            findClickableNode(node.getChild(index))?.let { return it }
+        }
+        return null
+    }
+
+    private fun findEditableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }) return node
+        for (index in 0 until node.childCount) {
+            findEditableNode(node.getChild(index))?.let { return it }
+        }
+        return null
     }
 
     private fun findPasswordNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {

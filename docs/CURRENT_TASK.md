@@ -31,7 +31,7 @@
 - production `AndroidKeystoreDeepSeekKeyStore` instrumentation 在既有 `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` 通过：AndroidKeyStore AES-256-GCM、12-byte IV、106-byte test-owned `noBackupFilesDir` record、重启恢复、IV 轮换、ciphertext corruption、alias loss、re-entry、可见且脱敏的删除失败与最终 delete 均通过。
 - ViewModel 取消证据：validation Job 已 cancel-and-join，probe 已进入后被取消，释放 probe 后 write count 仍为 0，最终为 `UNCONFIGURED`。
 - `status()` 与 `cancelInput()` 只调用不返回明文的 health 接口；JVM decrypt count 为 0；只有 `withDecryptedKey` 调用返回完整 Key 的 `decrypt()`，对应 decrypt count 为 1。
-- Compose instrumentation：密码 semantics、仅末四位掩码、非空掩码截图、验证中真实取消入口及取消后输入清空均通过；UI semantics 未出现完整 synthetic sentinel。
+- Compose instrumentation：密码 semantics、仅末四位掩码、非空掩码截图、验证中真实取消入口，以及 save/replace/collapse/cancel/delete 后输入清空均通过；UI semantics 未出现完整 synthetic sentinel。
 - source/resources/test-output/APK secret scan 未发现真实 Key、实际 Authorization credential、歌词正文或私有运行路径；AndroidTest 只使用 synthetic sentinel 与测试专用 alias/record。
 - 本状态仅是 Developer 候选；没有真实 DeepSeek Key、真实 Provider 网络调用、真实认证、歌词匹配或完整设备产品流。
 
