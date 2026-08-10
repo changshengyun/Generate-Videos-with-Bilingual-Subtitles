@@ -4,24 +4,25 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_RETEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`
+- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `REWORK_EVIDENCE_RETURNED / READY_FOR_BRAIN_RE-ADJUDICATION / LIVE_KEY_TEST_REQUIRED`
+- Current gate: `SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`
 - Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
 - Implementation authorization: granted for the bounded `V3-AI-CONTRACT-001` scope
-- Review workflow: no independent Review window; Developer self-tests and returns matrix evidence to Brain for state adjudication
-- Next permitted action: Brain re-adjudicates R1-R01 through R1-R10 from the returned delta evidence; the formal status remains unchanged until that decision, and no later module or live-key flow may start.
+- Review workflow: no independent Review window; Brain has completed the formal R1 adjudication from the returned matrix evidence
+- Next permitted action: keep `LIVE_KEY_TEST_REQUIRED`; any real-key, live-authentication or complete product-flow validation requires separate authorization and evidence.
 
 ## Current R1 security rework evidence
 
-- Brain rejected the prior Developer candidate because production health materialized the complete Key, cancellation did not cover encryption/commit, alias-deletion partial success could collapse to `UNCONFIGURED`, and active Provider routing text conflicted with the frozen DeepSeek route.
+- Brain previously rejected the old implementation because production health materialized the complete Key, cancellation did not cover encryption/commit, alias-deletion partial success could collapse to `UNCONFIGURED`, and active Provider routing text conflicted with the frozen DeepSeek route.
 - The current delta uses a separate AES-GCM empty-plaintext authentication tag whose AAD binds the Key ciphertext, IV and mask; a rollback-capable prepare/commit transaction checks coroutine cancellation before and after durable commit; missing-record/present-alias and delete-failure states remain `NEEDS_REENTRY`.
 - R1 focused JVM: 27 passed; full JVM: 148 passed with 0 failures/0 skipped; ASR baseline: 6 passed. Lint reports 0 errors/33 warnings; normal Debug, native-enabled Debug and AndroidTest builds passed.
-- Production instrumentation passed on `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36`: AES-256-GCM AndroidKeyStore, distinct Key IVs, empty-plaintext AAD health, 142-byte test record, corruption/alias-loss recovery, alias-delete partial failure retained as `NEEDS_REENTRY`, commit cancellation write count 0, UI clears, and final record+alias absence.
+- Production instrumentation passed only with a synthetic Key on the `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` emulator: AES-256-GCM AndroidKeyStore, distinct Key IVs, empty-plaintext AAD health, 142-byte test record, corruption/alias-loss recovery, alias-delete partial failure retained as `NEEDS_REENTRY`, commit cancellation write count 0, UI clears, and final record+alias absence. No physical device was connected.
 - Final APK scan covered the stripped 382,081,953-byte native-enabled app APK and 91,551-byte AndroidTest APK: 0 disallowed Key tokens, 0 credential-bearing Authorization headers and 0 private runtime paths; only four synthetic test sentinels were present in AndroidTest.
 - Checkpoint `bbb9761` froze the delta matrix and captured three expected old-implementation failures: delete-after-validation write-back, swallowed delete failure and plaintext decrypt during status/cancel.
-- The prior candidate state remains revoked pending Brain re-adjudication. This rework still does not prove a real DeepSeek key, live authentication, DeepSeek network behavior, lyrics matching or the complete device product flow.
+- Security/BYOK fix commit `935ff92` contains the accepted delta implementation and evidence baseline.
+- Brain formally accepted `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`. This is a component-level security verdict, not a formal product PASS, and it does not prove a real DeepSeek Key, live authentication, DeepSeek network behavior, lyrics matching, a physical device run or the complete device product flow.
 
 ## Historical test-first evidence
 
@@ -82,7 +83,7 @@
 ## Preserved state
 
 - Do not clean, reset, stage, or commit the existing dirty `third_party/ffmpeg-kit` state.
-- Do not commit models, `.emulator-test-assets/`, `tools/opus-mt-en-zh/`, `._cache_adb.exe`, or unrelated untracked content.
+- Preserve all 41 untracked files: 31 under `.emulator-test-assets/`, 9 under `tools/opus-mt-en-zh/`, and 1 `._cache_adb.exe`; do not commit them or other unrelated content.
 - Do not push unless the user explicitly requests it.
 - Preserve the user-approved but uncommitted `AGENTS.md` acceptance-matrix rule and three-document updates when creating the stage checkpoint.
 - Do not stage unrelated dirty/untracked content in the checkpoint or feature commit.
@@ -94,7 +95,7 @@
 |---|---|
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURITY_AND_BYOK_REWORK_REQUIRED / ANDROID_KEYSTORE_RUNTIME_RETEST_REQUIRED / LIVE_KEY_TEST_REQUIRED`（delta evidence returned; pending Brain re-adjudication） |
+| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`（Brain formal verdict; API 36 emulator synthetic-Key evidence only） |
 | V3-ASR-SESSION-001 | `PLANNED` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |
