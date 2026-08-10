@@ -1,17 +1,62 @@
-# Current Task: V3-AI-CONTRACT-001
+# Current Task: V3-ASR-SESSION-001
 
 ## Current status
 
-- Stage: `V3-AI-CONTRACT-001`
-- Status: `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决）
-- Previous stage: `V3-DEC-001 / PASS`
-- Scope: R1 真机 DeepSeek 最小认证、Android Keystore 加密保存、重启恢复、测试连接、same-key rotation、失败替换保留旧 Key 与最终删除
+- Stage: `V3-ASR-SESSION-001`
+- Status: `V3-ASR-SESSION-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Previous stage: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；已关闭）
+- Scope: 当前 `ggml-small.en-q5_1.bin` 的单模型、进程级 Whisper context/session 缓存，含串行推理、安全取消、失效、空闲超时与严重内存压力释放
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
-- Live API status: `DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`
-- Review workflow: Brain 已正式接受 LIVE-KEY 矩阵证据并关闭 R1
-- Next action: R1 正式关闭；等待 Brain 为下一阶段建立完整验收矩阵，不得自行启动歌词链路
+- Runtime target: only `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`
+- Review workflow: Developer 完成矩阵后只回交候选状态，Brain 负责正式验收
+- Next action: checkpoint 后冻结共享接口和文件所有权，执行 Kotlin runtime、JNI/native 生命周期、Android runtime 证据与 Orchestrator 集成
+
+## V3-ASR-SESSION-001 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| A01 | 冷任务创建一次 native context，任务完成后进入空闲缓存。 |
+| A02 | 3 分钟内第二个任务复用同一 context，create count 仍为 1。 |
+| A03 | 5 分钟到期释放旧 context，下一任务创建新 context。 |
+| A04 | 两个并发请求严格串行，native 最大并发推理数为 1。 |
+| A05 | 前一任务的音频、取消状态和结果不污染后一任务。 |
+| A06 | 模型路径、大小或 SHA-256 变化均使旧 context 失效。 |
+| A07 | 模型切换不会在活跃 native 推理期间释放旧 handle。 |
+| A08 | 取消触发 abort，并等待 native 完全退出后释放；下一任务安全重建。 |
+| A09 | 空闲和活跃状态下的严重内存压力均执行正确释放策略。 |
+| A10 | create/load/transcribe 失败后无缓存泄漏，后续任务可恢复。 |
+| A11 | 重复 close/release 不 double-free、不崩溃。 |
+| A12 | 新进程/runtime 实例从空缓存开始，不伪造跨进程复用。 |
+| A13 | 真实 native context 连续两次识别证明冷/热路径和 handle 复用。 |
+| A14 | 输出 cue 时间戳合法；缓存前后结果无串任务污染。 |
+| A15 | 冷/热分别记录 context 加载、推理、总耗时、峰值 RSS、温度、空结果和崩溃。 |
+| A16 | BYOK、项目恢复、导出和既有 ASR baseline 无回归。 |
+
+时间边界测试必须使用可注入 monotonic clock/scheduler，不让 JVM 测试真实等待 3–5 分钟。
+
+## Stage gate
+
+| Category | Frozen requirement |
+|---|---|
+| Main path | 当前模型首次识别创建并加载一个进程级 native context；任务完全结束后开始空闲计时，3 分钟内后续任务复用，最多缓存 5 分钟；同一 context 严格串行；到期、模型身份变化、严重内存压力或取消后状态不安全时安全释放并在下次任务重建。 |
+| Mandatory evidence | A01–A16；focused/full JVM、`python tools\\asr_evaluate_test.py`、lint、普通 Debug、native-enabled Debug、AndroidTest 构建；唯一授权真机 production native/session instrumentation；冷/热 create/free/handle、加载/推理/总耗时、RSS、温度、空结果、崩溃和时间戳证据。 |
+| Prohibited | 不缓存任务音频、取消令牌、临时推理状态或字幕结果；不启用 GPU、不换模型、不改 Whisper 线程数或识别参数；不修改 DeepSeek、BYOK、歌词、翻译、编辑器、Media3、FFmpegKit、媒体入口、SRT 或 UI；不读取用户私人媒体，不连接其他设备，不清理既有脏状态，不 push。 |
+| Exit | A01–A16、完整构建和真机 native 证据全部通过后，只能回交 Developer 候选 `PASS / WHISPER_SESSION_CACHE_VERIFIED / PHYSICAL_DEVICE_RUNTIME_VERIFIED`；缓存只证明降低重复模型加载成本，不宣称 ASR 准确率、WER/CER 或核心推理速度提升。 |
+| Incomplete | 逻辑与构建通过但缺真机 native 证据：`PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`；无法证明取消/释放/并发期间无 use-after-free：`BLOCKED / NATIVE_LIFETIME_SAFETY_REQUIRED`；第二次任务仍加载模型：`BLOCKED / CACHE_REUSE_NOT_PROVEN`。 |
+
+## Frozen runtime and ownership constraints
+
+- Runtime 是进程级单模型实例；模型身份至少绑定规范路径、文件大小和 SHA-256，任一变化都失效。
+- 使用 monotonic clock；空闲从任务完全结束后开始。单个 context 用 `Mutex` 或单线程队列串行访问。
+- 空闲模型切换立即释放；活跃模型切换标记 pending invalidation，任务退出后释放。
+- 取消顺序固定为请求 abort -> `whisper_full` 返回 -> 推理线程结束 -> 清理任务临时状态 -> context 失效并安全释放；本阶段取消后的 context 不复用。
+- 严重内存压力下空闲 context 立即释放，活跃 context 标记 pending release 并在任务退出后释放。
+- create、transcribe 或 free 失败不得留下可复用的半有效 handle；release/close 必须幂等。
+- Orchestrator 独占三份活动文档、Git、共享接口及 `WhisperLocalSpeechRecognizer.kt`、`AppPipelineFactory.kt`、`MainViewModel.kt` 等集成热点。
+
+## Historical closed stage: V3-AI-CONTRACT-001 / R1
 
 ## V3-AI-CONTRACT-001-R1 live-key acceptance matrix
 

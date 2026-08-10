@@ -23,7 +23,7 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 |---|---|---|
 | `V3-DEC-001` | `PASS` | 交互、样式、媒体入口、缓存生命周期、云端匹配、本地回退、密钥边界和清理范围已由用户确认 |
 | `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；R1 已关闭） | Brain 已正式接受唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的 BYOK 安全链路、`GET /models` 最小真实认证、Keystore 密文保存、masked 重启恢复、测试连接、same-key rotation、失败替换保留旧 Key、最终删除、完整回归和 secret scan 证据；在线歌词、歌曲匹配、逐 cue 增强与完整产品链路未验证，不得声明正式产品 PASS |
-| `V3-ASR-SESSION-001` | `PLANNED` | 实现 3-5 分钟单模型进程级缓存、串行推理、取消安全、失效与内存策略，并测量冷/热识别 |
+| `V3-ASR-SESSION-001` | `MATRIX_DEFINED / IN_PROGRESS` | 已冻结 A01–A16：实现 3 分钟内复用、5 分钟到期释放的单模型进程级缓存，串行推理、安全取消、模型身份失效与内存压力策略，并在唯一授权真机测量冷/热识别 |
 | `V3-EDITOR-001` | `PLANNED` | 识别成功反馈、主动进入编辑、字幕列表归位、统一文本框、逐段样式和 V2 样式迁移 |
 | `V3-MEDIA-001` | `PLANNED` | Photo Picker 唯一导入入口和 MediaStore 唯一导出目的地，保持源/目标文件安全 |
 | `V3-AI-001` | `LIVE_API_DEFERRED` | 按已冻结的 DeepSeek + `DEVICE_DIRECT_BYOK` 路线接入真实请求、认证、歌曲/歌词匹配和逐 cue 修正；歌词来源/授权、真实联调和分发策略仍待后续门禁 |
@@ -31,7 +31,9 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 
-一次只激活一个实施阶段。`V3-AI-CONTRACT-001 / R1` 已正式关闭；等待 Brain 为下一阶段建立完整验收矩阵，不得自行启动歌词链路。歌曲匹配、逐 cue 增强、模型缓存、编辑器、媒体入口、视觉 UI 和清理必须留在各自后续阶段。
+一次只激活一个实施阶段。`V3-AI-CONTRACT-001 / R1` 已正式关闭；当前唯一活动阶段为 `V3-ASR-SESSION-001 / MATRIX_DEFINED / IN_PROGRESS`。本阶段只实现并验证 Whisper 进程级会话缓存，不得自行启动歌曲匹配、逐 cue 增强、歌词、编辑器、媒体入口、视觉 UI 或清理阶段。
+
+`V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
 
 ## 阶段入口验收矩阵门禁
 

@@ -4,14 +4,24 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict）
+- Current task: `V3-ASR-SESSION-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `R1_FORMALLY_CLOSED / LIVE_LYRICS_FLOW_DEFERRED`
-- Process gate: `ACCEPTANCE_MATRIX_REQUIRED_BEFORE_IMPLEMENTATION`
-- Implementation authorization: granted for bounded production DeepSeek authentication probe, saved-key connection test, necessary tests and authorized physical-device verification
-- Review workflow: Brain formally accepted the LIVE-KEY evidence and closed R1
-- Next permitted action: R1 正式关闭；等待 Brain 为下一阶段建立完整验收矩阵，不得自行启动歌词链路。
+- Current gate: `MATRIX_DEFINED / CHECKPOINT_REQUIRED_BEFORE_IMPLEMENTATION`
+- Process gate: `V3-ASR-SESSION-001_ACCEPTANCE_MATRIX_FROZEN`
+- Implementation authorization: granted for the bounded Whisper process-level single-model context/session cache, necessary tests and the one authorized physical device
+- Review workflow: Developer may return only a candidate result; Brain retains formal acceptance authority
+- Next permitted action: create the three-document checkpoint, then freeze shared interfaces/file ownership and implement the bounded session cache without starting the lyrics flow.
+
+## Current V3-ASR-SESSION-001 matrix summary
+
+- A01–A16 are frozen in `docs/CURRENT_TASK.md`; they cover cold creation, 3-minute reuse, 5-minute expiry, strict serialization, task isolation, path/size/SHA-256 invalidation, active-safe model switching, cancellation ordering, memory-pressure release, failure recovery, idempotent close, process isolation, real-native handle reuse, cue validity, performance diagnostics and regression coverage.
+- The runtime is process-level and single-model. Idle time starts only after a task fully ends and uses an injectable monotonic clock/scheduler. The same context may run only one inference at a time.
+- Cancellation is conservative: abort is requested, native inference must fully return and its thread must end before cleanup/free, and the cancelled context is never reused.
+- Only `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` is authorized for physical-device evidence, using repository/test-owned non-private audio only.
+- Highest Developer candidate with complete evidence is `PASS / WHISPER_SESSION_CACHE_VERIFIED / PHYSICAL_DEVICE_RUNTIME_VERIFIED`; missing physical native evidence caps the result at `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`.
+- Unsafe native lifetime is `BLOCKED / NATIVE_LIFETIME_SAFETY_REQUIRED`; failure to prove second-task reuse is `BLOCKED / CACHE_REUSE_NOT_PROVEN`.
+- Cache evidence may claim only lower repeated context-loading cost. It must not claim accuracy, WER/CER, or core inference-speed improvement.
 
 ## Current R1 live-key evidence
 
@@ -106,7 +116,7 @@
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
-| V3-ASR-SESSION-001 | `PLANNED` |
+| V3-ASR-SESSION-001 | `MATRIX_DEFINED / IN_PROGRESS` |
 | V3-EDITOR-001 | `PLANNED` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
