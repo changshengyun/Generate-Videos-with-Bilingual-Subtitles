@@ -1,17 +1,67 @@
-# Current Task: V3-ASR-SESSION-001
+# Current Task: V3-EDITOR-001
 
 ## Current status
 
-- Stage: `V3-ASR-SESSION-001`
-- Status: `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`（Developer 候选；等待 Brain 裁决）
-- Previous stage: `V3-AI-CONTRACT-001 / R1 / PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；已关闭）
-- Scope: 当前 `ggml-small.en-q5_1.bin` 的单模型、进程级 Whisper context/session 缓存，含串行推理、安全取消、失效、空闲超时与严重内存压力释放
+- Stage: `V3-EDITOR-001`
+- Status: `V3-EDITOR-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Previous stage: `V3-ASR-SESSION-001 / PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决；组件阶段已接受）
+- Scope: 识别成功后的主动编辑入口、字幕列表归位、项目级 `CaptionLayout`、默认样式、cue 覆盖、V2→V3 迁移，以及 Compose/ASS 共用解析
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
-- Runtime target: only `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`
-- Review workflow: Developer 已完成组件实现和本地矩阵，只回交候选状态；Brain 负责正式验收
-- Next action: 唯一授权真机 `fcf4b0cb` 恢复 ADB 后运行已构建的 production native/session instrumentation，补齐 A13/A15，再交 Brain 复核；不得自行启动下一阶段
+- Physical-device gate: `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`；本阶段禁止连接、安装、等待或轮询真机
+- Review workflow: Developer 完成 E01–E18 后只回交候选状态；Brain 负责正式验收
+- Next action: 建立文档 checkpoint 后冻结 editor 共享接口和文件所有权，执行模型/迁移、Compose 交互、预览/ASS resolver 与允许的模拟器验证
+
+## V3-EDITOR-001 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| E01 | ASR 成功后停留当前栏目并显示成功状态。 |
+| E02 | 只有点击“编辑字幕”才进入编辑栏目。 |
+| E03 | 取消、失败、空结果不显示成功入口。 |
+| E04 | 打开旧项目和状态恢复不自动抢占栏目。 |
+| E05 | 字幕列表只归属于编辑栏目。 |
+| E06 | `CaptionLayout` 使用合法归一化源视频坐标。 |
+| E07 | 所有 cue 共享同一项目文本框范围。 |
+| E08 | 默认样式正确作用于无覆盖 cue。 |
+| E09 | 单 cue 覆盖不影响其他 cue。 |
+| E10 | 清除覆盖后正确继承默认样式。 |
+| E11 | 修改默认样式不覆盖 cue 的显式字段。 |
+| E12 | 文本、时间轴和确认状态编辑不破坏样式。 |
+| E13 | V2 全局样式正确迁移，cue 默认无覆盖。 |
+| E14 | V3 archive 完整 round-trip。 |
+| E15 | Compose 与 ASS 使用相同 resolver 结果。 |
+| E16 | ASS 按 cue 输出最终样式且时间戳不变。 |
+| E17 | 非法布局和样式字段被拒绝或安全规范化。 |
+| E18 | 既有 ASR、BYOK、项目恢复和导出回归通过。 |
+
+## Stage gate
+
+| Category | Frozen requirement |
+|---|---|
+| Main path | ASR 成功后仍停留“识别/翻译”栏目并显示明确成功状态；只有用户点击“编辑字幕”才进入编辑栏目。字幕列表只在编辑栏目显示；项目使用一个源视频归一化文本框、一个默认样式和可选 cue 覆盖，Compose 预览与 ASS 导出消费同一解析结果。 |
+| Mandatory evidence | E01–E18；focused 数据/迁移/resolver/JVM 测试；Compose/UI focused 测试；完整 JVM、ASR Python、lint、普通 Debug、native-enabled Debug、AndroidTest 构建；可用模拟器 editor instrumentation。所有真机 UI 验证登记到最终积压，不在本阶段执行。 |
+| Prohibited | ASR 成功自动切栏；屏幕像素/预览尺寸/黑边作为持久化坐标；两套预览/导出默认值或覆盖顺序；真机 ADB/安装/instrumentation；DeepSeek 网络/真实 Key/在线歌词/逐 cue AI；整体视觉重设计；MediaStore/Photo Picker、Whisper/session cache、SRT/旧分支清理。 |
+| Exit | E01–E18 与全部组件验证通过后，只能回交 `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`；不得声明正式产品 PASS。 |
+| Incomplete | 数据模型和归档通过但 Compose/ASS 共用解析未完成：`PARTIAL_PASS / EDITOR_MODEL_VERIFIED / RENDER_INTEGRATION_REQUIRED`；V2 迁移丢失样式、字幕或时间轴：`BLOCKED / PROJECT_MIGRATION_SAFETY_REQUIRED`。 |
+
+## Frozen editor constraints
+
+- 项目只保存一个 `CaptionLayout(xRatio, yRatio, widthRatio)`，使用源视频归一化坐标并限制在有效画面内；cue 编辑不得改变项目文本框。
+- 项目保存一个 `DefaultCaptionStyle`；每个 cue 只保存可选 `CaptionStyleOverride`。未覆盖字段继承默认值，清除覆盖立即回落，修改默认值不改写显式覆盖。
+- 文本、时间轴、确认状态与样式覆盖相互独立；旧 V2 `SubtitleStyle` 迁移为 V3 默认样式，旧 cue 无覆盖并获得安全默认布局。
+- V3 archive 完整保存 layout/default style/cue overrides；损坏或越界值必须拒绝或安全规范化。
+- Compose 与 ASS 只能调用同一 resolver；ASS 按 cue 使用最终样式且不得改变文本或时间戳。
+- 打开项目、恢复状态或字幕列表变化不得抢占栏目；取消、失败和空结果不得显示成功入口。
+
+## FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG
+
+- ASR A13：真实 native context 连续两次识别、冷/热路径及真实 handle 复用。
+- ASR A15：真实冷/热 context load、inference、total、峰值 RSS、温度、空结果和崩溃数据。
+- 只有用户以后明确说“开始真机验证”时才集中执行；当前不得连接、安装、等待、轮询或推测真机数据。
+
+## Historical accepted stage: V3-ASR-SESSION-001
 
 ## V3-ASR-SESSION-001 acceptance matrix
 
@@ -72,9 +122,9 @@
 | A10 | `PASS` | create/transcribe/free 失败均移除半有效缓存，后续任务恢复。 |
 | A11 | `PASS` | 重复 close/free 幂等，JNI registry 对未知/已释放 handle 忽略重复 free。 |
 | A12 | `PASS` | 新 runtime 实例从空 snapshot 开始，不复用另一 runtime 的 handle。 |
-| A13 | `REQUIRED` | 已构建真实 native instrumentation，但 `fcf4b0cb` 在安装前断连，未取得连续两次真实识别及 handle 复用结果。 |
+| A13 | `DEFERRED_BY_USER` | 已进入 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`；未取得连续两次真实识别及 handle 复用结果。 |
 | A14 | `PASS`（组件级） | JVM 覆盖合法 cue 时间戳、顺序和跨任务隔离；真机缓存前后 cue 证据随 A13 待补。 |
-| A15 | `REQUIRED` | diagnostics 已实现 load/inference/total、VmRSS/VmHWM、温度、空结果和崩溃字段；因真机断连无实际冷/热数值。 |
+| A15 | `DEFERRED_BY_USER` | diagnostics 已实现 load/inference/total、VmRSS/VmHWM、温度、空结果和崩溃字段；实际真机数据进入最终积压。 |
 | A16 | `PASS`（回归级） | focused 14/14；完整 JVM 169/169；ASR Python 6/6；lint 0 errors/33 warnings；普通 Debug、native-enabled Debug、AndroidTest 构建全部通过。 |
 
 - Native lifecycle：JNI 使用 registry-backed opaque positive handle、显式 create/transcribe/requestAbort/free、native atomic abort、per-session inference mutex；free 等待 active `whisper_full` 临界区退出，取消/失败 handle 立即禁止复用，重复 free 不 double-free。
@@ -85,7 +135,7 @@
 - Secret scan：app APK 0 Key token/0 credential-bearing Bearer；AndroidTest APK 4 个既有允许 synthetic Key token/0 credential-bearing Bearer；本阶段源文件 0/0。
 - 真机在阶段开始时核对为 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36`，但安装前 ADB/USB 断连；三次后续检查均无设备。APK 未安装，session instrumentation 未启动，未读取、复制或提交任何用户媒体。
 - Checkpoint：`3aec389`（`文档(v3-asr)：冻结 Whisper 会话缓存验收矩阵`）。功能提交使用标题 `功能(v3-asr)：实现 Whisper 进程级会话缓存`；不 push。
-- 当前仅允许 Developer 候选 `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`；不得声明物理设备 runtime 已验证、正式 PASS、准确率/WER/CER 或核心推理速度提升。
+- Brain 已正式接受 `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`；A13/A15 进入最终真机验证积压。不得声明物理设备 runtime 已验证、正式 PASS、准确率/WER/CER 或核心推理速度提升。
 
 ## Historical closed stage: V3-AI-CONTRACT-001 / R1
 

@@ -4,14 +4,27 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-ASR-SESSION-001 / PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`（Developer candidate）
+- Current task: `V3-EDITOR-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `READY_FOR_BRAIN / PHYSICAL_DEVICE_RUNTIME_REQUIRED`
-- Process gate: `V3-ASR-SESSION-001_ACCEPTANCE_MATRIX_FROZEN`
-- Implementation authorization: granted for the bounded Whisper process-level single-model context/session cache, necessary tests and the one authorized physical device
-- Review workflow: Developer has completed component implementation and local verification; Brain retains formal acceptance authority
-- Next permitted action: when only authorized device `fcf4b0cb` is visible again, run the already-built production native/session instrumentation for A13/A15 and return the evidence to Brain; do not start another V3 stage.
+- Current gate: `MATRIX_DEFINED / CHECKPOINT_REQUIRED_BEFORE_IMPLEMENTATION`
+- Process gate: `V3-EDITOR-001_ACCEPTANCE_MATRIX_FROZEN`
+- Implementation authorization: granted for the bounded editor interaction, layout/style model, archive migration, shared Compose/ASS resolver, tests and simulator verification
+- Review workflow: Brain formally accepted the ASR component verdict; Developer may return only an editor candidate result
+- Next permitted action: create the four-document checkpoint, freeze shared editor interfaces/file ownership, then implement E01–E18 without any physical-device operation.
+
+## FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG
+
+- Policy: no device connection, install, ADB wait/poll, or physical instrumentation until the user explicitly says “开始真机验证”. Device absence does not block component stages and must never be replaced with inferred data.
+- ASR A13: real native consecutive recognition, cold/hot execution and handle reuse remain unverified.
+- ASR A15: real cold/hot context load, inference, total, peak RSS, temperature, empty-result and crash data remain unverified.
+- Editor physical UI verification will be appended after component implementation; simulator/JVM/build/static evidence remains allowed now.
+
+## Current V3-EDITOR-001 matrix summary
+
+- E01–E18 are frozen in `docs/CURRENT_TASK.md`: manual editor entry, success/failure gating, navigation stability, editor-only cue list, normalized project layout, default/override style inheritance, V2 migration, V3 archive round-trip, shared Compose/ASS resolution, invalid-data safety and regression coverage.
+- Highest result with complete component and simulator evidence is `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`.
+- Missing shared Compose/ASS integration is `PARTIAL_PASS / EDITOR_MODEL_VERIFIED / RENDER_INTEGRATION_REQUIRED`; unsafe V2 migration is `BLOCKED / PROJECT_MIGRATION_SAFETY_REQUIRED`.
 
 ## Current V3-ASR-SESSION-001 matrix summary
 
@@ -30,7 +43,7 @@
 - Focused runtime: 14 passed. Full JVM: 169 passed, 0 failures/errors/skipped. ASR Python: 6 passed. Lint: 0 errors/33 warnings. Normal Debug, native-enabled Debug for arm64-v8a+x86_64, and AndroidTest builds passed.
 - App APK is 383,030,793 bytes; AndroidTest APK is 118,877 bytes. Secret scan found 0 app Key tokens, 4 existing synthetic AndroidTest tokens, 0 credential-bearing Bearer values and 0 stage-source credential tokens.
 - A01–A12 pass at component level; A14 and A16 pass at component/regression level. A13 and A15 remain required because the authorized device disconnected before install and stayed absent through three checks. No device run or performance numbers are claimed.
-- Checkpoint is `3aec389`. Current candidate is `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`; not a Brain verdict or formal product PASS.
+- Checkpoint is `3aec389`. Brain formally accepted `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`; A13/A15 are in the final physical-device backlog and no physical runtime claim is made.
 
 ## Current R1 live-key evidence
 
@@ -125,8 +138,8 @@
 | V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
 | V3-DEC-001 | `PASS` |
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
-| V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`（Developer candidate） |
-| V3-EDITOR-001 | `PLANNED` |
+| V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
+| V3-EDITOR-001 | `MATRIX_DEFINED / IN_PROGRESS` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `LIVE_API_DEFERRED` |
