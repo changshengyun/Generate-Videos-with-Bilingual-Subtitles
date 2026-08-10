@@ -18,7 +18,7 @@
 - Checkpoint `bbb9761` froze the delta matrix and captured three expected old-implementation failures: delete-after-validation write-back, swallowed delete failure and plaintext decrypt during status/cancel.
 - Focused R1 JVM: 24 passed. Full JVM: 145 passed, 0 failed, 0 skipped. ASR baseline script: 6 passed.
 - Lint, normal Debug, native-enabled Debug and AndroidTest APK builds passed. `:app:assembleNativeDebug` remains absent; the configured native path is `-PenableWhisperNative=true :app:assembleDebug`.
-- Production Keystore instrumentation passed on the existing `Pixel_8` emulator (`emulator-5554`, `sdk_gphone64_x86_64`, API 36): AES-256-GCM, 12-byte IV, restart recovery, distinct IVs, corruption/alias-loss `NEEDS_REENTRY`, re-entry and verified record+alias deletion.
+- Production Keystore instrumentation passed on the existing `Pixel_8` emulator (`emulator-5554`, `sdk_gphone64_x86_64`, API 36): AES-256-GCM, 12-byte IV, restart recovery, distinct IVs, corruption/alias-loss `NEEDS_REENTRY`, re-entry, visible sanitized delete failure and verified record+alias deletion.
 - ViewModel cancellation passed with a suspended probe: Job cancelled and joined, write count 0 after release, final persisted/UI state `UNCONFIGURED`.
 - Status/cancel do not call plaintext-returning decrypt; only `withDecryptedKey` crosses that boundary. Compose runtime proof covers password semantics, last-four mask, non-empty masked screenshot, validating cancel and input clear.
 - Secret scan found no real key, credential-bearing Authorization header, lyrics body or private runtime path in the app/debug AndroidTest APKs. Only synthetic sentinels and test-owned alias/record names were used.

@@ -160,6 +160,26 @@ class LocalAiInstrumentation : Instrumentation() {
                 "Re-entry did not create a replacement alias."
             }
 
+            val deleteBlocker = File(recordFile, "blocker")
+            check(recordFile.delete() && recordFile.mkdir()) { "Could not create the test-owned delete blocker." }
+            deleteBlocker.writeBytes(byteArrayOf(1))
+            try {
+                val deleteFailure = runCatching { manager.delete() }.exceptionOrNull()
+                check(deleteFailure != null) { "Production delete failure was reported as success." }
+                val renderedFailure = deleteFailure.stackTraceToString()
+                check(!renderedFailure.contains(BYOK_SENTINEL_FOUR) && !renderedFailure.contains(recordFile.path)) {
+                    "Production delete failure exposed secret or storage path details."
+                }
+                check(manager.status().state == DeepSeekKeyState.NEEDS_REENTRY) {
+                    "Production delete failure did not leave a deterministic safe state."
+                }
+            } finally {
+                deleteBlocker.delete()
+                recordFile.delete()
+            }
+            check(manager.validateAndSave(BYOK_SENTINEL_FOUR).state == DeepSeekKeyState.CONFIGURED) {
+                "Could not restore the test-owned record after delete-failure coverage."
+            }
             val deleted = manager.delete()
             check(deleted.state == DeepSeekKeyState.UNCONFIGURED) { "Production delete did not return UNCONFIGURED." }
             check(!recordFile.exists()) { "Production delete left the test-owned record." }
@@ -183,6 +203,7 @@ class LocalAiInstrumentation : Instrumentation() {
             results.putString("byokCorruption", "NEEDS_REENTRY/recovered")
             results.putString("byokAliasLoss", "NEEDS_REENTRY/recovered")
             results.putString("byokDelete", "record-and-alias-absent")
+            results.putString("byokDeleteFailure", "visible-sanitized-NEEDS_REENTRY")
         } finally {
             runCatching { store.delete() }
             runCatching { recordFile.delete() }

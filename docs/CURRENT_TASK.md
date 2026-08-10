@@ -28,7 +28,7 @@
 - Checkpoint: `bbb9761`；旧实现红线基线 6 项中 R1-R03、R1-R04、R1-R05 共 3 项失败，分别证明删除后写回、删除吞错和 status/cancel 明文解密缺口。
 - R1 focused JVM：24 tests passed；完整 `:app:testDebugUnitTest`：145 tests、0 failures、0 skipped；`python tools\asr_evaluate_test.py`：6 tests passed。
 - `:app:lintDebug`、`:app:assembleDebug`、`-PenableWhisperNative=true :app:assembleDebug`、`:app:assembleDebugAndroidTest` 全部通过；native build 的 NDK strip permission warning 未阻止构建。
-- production `AndroidKeystoreDeepSeekKeyStore` instrumentation 在既有 `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` 通过：AndroidKeyStore AES-256-GCM、12-byte IV、106-byte test-owned `noBackupFilesDir` record、重启恢复、IV 轮换、ciphertext corruption、alias loss、re-entry 与 delete 均通过。
+- production `AndroidKeystoreDeepSeekKeyStore` instrumentation 在既有 `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` 通过：AndroidKeyStore AES-256-GCM、12-byte IV、106-byte test-owned `noBackupFilesDir` record、重启恢复、IV 轮换、ciphertext corruption、alias loss、re-entry、可见且脱敏的删除失败与最终 delete 均通过。
 - ViewModel 取消证据：validation Job 已 cancel-and-join，probe 已进入后被取消，释放 probe 后 write count 仍为 0，最终为 `UNCONFIGURED`。
 - `status()` 与 `cancelInput()` 只调用不返回明文的 health 接口；JVM decrypt count 为 0；只有 `withDecryptedKey` 调用返回完整 Key 的 `decrypt()`，对应 decrypt count 为 1。
 - Compose instrumentation：密码 semantics、仅末四位掩码、非空掩码截图、验证中真实取消入口及取消后输入清空均通过；UI semantics 未出现完整 synthetic sentinel。
