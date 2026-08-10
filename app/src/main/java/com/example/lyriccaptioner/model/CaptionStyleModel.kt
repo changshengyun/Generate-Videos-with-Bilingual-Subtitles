@@ -33,6 +33,57 @@ data class CaptionLayout(
     }
 }
 
+/**
+ * Optional per-cue placement changes.  Null fields inherit the project layout;
+ * a non-null field replaces only that coordinate for the cue.
+ */
+data class CaptionLayoutOverride(
+    val xRatio: Float? = null,
+    val yRatio: Float? = null,
+    val widthRatio: Float? = null,
+) {
+    init {
+        xRatio?.let {
+            require(it.isFinite() && it in 0f..1f) {
+                "Caption layout override xRatio must be normalized"
+            }
+        }
+        yRatio?.let {
+            require(it.isFinite() && it in 0f..1f) {
+                "Caption layout override yRatio must be normalized"
+            }
+        }
+        widthRatio?.let {
+            require(it.isFinite() && it > 0f && it <= 1f) {
+                "Caption layout override widthRatio must be normalized and positive"
+            }
+        }
+    }
+
+    val isEmpty: Boolean
+        get() = xRatio == null && yRatio == null && widthRatio == null
+}
+
+/** Resolve a cue placement while retaining the project layout as the fallback. */
+fun resolveCaptionLayout(
+    defaultLayout: CaptionLayout,
+    override: CaptionLayoutOverride?,
+): CaptionLayout {
+    val safeDefault = CaptionLayout(defaultLayout.xRatio, defaultLayout.yRatio, defaultLayout.widthRatio)
+    if (override == null || override.isEmpty) return safeDefault
+    return CaptionLayout(
+        xRatio = override.xRatio ?: safeDefault.xRatio,
+        yRatio = override.yRatio ?: safeDefault.yRatio,
+        widthRatio = override.widthRatio ?: safeDefault.widthRatio,
+    )
+}
+
+fun CaptionLayoutOverride.validated(): CaptionLayoutOverride = CaptionLayoutOverride(
+    xRatio = xRatio,
+    yRatio = yRatio,
+    widthRatio = widthRatio,
+)
+
 data class DefaultCaptionStyle(
     val fontSizeSp: Int = 24,
     val primaryColorHex: String = "#FFFFFF",

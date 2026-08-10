@@ -4,6 +4,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.ResolvedCaptionStyle
+import com.example.lyriccaptioner.model.resolveCaptionLayout
 import com.example.lyriccaptioner.model.resolveCaptionStyle
 
 data class ResolvedCaptionRender(
@@ -20,7 +21,7 @@ object CaptionRenderResolver {
         defaultStyle: DefaultCaptionStyle,
     ): ResolvedCaptionRender = ResolvedCaptionRender(
         caption = caption,
-        layout = layout,
+        layout = resolveCaptionLayout(layout, caption.layoutOverride),
         style = resolveCaptionStyle(defaultStyle, caption.styleOverride),
     )
 

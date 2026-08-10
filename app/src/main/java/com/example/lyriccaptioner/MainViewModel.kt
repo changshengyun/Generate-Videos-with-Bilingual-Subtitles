@@ -12,6 +12,7 @@ import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.CueEditingPolicy
@@ -800,6 +801,62 @@ class MainViewModel(
         }
     }
 
+    /** Cue-card API: every write is explicitly bound to the card's stable cue id. */
+    fun updateCueFontSize(cueId: String, delta: Int) = updateCueStyle(cueId) { cue, override ->
+        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+        override.copy(fontSizeSp = (resolved.fontSizeSp + delta).coerceIn(14, 48))
+    }
+
+    fun updateCueEnglishColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->
+        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+        override.copy(primaryColorHex = normalizeSubtitleColor(colorHex, resolved.primaryColorHex))
+    }
+
+    fun updateCueChineseColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->
+        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+        override.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, resolved.secondaryColorHex))
+    }
+
+    fun updateCueOutlineColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->
+        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+        override.copy(outlineColorHex = normalizeSubtitleColor(colorHex, resolved.outlineColorHex))
+    }
+
+    fun updateCueFontFamily(cueId: String, fontFamily: String) = updateCueStyle(cueId) { cue, override ->
+        val supported = setOf(SUBTITLE_FONT_SANS, SUBTITLE_FONT_SERIF, SUBTITLE_FONT_MONO)
+        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+        override.copy(fontFamily = fontFamily.takeIf { it in supported } ?: resolved.fontFamily)
+    }
+
+    fun toggleCueBold(cueId: String) = updateCueStyle(cueId) { cue, override ->
+        override.copy(bold = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).bold)
+    }
+
+    fun toggleCueItalic(cueId: String) = updateCueStyle(cueId) { cue, override ->
+        override.copy(italic = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).italic)
+    }
+
+    fun updateCueAlignment(cueId: String, alignment: CaptionAlignment) =
+        updateCueStyle(cueId) { _, override -> override.copy(alignment = alignment) }
+
+    fun updateCuePosition(cueId: String, delta: Int) {
+        val current = state.value
+        val cue = current.captions.firstOrNull { it.id == cueId } ?: return
+        val resolved = com.example.lyriccaptioner.model.resolveCaptionLayout(
+            current.captionLayout,
+            cue.layoutOverride,
+        )
+        val nextY = (resolved.yRatio - delta / 100f).coerceIn(0f, 1f)
+        updateCue(cueId) { existing ->
+            val next = (existing.layoutOverride ?: CaptionLayoutOverride()).copy(yRatio = nextY)
+            existing.copy(layoutOverride = next.takeUnless { it.isEmpty })
+        }
+    }
+
+    fun clearCueStyleOverride(cueId: String) {
+        updateCue(cueId) { it.copy(styleOverride = null, layoutOverride = null) }
+    }
+
     fun updateSelectedCueEnglishColor(colorHex: String) {
         updateSelectedCueStyle { cue, override ->
             val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
@@ -1055,6 +1112,15 @@ class MainViewModel(
     ) {
         val selectedId = state.value.selectedCaptionId ?: return
         updateCue(selectedId) { cue ->
+            cue.copy(styleOverride = transform(cue, cue.styleOverride ?: CaptionStyleOverride()))
+        }
+    }
+
+    private fun updateCueStyle(
+        cueId: String,
+        transform: (CaptionCue, CaptionStyleOverride) -> CaptionStyleOverride,
+    ) {
+        updateCue(cueId) { cue ->
             cue.copy(styleOverride = transform(cue, cue.styleOverride ?: CaptionStyleOverride()))
         }
     }

@@ -18,6 +18,20 @@ class CaptionStyleModelTest {
     }
 
     @Test
+    fun cueLayoutOverrideInheritsUnsetCoordinatesAndRejectsOutOfBoundsResolution() {
+        val project = CaptionLayout(0.1f, 0.8f, 0.7f)
+        val override = CaptionLayoutOverride(xRatio = 0.2f, widthRatio = 0.5f)
+
+        assertEquals(CaptionLayout(0.2f, 0.8f, 0.5f), resolveCaptionLayout(project, override))
+        assertThrows(IllegalArgumentException::class.java) {
+            resolveCaptionLayout(project, CaptionLayoutOverride(xRatio = 0.8f, widthRatio = 0.5f))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CaptionLayoutOverride(yRatio = Float.NaN)
+        }
+    }
+
+    @Test
     fun defaultStyleAppliesWhenCueHasNoOverride() {
         val default = DefaultCaptionStyle(fontSizeSp = 30, bold = true, alignment = CaptionAlignment.LEFT)
 

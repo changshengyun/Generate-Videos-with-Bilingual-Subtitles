@@ -4,14 +4,22 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-EDITOR-002 / COMPONENT_VERIFIED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_MATRIX_DEFINED / IN_PROGRESS`
-- Process gate: `V3_EDITOR_002_IN_PROGRESS`
+- Current gate: `V3_EDITOR_002_COMPONENT_VERIFIED / IN_PROGRESS`
+- Process gate: `V3_EDITOR_002_COMPONENT_VERIFIED`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: execute `V3-EDITOR-002` from `docs/CURRENT_TASK.md`; DeepSeek subtitle enhancement remains a separate stage.
+- Next permitted action: Brain adjudication of the V3-EDITOR-002 candidate; do not start DeepSeek subtitle enhancement, Provider or Prompt work from this stage.
+
+## Current V3-EDITOR-002 implementation evidence
+
+- S01-S13 component evidence passes: per-cue expandable style/position controls are cue-id scoped; default style and project layout remain internal fallbacks; clear override restores inherited values.
+- Archive is v5 with v1-v4 safe migration and v5 style/layout round-trip. Compose and ASS consume the same resolved cue style/layout; focused isolation and invalid-layout tests pass.
+- Verification: focused editor/data/resolver JVM 34/34; full `testDebugUnitTest` 198/198; ASR Python 6/6; lint 0 errors/33 warnings; ordinary Debug, native-enabled Debug and AndroidTest builds pass.
+- Physical UI evidence is intentionally waived for this stage. No DeepSeek Provider, Prompt, real Key, online lyrics or formal product PASS is claimed.
+- Developer candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns final adjudication.
 
 ## Current product findings (2026-08-10)
 
@@ -148,7 +156,7 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `MATRIX_DEFINED / READY_FOR_DEVELOPER` |
+| V3-EDITOR-002 | `COMPONENT_VERIFIED / IN_PROGRESS` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |

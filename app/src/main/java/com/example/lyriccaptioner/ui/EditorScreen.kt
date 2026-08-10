@@ -93,6 +93,7 @@ import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
 import com.example.lyriccaptioner.model.VideoImportMode
+import com.example.lyriccaptioner.model.resolveCaptionLayout
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.CaptionRenderResolver
 import com.example.lyriccaptioner.processing.ResolvedCaptionRender
@@ -337,35 +338,10 @@ fun EditorScreen(viewModel: MainViewModel) {
                             SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
                             SecondaryAction("粘贴歌词", state.videoUri != null && !state.isWorking) { showPasteLyrics = true }
                         }
-                        DefaultCaptionStyleControls(
-                            style = state.defaultCaptionStyle,
-                            layout = state.captionLayout,
-                            onFontSmaller = { viewModel.updateFontSize(-2) },
-                            onFontLarger = { viewModel.updateFontSize(2) },
-                            onMarginLower = { viewModel.updateBottomMargin(-2) },
-                            onMarginHigher = { viewModel.updateBottomMargin(2) },
-                            onEnglishColorChanged = viewModel::updateEnglishColor,
-                            onChineseColorChanged = viewModel::updateChineseColor,
-                            onOutlineColorChanged = viewModel::updateOutlineColor,
-                            onFontFamilyChanged = viewModel::updateFontFamily,
-                            onToggleBold = viewModel::toggleDefaultBold,
-                            onToggleItalic = viewModel::toggleDefaultItalic,
-                            onAlignmentChanged = viewModel::updateDefaultAlignment,
-                        )
-                        SelectedCueStyleControls(
-                            cue = state.captions.firstOrNull { it.id == state.selectedCaptionId },
-                            defaultStyle = state.defaultCaptionStyle,
-                            enabled = !state.isWorking,
-                            onFontSmaller = { viewModel.updateSelectedCueFontSize(-2) },
-                            onFontLarger = { viewModel.updateSelectedCueFontSize(2) },
-                            onEnglishColorChanged = viewModel::updateSelectedCueEnglishColor,
-                            onChineseColorChanged = viewModel::updateSelectedCueChineseColor,
-                            onOutlineColorChanged = viewModel::updateSelectedCueOutlineColor,
-                            onFontFamilyChanged = viewModel::updateSelectedCueFontFamily,
-                            onToggleBold = viewModel::toggleSelectedCueBold,
-                            onToggleItalic = viewModel::toggleSelectedCueItalic,
-                            onAlignmentChanged = viewModel::updateSelectedCueAlignment,
-                            onClearOverride = viewModel::clearSelectedCueStyleOverride,
+                        Text(
+                            text = "每条字幕的样式和位置都在字幕卡片中单独设置",
+                            color = Color(0xFF9EA5B1),
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     else -> WorkflowPanel(title = "导出", subtitle = "保存项目、导出视频或分享成品") {
@@ -402,6 +378,8 @@ fun EditorScreen(viewModel: MainViewModel) {
                 CaptionList(
                     captions = state.captions,
                     selectedId = state.selectedCaptionId,
+                    defaultStyle = state.defaultCaptionStyle,
+                    captionLayout = state.captionLayout,
                     onSelect = viewModel::selectCue,
                     onEnglishChanged = viewModel::updateEnglishText,
                     onChineseChanged = viewModel::updateChineseText,
@@ -410,6 +388,17 @@ fun EditorScreen(viewModel: MainViewModel) {
                     onShiftEnd = viewModel::shiftCueEnd,
                     onDelete = viewModel::deleteCaption,
                     onConfirm = viewModel::confirmCue,
+                    onFontSmaller = { cueId, delta -> viewModel.updateCueFontSize(cueId, delta) },
+                    onFontLarger = { cueId, delta -> viewModel.updateCueFontSize(cueId, delta) },
+                    onEnglishColorChanged = viewModel::updateCueEnglishColor,
+                    onChineseColorChanged = viewModel::updateCueChineseColor,
+                    onOutlineColorChanged = viewModel::updateCueOutlineColor,
+                    onFontFamilyChanged = viewModel::updateCueFontFamily,
+                    onToggleBold = { cueId -> viewModel.toggleCueBold(cueId) },
+                    onToggleItalic = { cueId -> viewModel.toggleCueItalic(cueId) },
+                    onAlignmentChanged = viewModel::updateCueAlignment,
+                    onPositionChanged = viewModel::updateCuePosition,
+                    onClearOverride = viewModel::clearCueStyleOverride,
                     enabled = !state.isWorking,
                     editorSnapshot = editorSnapshot,
                     modifier = Modifier.weight(0.28f),
@@ -931,6 +920,90 @@ private fun DefaultCaptionStyleControls(
             SubtitleColorPalette("英文", style.primaryColorHex, onColorSelected = onEnglishColorChanged)
             SubtitleColorPalette("中文", style.secondaryColorHex, onColorSelected = onChineseColorChanged)
             SubtitleColorPalette("描边", style.outlineColorHex, onColorSelected = onOutlineColorChanged)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CueStyleControls(
+    cue: CaptionCue,
+    defaultStyle: DefaultCaptionStyle,
+    captionLayout: CaptionLayout,
+    enabled: Boolean,
+    onFontSmaller: (Int) -> Unit,
+    onFontLarger: (Int) -> Unit,
+    onEnglishColorChanged: (String) -> Unit,
+    onChineseColorChanged: (String) -> Unit,
+    onOutlineColorChanged: (String) -> Unit,
+    onFontFamilyChanged: (String) -> Unit,
+    onToggleBold: () -> Unit,
+    onToggleItalic: () -> Unit,
+    onAlignmentChanged: (CaptionAlignment) -> Unit,
+    onPositionChanged: (Int) -> Unit,
+    onClearOverride: () -> Unit,
+) {
+    val uiState = captionStyleUiState(defaultStyle, cue)
+    val style = uiState.resolved
+    val resolvedLayout = resolveCaptionLayout(captionLayout, cue.layoutOverride)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "cue_style_controls:${cue.id}" },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(1.dp)
+                .clearAndSetSemantics {
+                    contentDescription =
+                        "cue_style_state:${cue.id}:${uiState.hasOverride}:${style.primaryColorHex}:" +
+                            "${style.secondaryColorHex}:${style.outlineColorHex}:${style.fontFamily}:" +
+                            "${style.fontSizeSp}:${style.bold}:${style.italic}:${style.alignment}:" +
+                            "${resolvedLayout.xRatio}:${resolvedLayout.yRatio}:${resolvedLayout.widthRatio}"
+                },
+        )
+        Text(
+            text = if (uiState.hasOverride) "已覆盖，未设置字段继承项目默认" else "继承项目默认样式",
+            color = Color(0xFF9EA5B1),
+            style = MaterialTheme.typography.labelMedium,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            TextButton(enabled = enabled, onClick = { onFontSmaller(-2) }) { Text("A-") }
+            TextButton(enabled = enabled, onClick = { onFontLarger(2) }) { Text("A+") }
+            Text("当前 ${style.fontSizeSp}sp", color = Color(0xFF9EA5B1))
+            TextButton(enabled = enabled, onClick = onToggleBold) { Text(if (style.bold) "取消粗体" else "粗体") }
+            TextButton(enabled = enabled, onClick = onToggleItalic) { Text(if (style.italic) "取消斜体" else "斜体") }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("对齐", style = MaterialTheme.typography.labelMedium)
+            CaptionAlignment.entries.forEach { alignment ->
+                TextButton(enabled = enabled, onClick = { onAlignmentChanged(alignment) }) {
+                    Text(alignmentLabel(alignment))
+                }
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("字体", style = MaterialTheme.typography.labelMedium)
+            TextButton(enabled = enabled, onClick = { onFontFamilyChanged(SUBTITLE_FONT_SANS) }) { Text("无衬线") }
+            TextButton(enabled = enabled, onClick = { onFontFamilyChanged(SUBTITLE_FONT_SERIF) }) { Text("衬线") }
+            TextButton(enabled = enabled, onClick = { onFontFamilyChanged(SUBTITLE_FONT_MONO) }) { Text("等宽") }
+        }
+        val positionPercent = (resolvedLayout.yRatio * 100f).toInt()
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("位置 ${positionPercent}%", style = MaterialTheme.typography.labelMedium)
+            TextButton(enabled = enabled, onClick = { onPositionChanged(-2) }) { Text("下移") }
+            TextButton(enabled = enabled, onClick = { onPositionChanged(2) }) { Text("上移") }
+        }
+        SubtitleColorPalette("英文", style.primaryColorHex, enabled, onEnglishColorChanged)
+        SubtitleColorPalette("中文", style.secondaryColorHex, enabled, onChineseColorChanged)
+        SubtitleColorPalette("描边", style.outlineColorHex, enabled, onOutlineColorChanged)
+        OutlinedButton(
+            modifier = Modifier.semantics { contentDescription = "clear_cue_style_override:${cue.id}" },
+            enabled = enabled && uiState.hasOverride,
+            onClick = onClearOverride,
+        ) {
+            Text("清除单条覆盖")
         }
     }
 }
@@ -1487,6 +1560,8 @@ private fun parseComposeColor(value: String, fallback: Color): Color {
 private fun CaptionList(
     captions: List<CaptionCue>,
     selectedId: String?,
+    defaultStyle: DefaultCaptionStyle,
+    captionLayout: CaptionLayout,
     onSelect: (String) -> Unit,
     onEnglishChanged: (String, String) -> Unit,
     onChineseChanged: (String, String) -> Unit,
@@ -1495,6 +1570,17 @@ private fun CaptionList(
     onShiftEnd: (String, Long) -> Unit,
     onDelete: (String) -> Unit,
     onConfirm: (String) -> Unit,
+    onFontSmaller: (String, Int) -> Unit,
+    onFontLarger: (String, Int) -> Unit,
+    onEnglishColorChanged: (String, String) -> Unit,
+    onChineseColorChanged: (String, String) -> Unit,
+    onOutlineColorChanged: (String, String) -> Unit,
+    onFontFamilyChanged: (String, String) -> Unit,
+    onToggleBold: (String) -> Unit,
+    onToggleItalic: (String) -> Unit,
+    onAlignmentChanged: (String, CaptionAlignment) -> Unit,
+    onPositionChanged: (String, Int) -> Unit,
+    onClearOverride: (String) -> Unit,
     enabled: Boolean,
     editorSnapshot: String,
     modifier: Modifier = Modifier,
@@ -1551,6 +1637,19 @@ private fun CaptionList(
                         onShiftEnd = { onShiftEnd(cue.id, it) },
                         onDelete = { onDelete(cue.id) },
                         onConfirm = { onConfirm(cue.id) },
+                        defaultStyle = defaultStyle,
+                        captionLayout = captionLayout,
+                        onFontSmaller = { delta -> onFontSmaller(cue.id, delta) },
+                        onFontLarger = { delta -> onFontLarger(cue.id, delta) },
+                        onEnglishColorChanged = { color -> onEnglishColorChanged(cue.id, color) },
+                        onChineseColorChanged = { color -> onChineseColorChanged(cue.id, color) },
+                        onOutlineColorChanged = { color -> onOutlineColorChanged(cue.id, color) },
+                        onFontFamilyChanged = { font -> onFontFamilyChanged(cue.id, font) },
+                        onToggleBold = { onToggleBold(cue.id) },
+                        onToggleItalic = { onToggleItalic(cue.id) },
+                        onAlignmentChanged = { alignment -> onAlignmentChanged(cue.id, alignment) },
+                        onPositionChanged = { delta -> onPositionChanged(cue.id, delta) },
+                        onClearOverride = { onClearOverride(cue.id) },
                     )
                 }
             }
@@ -1564,6 +1663,8 @@ private fun CaptionCard(
     cue: CaptionCue,
     selected: Boolean,
     enabled: Boolean,
+    defaultStyle: DefaultCaptionStyle,
+    captionLayout: CaptionLayout,
     onSelect: () -> Unit,
     onEnglishChanged: (String) -> Unit,
     onChineseChanged: (String) -> Unit,
@@ -1572,7 +1673,19 @@ private fun CaptionCard(
     onShiftEnd: (Long) -> Unit,
     onDelete: () -> Unit,
     onConfirm: () -> Unit,
+    onFontSmaller: (Int) -> Unit,
+    onFontLarger: (Int) -> Unit,
+    onEnglishColorChanged: (String) -> Unit,
+    onChineseColorChanged: (String) -> Unit,
+    onOutlineColorChanged: (String) -> Unit,
+    onFontFamilyChanged: (String) -> Unit,
+    onToggleBold: () -> Unit,
+    onToggleItalic: () -> Unit,
+    onAlignmentChanged: (CaptionAlignment) -> Unit,
+    onPositionChanged: (Int) -> Unit,
+    onClearOverride: () -> Unit,
 ) {
+    var styleExpanded by remember(cue.id) { mutableStateOf(false) }
     val containerColor = when {
         cue.confirmed -> Color(0xFF1C3328)
         cue.needsReview -> Color(0xFF3A3020)
@@ -1583,6 +1696,7 @@ private fun CaptionCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics { contentDescription = "caption_card:${cue.id}" }
             .clickable(enabled = enabled, onClick = onSelect),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
@@ -1604,6 +1718,13 @@ private fun CaptionCard(
                     text = "置信度 ${(cue.confidence * 100).toInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                 )
+            }
+            TextButton(
+                modifier = Modifier.semantics { contentDescription = "cue_style_toggle:${cue.id}" },
+                enabled = enabled,
+                onClick = { styleExpanded = !styleExpanded },
+            ) {
+                Text(if (styleExpanded) "收起样式" else "样式/位置")
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TimingControl(
@@ -1655,6 +1776,25 @@ private fun CaptionCard(
                     label = { Text("中文字幕") },
                 singleLine = false,
             )
+            if (styleExpanded) {
+                CueStyleControls(
+                    cue = cue,
+                    defaultStyle = defaultStyle,
+                    captionLayout = captionLayout,
+                    enabled = enabled,
+                    onFontSmaller = onFontSmaller,
+                    onFontLarger = onFontLarger,
+                    onEnglishColorChanged = onEnglishColorChanged,
+                    onChineseColorChanged = onChineseColorChanged,
+                    onOutlineColorChanged = onOutlineColorChanged,
+                    onFontFamilyChanged = onFontFamilyChanged,
+                    onToggleBold = onToggleBold,
+                    onToggleItalic = onToggleItalic,
+                    onAlignmentChanged = onAlignmentChanged,
+                    onPositionChanged = onPositionChanged,
+                    onClearOverride = onClearOverride,
+                )
+            }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -4,6 +4,7 @@ import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionProcessingSnapshot
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
@@ -18,6 +19,7 @@ import com.example.lyriccaptioner.model.SubtitleStyle
 import com.example.lyriccaptioner.model.isValidSubtitleColorHex
 import com.example.lyriccaptioner.model.toCaptionLayout
 import com.example.lyriccaptioner.model.toDefaultCaptionStyle
+import com.example.lyriccaptioner.model.resolveCaptionLayout
 import com.example.lyriccaptioner.model.validated
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementErrorKind
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
@@ -32,7 +34,7 @@ class ProjectArchive(
 ) {
     fun write(snapshot: ProjectSnapshot): String = buildString {
         val defaultStyle = snapshot.defaultCaptionStyle.validated()
-        appendLine(MAGIC_V4)
+        appendLine(MAGIC_V5)
         appendField("videoUri", snapshot.videoUri?.let(::encode))
         appendField("videoDurationMs", snapshot.videoDurationMs?.toString())
         appendField("outputName", encode(snapshot.exportProfile.outputName))
@@ -54,7 +56,7 @@ class ProjectArchive(
         appendField("defaultBold", defaultStyle.bold.toString())
         appendField("defaultItalic", defaultStyle.italic.toString())
         appendField("defaultAlignment", defaultStyle.alignment.name)
-        appendField("captions", encodeCaptionsV4(snapshot.captions))
+        appendField("captions", encodeCaptionsV5(snapshot.captions))
         appendField("captionState", snapshot.captionProcessing.state.name)
         appendField("captionSource", snapshot.captionProcessing.source.name)
         appendField("captionProcessingVersion", snapshot.captionProcessing.processingVersion?.let(::encode))
@@ -74,6 +76,7 @@ class ProjectArchive(
             header == MAGIC_V2 -> readV2(normalized)
             header == MAGIC_V3 -> readV3(normalized)
             header == MAGIC_V4 -> readV4(normalized)
+            header == MAGIC_V5 -> readV5(normalized)
             header.startsWith("# LyricCaptionerProject v") ->
                 throw UnsupportedProjectArchiveVersionException("Unsupported project archive version.")
             else -> throw ProjectArchiveFormatException("Invalid project archive magic.")
@@ -189,6 +192,33 @@ class ProjectArchive(
         )
     }
 
+    private fun readV5(raw: String): ProjectSnapshot {
+        val (values, _) = splitHeader(raw)
+        val legacyStyle = SubtitleStyle(
+            fontSizeSp = values.optionalInt("fontSizeSp", 24),
+            bottomMarginPercent = values.optionalInt("bottomMarginPercent", 12),
+            primaryColorHex = values.decodeOptional("primaryColorHex", "#FFFFFF"),
+            secondaryColorHex = values.decodeOptional("secondaryColorHex", "#F4E7A1"),
+            outlineColorHex = values.decodeOptional("outlineColorHex", "#000000"),
+            fontFamily = values.decodeOptional("fontFamily", SUBTITLE_FONT_SANS),
+        ).validated()
+        val profile = ExportProfile(
+            outputName = values.decodeOptional("outputName", "lyric-captioner-output.mp4"),
+            subtitleStyle = legacyStyle,
+            burnInSubtitles = values.optionalBoolean("burnInSubtitles", true),
+        )
+        val projectLayout = values.readCaptionLayout()
+        return ProjectSnapshot(
+            videoUri = values.decodeOptionalNullable("videoUri"),
+            videoDurationMs = values.optionalLong("videoDurationMs", null),
+            captions = decodeCaptionsV5(values["captions"], projectLayout),
+            exportProfile = profile,
+            captionProcessing = values.readCaptionProcessing(),
+            captionLayout = projectLayout,
+            defaultCaptionStyle = values.readDefaultCaptionStyle(),
+        )
+    }
+
     private fun splitHeader(raw: String): Pair<Map<String, String>, String> {
         val separator = raw.indexOf("\n\n")
         val headerText = if (separator >= 0) raw.substring(0, separator) else raw
@@ -246,6 +276,33 @@ class ProjectArchive(
         return encode(payload)
     }
 
+    private fun encodeCaptionsV5(captions: List<CaptionCue>): String {
+        val payload = captions.joinToString(RECORD_SEPARATOR) { cue ->
+            val style = cue.styleOverride?.validated()
+            val layout = cue.layoutOverride?.validated()?.takeUnless { it.isEmpty }
+            listOf(
+                encode(cue.id), cue.startMs.toString(), cue.endMs.toString(),
+                encode(cue.english), encode(cue.chinese), cue.confidence.toString(),
+                cue.confirmed.toString(),
+                cue.correctionCandidates.joinToString(CANDIDATE_SEPARATOR, transform = ::encode),
+                (style != null).toString(),
+                style?.fontSizeSp?.toString().orEmpty(),
+                style?.primaryColorHex?.let(::encode).orEmpty(),
+                style?.secondaryColorHex?.let(::encode).orEmpty(),
+                style?.outlineColorHex?.let(::encode).orEmpty(),
+                style?.fontFamily?.let(::encode).orEmpty(),
+                style?.bold?.toString().orEmpty(),
+                style?.italic?.toString().orEmpty(),
+                style?.alignment?.name.orEmpty(),
+                (layout != null).toString(),
+                layout?.xRatio?.toString().orEmpty(),
+                layout?.yRatio?.toString().orEmpty(),
+                layout?.widthRatio?.toString().orEmpty(),
+            ).joinToString(FIELD_SEPARATOR)
+        }
+        return encode(payload)
+    }
+
     private fun decodeCaptions(encoded: String?): List<CaptionCue> {
         if (encoded.isNullOrBlank()) return emptyList()
         val payload = decode(encoded, "captions")
@@ -296,6 +353,53 @@ class ProjectArchive(
         }
     }
 
+    private fun decodeCaptionsV5(
+        encoded: String?,
+        projectLayout: CaptionLayout,
+    ): List<CaptionCue> {
+        if (encoded.isNullOrBlank()) return emptyList()
+        val payload = decode(encoded, "captions")
+        if (payload.isEmpty()) return emptyList()
+        return payload.split(RECORD_SEPARATOR).mapIndexed { index, record ->
+            val fields = record.split(FIELD_SEPARATOR, limit = 21)
+            if (fields.size != 21) throw ProjectArchiveFormatException("Malformed subtitle record $index.")
+            val hasStyle = fields[8].requiredBoolean("caption style override presence")
+            val hasLayout = fields[17].requiredBoolean("caption layout override presence")
+            val style = if (hasStyle) readCaptionStyleOverride(fields, index) else {
+                if (fields.subList(9, 17).any(String::isNotBlank)) {
+                    throw ProjectArchiveFormatException("Caption style override $index is inconsistent.")
+                }
+                null
+            }
+            val layout = if (hasLayout) readCaptionLayoutOverride(fields, index).also {
+                if (it.isEmpty) {
+                    throw ProjectArchiveFormatException("Caption layout override $index is empty.")
+                }
+                runCatching { resolveCaptionLayout(projectLayout, it) }.getOrElse { error ->
+                    throw ProjectArchiveFormatException("Caption layout override $index is out of bounds.", error)
+                }
+            } else {
+                if (fields.subList(18, 21).any(String::isNotBlank)) {
+                    throw ProjectArchiveFormatException("Caption layout override $index is inconsistent.")
+                }
+                null
+            }
+            CaptionCue(
+                id = decode(fields[0], "caption id"),
+                startMs = fields[1].requiredLong("caption startMs"),
+                endMs = fields[2].requiredLong("caption endMs"),
+                english = decode(fields[3], "caption English text"),
+                chinese = decode(fields[4], "caption Chinese text"),
+                confidence = fields[5].requiredFloat("caption confidence"),
+                confirmed = fields[6].requiredBoolean("caption confirmed"),
+                correctionCandidates = if (fields[7].isBlank()) emptyList() else fields[7]
+                    .split(CANDIDATE_SEPARATOR).map { decode(it, "caption correction candidate") },
+                styleOverride = style,
+                layoutOverride = layout,
+            )
+        }
+    }
+
     private fun readCaptionStyleOverride(fields: List<String>, index: Int): CaptionStyleOverride =
         CaptionStyleOverride(
             fontSizeSp = fields[9].optionalStrictFontSize("caption $index override fontSizeSp"),
@@ -307,6 +411,19 @@ class ProjectArchive(
             italic = fields[15].optionalStrictBoolean("caption $index override italic"),
             alignment = fields[16].optionalStrictEnum<CaptionAlignment>("caption $index override alignment"),
         )
+
+    private fun readCaptionLayoutOverride(fields: List<String>, index: Int): CaptionLayoutOverride =
+        try {
+            CaptionLayoutOverride(
+                xRatio = fields[18].optionalStrictFloat("caption $index layout override xRatio"),
+                yRatio = fields[19].optionalStrictFloat("caption $index layout override yRatio"),
+                widthRatio = fields[20].optionalStrictFloat("caption $index layout override widthRatio"),
+            )
+        } catch (error: ProjectArchiveFormatException) {
+            throw error
+        } catch (error: IllegalArgumentException) {
+            throw ProjectArchiveFormatException("Invalid caption layout override $index.", error)
+        }
 
     private fun Map<String, String>.readCaptionLayout(): CaptionLayout {
         val x = optionalFloat("layoutXRatio", CaptionLayout.DEFAULT_X_RATIO)
@@ -416,6 +533,11 @@ class ProjectArchive(
         takeIf(String::isNotBlank)?.let { decode(it, field).requireValidFont(field) }
     private fun String.optionalStrictBoolean(field: String): Boolean? =
         takeIf(String::isNotBlank)?.requiredBoolean(field)
+    private fun String.optionalStrictFloat(field: String): Float? =
+        takeIf(String::isNotBlank)?.let { value ->
+            value.toFloatOrNull()?.takeIf { it.isFinite() }
+                ?: throw ProjectArchiveFormatException("Invalid number for $field.")
+        }
     private inline fun <reified T : Enum<T>> String.optionalStrictEnum(field: String): T? =
         takeIf(String::isNotBlank)?.let { value ->
             runCatching { enumValueOf<T>(value) }.getOrElse {
@@ -444,6 +566,7 @@ class ProjectArchive(
         const val MAGIC_V2 = "# LyricCaptionerProject v2"
         const val MAGIC_V3 = "# LyricCaptionerProject v3"
         const val MAGIC_V4 = "# LyricCaptionerProject v4"
+        const val MAGIC_V5 = "# LyricCaptionerProject v5"
         const val FIELD_SEPARATOR = "\u001F"
         const val RECORD_SEPARATOR = "\u001E"
         const val CANDIDATE_SEPARATOR = ","

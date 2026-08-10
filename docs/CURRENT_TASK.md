@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-EDITOR-002 / COMPONENT_VERIFIED / IN_PROGRESS`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
@@ -13,6 +13,14 @@
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
 - Review workflow: Brain 已根据用户截图和生产代码完成范围复核；Developer 按本矩阵实施并回交候选，不能自验收
 - Next action: 只执行 `V3-EDITOR-002`；真实 DeepSeek 字幕增强及其 system/user prompt 留给单独 `V3-AI-001`
+
+## V3-EDITOR-002 implementation evidence
+
+- S01-S13：组件级通过。独立全局样式面板已从实际编辑页移除；每条字幕卡片提供 cue-id 作用域的可展开样式/位置控件，写操作显式携带 cueId，样式与布局覆盖通过 v5 归档保存并可恢复。
+- S10-S12：`CaptionRenderResolver` 同时供 Compose 预览边界与 ASS 导出；v1-v4 读取保持 layout override 为空并继承历史布局；v5 round-trip、非法/非有限/越界布局拒绝及两条 cue 隔离测试通过。
+- Verification: focused editor/data/resolver JVM 34/34；完整 `testDebugUnitTest` 198/198；`python tools\\asr_evaluate_test.py` 6/6；`lintDebug` 0 errors/33 warnings；`assembleDebug`、`-PenableWhisperNative=true assembleDebug`、`assembleDebugAndroidTest` 均通过。
+- Physical boundary: 本阶段按用户矩阵豁免真机 UI；没有真机、DeepSeek、真实 Key、在线歌词或 Provider/Prompt 证据，不声明正式产品 PASS。
+- Candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，等待 Brain 裁决。
 
 ## V3-EDITOR-002 acceptance matrix
 

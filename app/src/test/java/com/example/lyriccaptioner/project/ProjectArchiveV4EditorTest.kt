@@ -3,6 +3,7 @@ package com.example.lyriccaptioner.project
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.ExportProfile
@@ -37,6 +38,7 @@ class ProjectArchiveV4EditorTest {
                         bold = false,
                         alignment = CaptionAlignment.RIGHT,
                     ),
+                    layoutOverride = CaptionLayoutOverride(xRatio = 0.2f, widthRatio = 0.65f),
                 ),
                 CaptionCue("two", 900, 1_800, "line two", "第二行", 0.8f),
             ),
@@ -57,9 +59,10 @@ class ProjectArchiveV4EditorTest {
         val encoded = archive.write(snapshot)
         val restored = archive.read(encoded)
 
-        assertTrue(encoded.startsWith("# LyricCaptionerProject v4\n"))
+        assertTrue(encoded.startsWith("# LyricCaptionerProject v5\n"))
         assertEquals(snapshot, restored)
         assertNull(restored.captions[1].styleOverride)
+        assertNull(restored.captions[1].layoutOverride)
     }
 
     @Test
@@ -137,6 +140,43 @@ captions=${encode(legacyCaption)}
         assertEquals(cue.chinese, restored.chinese)
         assertEquals(cue.startMs, restored.startMs)
         assertEquals(cue.endMs, restored.endMs)
+    }
+
+    @Test
+    fun v4CueRecordsMigrateWithoutLayoutOverride() {
+        val v4Payload = listOf(
+            encode("legacy"), "100", "900", encode("english"), encode("中文"), "0.9", "true", "",
+            "false", "", "", "", "", "", "", "", "",
+        ).joinToString("\u001F")
+        val raw = """# LyricCaptionerProject v4
+layoutXRatio=0.1
+layoutYRatio=0.8
+layoutWidthRatio=0.7
+captions=${encode(v4Payload)}
+"""
+
+        val restored = archive.read(raw)
+
+        assertNull(restored.captions.single().layoutOverride)
+        assertEquals(0.1f, restored.captionLayout.xRatio)
+    }
+
+    @Test
+    fun invalidV5LayoutOverrideIsRejected() {
+        val snapshot = ProjectSnapshot(
+            videoUri = null,
+            videoDurationMs = 1_000,
+            captions = listOf(CaptionCue("cue", 0, 100, "en", "zh", 0.9f,
+                layoutOverride = CaptionLayoutOverride(xRatio = 0.2f))),
+            exportProfile = ExportProfile(),
+        )
+        val encoded = archive.write(snapshot)
+        assertThrows(ProjectArchiveFormatException::class.java) {
+            archive.read(rewriteCaptions(encoded) { it.replace("0.2", "NaN") })
+        }
+        assertThrows(ProjectArchiveFormatException::class.java) {
+            archive.read(rewriteCaptions(encoded) { it.replace("0.2", "0.8") })
+        }
     }
 
     private fun encode(value: String): String =

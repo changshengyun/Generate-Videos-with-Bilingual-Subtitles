@@ -364,6 +364,8 @@ internal object AssSubtitleWriter {
         layout: CaptionLayout,
         defaultStyle: DefaultCaptionStyle,
     ): String {
+        // Compose preview consumes this same resolved render.  Keep all per-cue style and
+        // placement inheritance above the ASS-specific coordinate conversion boundary.
         val cues = CaptionRenderResolver.resolveAll(captions, layout, defaultStyle)
             .sortedBy { it.caption.startMs }
             .mapIndexedNotNull { index, render ->

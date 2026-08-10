@@ -3,6 +3,7 @@ package com.example.lyriccaptioner.processing
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import org.junit.Assert.assertEquals
@@ -36,7 +37,7 @@ class CaptionRenderResolverTest {
         val render = CaptionRenderResolver.resolve(caption, layout, defaultStyle)
 
         assertSame(caption, render.caption)
-        assertSame(layout, render.layout)
+        assertEquals(layout, render.layout)
         assertEquals(1_234L, render.caption.startMs)
         assertEquals(5_678L, render.caption.endMs)
         assertEquals("Exact English", render.caption.english)
@@ -70,6 +71,49 @@ class CaptionRenderResolverTest {
         assertEquals("#FEDCBA", renders[1].style.primaryColorHex)
         assertEquals(false, renders[1].style.italic)
         assertEquals(renders[0].layout, renders[1].layout)
+    }
+
+    @Test
+    fun resolvesCueLayoutOverrideAndInheritsUnspecifiedProjectCoordinates() {
+        val projectLayout = CaptionLayout(xRatio = 0.1f, yRatio = 0.8f, widthRatio = 0.7f)
+        val caption = cue(id = "placed").copy(
+            layoutOverride = CaptionLayoutOverride(yRatio = 0.25f, widthRatio = 0.5f),
+        )
+
+        val render = CaptionRenderResolver.resolve(
+            caption = caption,
+            layout = projectLayout,
+            defaultStyle = DefaultCaptionStyle(),
+        )
+
+        assertSame(caption, render.caption)
+        assertEquals(0.1f, render.layout.xRatio)
+        assertEquals(0.25f, render.layout.yRatio)
+        assertEquals(0.5f, render.layout.widthRatio)
+    }
+
+    @Test
+    fun resolveAllKeepsCuePlacementAndStyleOverridesIndependent() {
+        val projectLayout = CaptionLayout(xRatio = 0.05f, yRatio = 0.88f, widthRatio = 0.9f)
+        val placed = cue(id = "placed").copy(
+            layoutOverride = CaptionLayoutOverride(xRatio = 0.2f, yRatio = 0.3f, widthRatio = 0.4f),
+        )
+        val styled = cue(
+            id = "styled",
+            styleOverride = CaptionStyleOverride(fontSizeSp = 36, alignment = CaptionAlignment.RIGHT),
+        )
+
+        val renders = CaptionRenderResolver.resolveAll(
+            captions = listOf(placed, styled),
+            layout = projectLayout,
+            defaultStyle = DefaultCaptionStyle(fontSizeSp = 20),
+        )
+
+        assertEquals(CaptionLayout(0.2f, 0.3f, 0.4f), renders[0].layout)
+        assertEquals(20, renders[0].style.fontSizeSp)
+        assertEquals(projectLayout, renders[1].layout)
+        assertEquals(36, renders[1].style.fontSizeSp)
+        assertEquals(CaptionAlignment.RIGHT, renders[1].style.alignment)
     }
 
     @Test

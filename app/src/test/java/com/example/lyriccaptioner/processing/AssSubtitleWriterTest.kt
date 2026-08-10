@@ -2,6 +2,7 @@ package com.example.lyriccaptioner.processing
 
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.SubtitleStyle
@@ -122,5 +123,67 @@ class AssSubtitleWriterTest {
         assertTrue(ass.contains("Style: Cue0000,sans-serif,48,&H00FFFFFF"))
         assertTrue(ass.contains("Dialogue: 0,0:00:12.34,0:00:56.78"))
         assertTrue(ass.contains("  literal \\{text\\}  \\Nline\\Nbreak"))
+    }
+
+    @Test
+    fun writesEachCueUsingTheSameResolvedStyleAndLayoutAsComposeBoundary() {
+        val projectLayout = CaptionLayout(xRatio = 0.1f, yRatio = 0.8f, widthRatio = 0.8f)
+        val defaultStyle = DefaultCaptionStyle(fontSizeSp = 20)
+        val moved = CaptionCue(
+            id = "moved",
+            startMs = 1_000L,
+            endMs = 2_000L,
+            english = "Moved",
+            chinese = "移动",
+            confidence = 1f,
+            styleOverride = CaptionStyleOverride(
+                fontSizeSp = 32,
+                alignment = com.example.lyriccaptioner.model.CaptionAlignment.RIGHT,
+            ),
+            layoutOverride = CaptionLayoutOverride(
+                xRatio = 0.25f,
+                yRatio = 0.25f,
+                widthRatio = 0.5f,
+            ),
+        )
+        val inherited = CaptionCue(
+            id = "inherited",
+            startMs = 2_000L,
+            endMs = 3_000L,
+            english = "Inherited",
+            chinese = "继承",
+            confidence = 1f,
+        )
+
+        val composeRenders = CaptionRenderResolver.resolveAll(
+            captions = listOf(moved, inherited),
+            layout = projectLayout,
+            defaultStyle = defaultStyle,
+        )
+        val ass = AssSubtitleWriter.write(
+            captions = listOf(moved, inherited),
+            layout = projectLayout,
+            defaultStyle = defaultStyle,
+        )
+
+        assertEquals(CaptionLayout(0.25f, 0.25f, 0.5f), composeRenders[0].layout)
+        assertEquals(32, composeRenders[0].style.fontSizeSp)
+        assertTrue(ass.contains("Style: Cue0000,sans-serif,32,"))
+        assertTrue(
+            ass.contains(
+                "Dialogue: 0,0:00:01.00,0:00:02.00,Cue0000,,480,480,270,," +
+                    "{\\an9\\pos(1440,270)\\q0}Moved\\N移动",
+            ),
+        )
+
+        assertEquals(projectLayout, composeRenders[1].layout)
+        assertEquals(20, composeRenders[1].style.fontSizeSp)
+        assertTrue(ass.contains("Style: Cue0001,sans-serif,20,"))
+        assertTrue(
+            ass.contains(
+                "Dialogue: 0,0:00:02.00,0:00:03.00,Cue0001,,192,192,216,," +
+                    "{\\an2\\pos(960,864)\\q0}Inherited\\N继承",
+            ),
+        )
     }
 }
