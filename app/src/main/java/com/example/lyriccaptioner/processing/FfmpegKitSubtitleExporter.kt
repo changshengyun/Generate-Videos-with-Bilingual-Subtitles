@@ -13,8 +13,13 @@ import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.Level
 import com.arthenica.ffmpegkit.LogCallback
 import com.arthenica.ffmpegkit.ReturnCode
+import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.toCaptionLayout
+import com.example.lyriccaptioner.model.toDefaultCaptionStyle
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -62,7 +67,11 @@ class FfmpegKitSubtitleExporter(
         try {
             copyUriToFile(project.videoUri, inputFile)
             assFile.writeText(
-                AssSubtitleWriter.write(project.captions, project.exportProfile.subtitleStyle),
+                AssSubtitleWriter.write(
+                    captions = project.captions,
+                    layout = project.captionLayout,
+                    defaultStyle = project.defaultCaptionStyle,
+                ),
                 Charsets.UTF_8,
             )
             FFmpegKitConfig.setFontDirectory(appContext, "/system/fonts", emptyMap())
@@ -350,37 +359,125 @@ internal fun buildSubtitleFilter(path: String): String = buildString {
 }
 
 internal object AssSubtitleWriter {
-    fun write(captions: List<CaptionCue>, style: SubtitleStyle): String {
-        val marginV = (1080 * style.bottomMarginPercent.coerceIn(0, 40) / 100f).toInt()
-        val fontSize = style.fontSizeSp.coerceIn(14, 96)
-        val primary = assColor(style.primaryColorHex, "FFFFFF")
-        val secondary = assColor(style.secondaryColorHex, "F4E7A1")
-        val outline = assColor(style.outlineColorHex, "000000")
-        val fontName = assFontName(style.fontFamily)
+    fun write(
+        captions: List<CaptionCue>,
+        layout: CaptionLayout,
+        defaultStyle: DefaultCaptionStyle,
+    ): String {
+        val cues = CaptionRenderResolver.resolveAll(captions, layout, defaultStyle)
+            .sortedBy { it.caption.startMs }
+            .mapIndexedNotNull { index, render ->
+                val english = escapeText(render.caption.english)
+                val chinese = escapeText(render.caption.chinese)
+                val text = listOf(english, chinese).filter { it.isNotEmpty() }.joinToString("\\N")
+                if (text.isEmpty() || render.caption.endMs <= render.caption.startMs) {
+                    null
+                } else {
+                    AssCue(
+                        render = render,
+                        styleName = "Cue${index.toString().padStart(4, '0')}",
+                        geometry = resolveGeometry(render.layout, render.style.alignment),
+                        text = text,
+                    )
+                }
+            }
         return buildString {
             appendLine("[Script Info]")
             appendLine("ScriptType: v4.00+")
-            appendLine("PlayResX: 1920")
-            appendLine("PlayResY: 1080")
+            appendLine("PlayResX: $PLAY_RES_X")
+            appendLine("PlayResY: $PLAY_RES_Y")
+            appendLine("WrapStyle: 0")
             appendLine("ScaledBorderAndShadow: yes")
             appendLine()
             appendLine("[V4+ Styles]")
             appendLine("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding")
-            appendLine("Style: Default,$fontName,$fontSize,$primary,$secondary,$outline,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,$marginV,1")
+            cues.forEach { cue -> appendLine(styleLine(cue)) }
             appendLine()
             appendLine("[Events]")
             appendLine("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text")
-            captions.sortedBy { it.startMs }.forEach { cue ->
-                val english = escapeText(cue.english.trim())
-                val chinese = escapeText(cue.chinese.trim())
-                val text = listOf(english, chinese).filter { it.isNotEmpty() }.joinToString("\\N")
-                if (text.isNotEmpty() && cue.endMs > cue.startMs) {
-                    appendLine(
-                        "Dialogue: 0,${formatAssTime(cue.startMs)},${formatAssTime(cue.endMs)},Default,,0,0,0,,$text",
-                    )
-                }
+            cues.forEach { cue ->
+                val source = cue.render.caption
+                val geometry = cue.geometry
+                val overrides = "{\\an${geometry.alignment}\\pos(${geometry.positionX},${geometry.positionY})\\q0}"
+                appendLine(
+                    "Dialogue: 0,${formatAssTime(source.startMs)},${formatAssTime(source.endMs)}," +
+                        "${cue.styleName},,${geometry.marginLeft},${geometry.marginRight}," +
+                        "${geometry.marginVertical},,$overrides${cue.text}",
+                )
             }
         }
+    }
+
+    fun write(captions: List<CaptionCue>, style: SubtitleStyle): String = write(
+        captions = captions,
+        layout = style.toCaptionLayout(),
+        defaultStyle = style.toDefaultCaptionStyle(),
+    )
+
+    private fun styleLine(cue: AssCue): String {
+        val style = cue.render.style
+        val geometry = cue.geometry
+        val primary = assColor(style.primaryColorHex, "FFFFFF")
+        val secondary = assColor(style.secondaryColorHex, "F4E7A1")
+        val outline = assColor(style.outlineColorHex, "000000")
+        val bold = if (style.bold) -1 else 0
+        val italic = if (style.italic) -1 else 0
+        return "Style: ${cue.styleName},${assFontName(style.fontFamily)},${style.fontSizeSp}," +
+            "$primary,$secondary,$outline,&H80000000,$bold,$italic,0,0,100,100,0,0,1,2,1," +
+            "${geometry.alignment},${geometry.marginLeft},${geometry.marginRight}," +
+            "${geometry.marginVertical},1"
+    }
+
+    private fun resolveGeometry(
+        layout: CaptionLayout,
+        alignment: CaptionAlignment,
+    ): AssGeometry {
+        val left = (layout.xRatio * PLAY_RES_X).toInt().coerceIn(0, PLAY_RES_X)
+        val rightEdge = ((layout.xRatio + layout.widthRatio) * PLAY_RES_X)
+            .toInt()
+            .coerceIn(left, PLAY_RES_X)
+        val right = (PLAY_RES_X - rightEdge).coerceIn(0, PLAY_RES_X)
+        val positionX = when (alignment) {
+            CaptionAlignment.LEFT -> left
+            CaptionAlignment.CENTER -> left + (rightEdge - left) / 2
+            CaptionAlignment.RIGHT -> rightEdge
+        }.coerceIn(0, PLAY_RES_X)
+        val positionY = (layout.yRatio * PLAY_RES_Y).toInt().coerceIn(0, PLAY_RES_Y)
+        val verticalBand = when {
+            layout.yRatio < ONE_THIRD -> VerticalBand.TOP
+            layout.yRatio > TWO_THIRDS -> VerticalBand.BOTTOM
+            else -> VerticalBand.MIDDLE
+        }
+        val assAlignment = when (verticalBand) {
+            VerticalBand.TOP -> when (alignment) {
+                CaptionAlignment.LEFT -> 7
+                CaptionAlignment.CENTER -> 8
+                CaptionAlignment.RIGHT -> 9
+            }
+            VerticalBand.MIDDLE -> when (alignment) {
+                CaptionAlignment.LEFT -> 4
+                CaptionAlignment.CENTER -> 5
+                CaptionAlignment.RIGHT -> 6
+            }
+            VerticalBand.BOTTOM -> when (alignment) {
+                CaptionAlignment.LEFT -> 1
+                CaptionAlignment.CENTER -> 2
+                CaptionAlignment.RIGHT -> 3
+            }
+        }
+        val marginVertical = when (verticalBand) {
+            VerticalBand.TOP -> positionY
+            VerticalBand.MIDDLE -> minOf(positionY, PLAY_RES_Y - positionY)
+            VerticalBand.BOTTOM -> PLAY_RES_Y - positionY
+        }.coerceIn(0, PLAY_RES_Y)
+        return AssGeometry(
+            alignment = assAlignment,
+            marginLeft = left,
+            marginRight = right,
+            marginVertical = marginVertical,
+            positionX = positionX,
+            positionY = positionY,
+        )
     }
 
     private fun escapeText(value: String): String = value
@@ -411,4 +508,31 @@ internal object AssSubtitleWriter {
         val hours = totalMinutes / 60
         return "%d:%02d:%02d.%02d".format(hours, minutes, seconds, centiseconds)
     }
+
+    private data class AssCue(
+        val render: ResolvedCaptionRender,
+        val styleName: String,
+        val geometry: AssGeometry,
+        val text: String,
+    )
+
+    private data class AssGeometry(
+        val alignment: Int,
+        val marginLeft: Int,
+        val marginRight: Int,
+        val marginVertical: Int,
+        val positionX: Int,
+        val positionY: Int,
+    )
+
+    private enum class VerticalBand {
+        TOP,
+        MIDDLE,
+        BOTTOM,
+    }
+
+    private const val PLAY_RES_X = 1_920
+    private const val PLAY_RES_Y = 1_080
+    private const val ONE_THIRD = 1f / 3f
+    private const val TWO_THIRDS = 2f / 3f
 }

@@ -11,6 +11,8 @@ data class EditorState(
     val captions: List<CaptionCue> = emptyList(),
     val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
     val selectedCaptionId: String? = null,
+    val captionLayout: CaptionLayout = CaptionLayout(),
+    val defaultCaptionStyle: DefaultCaptionStyle = DefaultCaptionStyle(),
     val modelState: ModelState = ModelState(),
     val exportProfile: ExportProfile = ExportProfile(),
     val isWorking: Boolean = false,

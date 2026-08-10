@@ -10,14 +10,18 @@ import com.example.lyriccaptioner.captions.CaptionTimingEditor
 import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionAlignment
+import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionStyleOverride
+import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.CueEditingPolicy
 import com.example.lyriccaptioner.model.DerivedOutputPolicy
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SpeechMode
-import com.example.lyriccaptioner.model.SubtitleStyle
 import com.example.lyriccaptioner.model.normalizeSubtitleColor
+import com.example.lyriccaptioner.model.resolveCaptionStyle
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
@@ -585,6 +589,8 @@ class MainViewModel(
                     destinationUri,
                     current.captions,
                     current.exportProfile,
+                    current.captionLayout,
+                    current.defaultCaptionStyle,
                 ) { status ->
                     mutableState.update { it.copy(status = status) }
                 }.also { exportUri ->
@@ -752,32 +758,96 @@ class MainViewModel(
     }
 
     fun updateFontSize(delta: Int) {
-        updateSubtitleStyle { style ->
+        updateDefaultCaptionStyle { style ->
             style.copy(fontSizeSp = (style.fontSizeSp + delta).coerceIn(14, 48))
         }
     }
 
     fun updateBottomMargin(delta: Int) {
-        updateSubtitleStyle { style ->
-            style.copy(bottomMarginPercent = (style.bottomMarginPercent + delta).coerceIn(4, 28))
+        updateCaptionLayout { layout ->
+            layout.copy(yRatio = (layout.yRatio - delta / 100f).coerceIn(0.72f, 0.96f))
         }
     }
 
     fun updateEnglishColor(colorHex: String) {
-        updateSubtitleStyle { style -> style.copy(primaryColorHex = normalizeSubtitleColor(colorHex, style.primaryColorHex)) }
+        updateDefaultCaptionStyle { style -> style.copy(primaryColorHex = normalizeSubtitleColor(colorHex, style.primaryColorHex)) }
     }
 
     fun updateChineseColor(colorHex: String) {
-        updateSubtitleStyle { style -> style.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, style.secondaryColorHex)) }
+        updateDefaultCaptionStyle { style -> style.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, style.secondaryColorHex)) }
     }
 
     fun updateOutlineColor(colorHex: String) {
-        updateSubtitleStyle { style -> style.copy(outlineColorHex = normalizeSubtitleColor(colorHex, style.outlineColorHex)) }
+        updateDefaultCaptionStyle { style -> style.copy(outlineColorHex = normalizeSubtitleColor(colorHex, style.outlineColorHex)) }
     }
 
     fun updateFontFamily(fontFamily: String) {
         val supported = setOf(SUBTITLE_FONT_SANS, SUBTITLE_FONT_SERIF, SUBTITLE_FONT_MONO)
-        updateSubtitleStyle { style -> style.copy(fontFamily = fontFamily.takeIf { it in supported } ?: style.fontFamily) }
+        updateDefaultCaptionStyle { style -> style.copy(fontFamily = fontFamily.takeIf { it in supported } ?: style.fontFamily) }
+    }
+
+    fun toggleDefaultBold() = updateDefaultCaptionStyle { it.copy(bold = !it.bold) }
+
+    fun toggleDefaultItalic() = updateDefaultCaptionStyle { it.copy(italic = !it.italic) }
+
+    fun updateDefaultAlignment(alignment: CaptionAlignment) =
+        updateDefaultCaptionStyle { it.copy(alignment = alignment) }
+
+    fun updateSelectedCueFontSize(delta: Int) {
+        updateSelectedCueStyle { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(fontSizeSp = (resolved.fontSizeSp + delta).coerceIn(14, 48))
+        }
+    }
+
+    fun updateSelectedCueEnglishColor(colorHex: String) {
+        updateSelectedCueStyle { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(primaryColorHex = normalizeSubtitleColor(colorHex, resolved.primaryColorHex))
+        }
+    }
+
+    fun updateSelectedCueChineseColor(colorHex: String) {
+        updateSelectedCueStyle { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, resolved.secondaryColorHex))
+        }
+    }
+
+    fun updateSelectedCueOutlineColor(colorHex: String) {
+        updateSelectedCueStyle { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(outlineColorHex = normalizeSubtitleColor(colorHex, resolved.outlineColorHex))
+        }
+    }
+
+    fun updateSelectedCueFontFamily(fontFamily: String) {
+        val supported = setOf(SUBTITLE_FONT_SANS, SUBTITLE_FONT_SERIF, SUBTITLE_FONT_MONO)
+        updateSelectedCueStyle { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(fontFamily = fontFamily.takeIf { it in supported } ?: resolved.fontFamily)
+        }
+    }
+
+    fun toggleSelectedCueBold() {
+        updateSelectedCueStyle { cue, override ->
+            override.copy(bold = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).bold)
+        }
+    }
+
+    fun toggleSelectedCueItalic() {
+        updateSelectedCueStyle { cue, override ->
+            override.copy(italic = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).italic)
+        }
+    }
+
+    fun updateSelectedCueAlignment(alignment: CaptionAlignment) {
+        updateSelectedCueStyle { _, override -> override.copy(alignment = alignment) }
+    }
+
+    fun clearSelectedCueStyleOverride() {
+        val selectedId = state.value.selectedCaptionId ?: return
+        updateCue(selectedId) { it.copy(styleOverride = null) }
     }
 
     fun saveProjectArchive(destinationUri: Uri) {
@@ -832,6 +902,8 @@ class MainViewModel(
                             captions = snapshot.captions,
                             selectedCaptionId = snapshot.captions.firstOrNull()?.id,
                             exportProfile = snapshot.exportProfile,
+                            captionLayout = snapshot.captionLayout,
+                            defaultCaptionStyle = snapshot.defaultCaptionStyle,
                             status = status,
                         ))
                     }
@@ -947,13 +1019,43 @@ class MainViewModel(
         }
     }
 
-    private fun updateSubtitleStyle(transform: (SubtitleStyle) -> SubtitleStyle) {
+    private fun updateDefaultCaptionStyle(transform: (DefaultCaptionStyle) -> DefaultCaptionStyle) {
         mutableState.update { current ->
+            val updated = transform(current.defaultCaptionStyle)
             DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
+                defaultCaptionStyle = updated,
                 exportProfile = current.exportProfile.copy(
-                    subtitleStyle = transform(current.exportProfile.subtitleStyle),
+                    subtitleStyle = current.exportProfile.subtitleStyle.copy(
+                        fontSizeSp = updated.fontSizeSp,
+                        primaryColorHex = updated.primaryColorHex,
+                        secondaryColorHex = updated.secondaryColorHex,
+                        outlineColorHex = updated.outlineColorHex,
+                        fontFamily = updated.fontFamily,
+                    ),
                 ),
             ))
+        }
+    }
+
+    private fun updateCaptionLayout(transform: (CaptionLayout) -> CaptionLayout) {
+        mutableState.update { current ->
+            val updated = transform(current.captionLayout)
+            val bottomMargin = ((1f - updated.yRatio) * 100f).toInt().coerceIn(4, 28)
+            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
+                captionLayout = updated,
+                exportProfile = current.exportProfile.copy(
+                    subtitleStyle = current.exportProfile.subtitleStyle.copy(bottomMarginPercent = bottomMargin),
+                ),
+            ))
+        }
+    }
+
+    private fun updateSelectedCueStyle(
+        transform: (CaptionCue, CaptionStyleOverride) -> CaptionStyleOverride,
+    ) {
+        val selectedId = state.value.selectedCaptionId ?: return
+        updateCue(selectedId) { cue ->
+            cue.copy(styleOverride = transform(cue, cue.styleOverride ?: CaptionStyleOverride()))
         }
     }
 
@@ -964,6 +1066,9 @@ class MainViewModel(
             videoDurationMs = current.videoDurationMs,
             captions = current.captions,
             exportProfile = current.exportProfile,
+            captionProcessing = current.captionProcessing,
+            captionLayout = current.captionLayout,
+            defaultCaptionStyle = current.defaultCaptionStyle,
         )
     }
 

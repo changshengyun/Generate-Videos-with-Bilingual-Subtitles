@@ -9,6 +9,7 @@ data class CaptionCue(
     val confidence: Float,
     val correctionCandidates: List<String> = emptyList(),
     val confirmed: Boolean = false,
+    val styleOverride: CaptionStyleOverride? = null,
 ) {
     val canConfirm: Boolean
         get() = english.isNotBlank() && chinese.isNotBlank()

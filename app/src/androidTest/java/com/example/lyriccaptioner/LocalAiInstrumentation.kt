@@ -971,6 +971,8 @@ class LocalAiInstrumentation : Instrumentation() {
         resetDocumentsUi()
         clickNode(waitForContentDescriptionWithScroll("import_srt", 20_000L))
         clickDocumentFile(srtFile.name)
+        scrollToTop()
+        clickNode(waitForContentDescription("workbench_subtitles"))
         waitForText("字幕列表", 20_000L)
         val importedCaptionState = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
             .contentDescription.toString()
@@ -980,8 +982,6 @@ class LocalAiInstrumentation : Instrumentation() {
         check(importedCaptionCount == 2) { "Expected two imported captions, got $importedCaptionCount" }
         results.putInt("importedCaptionCount", importedCaptionCount)
 
-        scrollToTop()
-        clickNode(waitForContentDescription("workbench_subtitles"))
         waitForContentDescriptionWithScroll("style_controls", 20_000L)
         clickNode(waitForContentDescriptionWithScroll("英文 #61D6FF", 20_000L))
         val importedStyleState = waitForContentDescriptionContaining(
@@ -1723,7 +1723,6 @@ class LocalAiInstrumentation : Instrumentation() {
             "workbench_subtitles",
             "workbench_export",
             "import_video",
-            "caption_list",
         )
         requiredTargets.forEach { description ->
             val node = findAccessibilityNodeByContentDescription(root, description)

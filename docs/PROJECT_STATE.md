@@ -4,21 +4,22 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-EDITOR-001 / COMPONENT_VERIFIED / CANDIDATE_READY`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `MATRIX_DEFINED / CHECKPOINT_REQUIRED_BEFORE_IMPLEMENTATION`
-- Process gate: `V3-EDITOR-001_ACCEPTANCE_MATRIX_FROZEN`
+- Current gate: `E01–E18_COMPONENT_EVIDENCE_COMPLETE / BRAIN_REVIEW_REQUIRED`
+- Process gate: `V3-EDITOR-001_COMPONENT_VERIFIED`
 - Implementation authorization: granted for the bounded editor interaction, layout/style model, archive migration, shared Compose/ASS resolver, tests and simulator verification
 - Review workflow: Brain formally accepted the ASR component verdict; Developer may return only an editor candidate result
-- Next permitted action: create the four-document checkpoint, freeze shared editor interfaces/file ownership, then implement E01–E18 without any physical-device operation.
+- Next permitted action: wait for Brain to establish the next complete acceptance matrix; do not start the lyrics chain or physical verification autonomously.
 
 ## FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG
 
 - Policy: no device connection, install, ADB wait/poll, or physical instrumentation until the user explicitly says “开始真机验证”. Device absence does not block component stages and must never be replaced with inferred data.
 - ASR A13: real native consecutive recognition, cold/hot execution and handle reuse remain unverified.
 - ASR A15: real cold/hot context load, inference, total, peak RSS, temperature, empty-result and crash data remain unverified.
-- Editor physical UI verification will be appended after component implementation; simulator/JVM/build/static evidence remains allowed now.
+- Editor UI: physical-device editor navigation, cue editing, preview and export UI evidence remain unverified; simulator/JVM/build/static evidence does not upgrade this boundary.
+- Editor physical UI verification is recorded in this backlog; simulator/JVM/build/static evidence remains allowed now but cannot upgrade the physical boundary.
 
 ## Current V3-EDITOR-001 matrix summary
 
@@ -139,9 +140,18 @@
 | V3-DEC-001 | `PASS` |
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
-| V3-EDITOR-001 | `MATRIX_DEFINED / IN_PROGRESS` |
+| V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER` |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `LIVE_API_DEFERRED` |
 | V3-CLEAN-001 | `PLANNED` |
 | V3-E2E-003 | `PLANNED` |
+
+## V3-EDITOR-001 component evidence (2026-08-10)
+
+- Candidate: `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`.
+- E01–E18 component evidence passed: focused editor JVM 25/25, full `testDebugUnitTest` 192/192, ASR Python 6/6, `lintDebug` 0 errors/33 warnings, ordinary Debug, native-enabled Debug and AndroidTest APK builds all passed.
+- Native-enabled app APK: 417,446,841 bytes. AndroidTest APK: 119,027 bytes.
+- Model/archive uses v4 with safe v1/v2/v3 migration, one normalized project layout, one default style, nullable per-cue overrides, and cue-preserving text/timeline/confirmation edits. Compose preview and ASS export consume the same `CaptionRenderResolver`.
+- No physical device was connected, installed, polled or instrumented. Editor physical UI, ASR A13/A15 and performance evidence remain in `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`; no formal product PASS is claimed.
+- Next action: wait for Brain to establish the next complete acceptance matrix; do not start the lyrics chain or physical verification autonomously.

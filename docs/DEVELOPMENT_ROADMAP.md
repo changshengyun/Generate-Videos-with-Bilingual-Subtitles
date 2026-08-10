@@ -24,18 +24,18 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-DEC-001` | `PASS` | 交互、样式、媒体入口、缓存生命周期、云端匹配、本地回退、密钥边界和清理范围已由用户确认 |
 | `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；R1 已关闭） | Brain 已正式接受唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的 BYOK 安全链路、`GET /models` 最小真实认证、Keystore 密文保存、masked 重启恢复、测试连接、same-key rotation、失败替换保留旧 Key、最终删除、完整回归和 secret scan 证据；在线歌词、歌曲匹配、逐 cue 增强与完整产品链路未验证，不得声明正式产品 PASS |
 | `V3-ASR-SESSION-001` | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决） | A01–A12、A14、A16 组件级通过；A13 真实连续识别/handle 复用与 A15 真机性能数据统一登记到 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`，不得升级为真机已验证 |
-| `V3-EDITOR-001` | `MATRIX_DEFINED / IN_PROGRESS` | 已冻结 E01–E18：识别成功后主动进入编辑、字幕列表归位、项目统一布局、默认样式与 cue 覆盖、V2→V3 迁移，以及 Compose/ASS 共用解析 |
+| `V3-EDITOR-001` | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER` | E01–E18 component evidence and builds passed; physical editor UI remains in `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG` |
 | `V3-MEDIA-001` | `PLANNED` | Photo Picker 唯一导入入口和 MediaStore 唯一导出目的地，保持源/目标文件安全 |
 | `V3-AI-001` | `LIVE_API_DEFERRED` | 按已冻结的 DeepSeek + `DEVICE_DIRECT_BYOK` 路线接入真实请求、认证、歌曲/歌词匹配和逐 cue 修正；歌词来源/授权、真实联调和分发策略仍待后续门禁 |
 | `V3-UI-001` | `PLANNED` | 删除 App 顶栏并基于已冻结交互重做产品级 Compose UI、状态反馈与无障碍 |
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 
-一次只激活一个实施阶段。`V3-AI-CONTRACT-001 / R1` 已正式关闭，Brain 已接受 ASR 组件裁决并把 A13/A15 延后。当前唯一活动阶段是 `V3-EDITOR-001 / MATRIX_DEFINED / IN_PROGRESS`；不得启动歌曲匹配、逐 cue AI、媒体入口、整体视觉 UI 或清理阶段。
+一次只激活一个实施阶段。`V3-AI-CONTRACT-001 / R1` 已正式关闭，Brain 已接受 ASR 组件裁决并把 A13/A15 延后。`V3-EDITOR-001` 已完成组件验收并回交候选；下一动作是等待 Brain 建立下一阶段完整验收矩阵，不得自行启动歌词链路或真机验证。
 
 `V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
 
-ASR 组件证据为 focused runtime 14/14、完整 JVM 169/169、ASR Python 6/6、lint 0 errors/33 warnings，以及普通 Debug、arm64-v8a+x86_64 native-enabled Debug、AndroidTest 构建通过。app APK 383,030,793 bytes，AndroidTest APK 118,877 bytes；A13/A15 已进入最终真机积压，不得记录或推测冷/热真机数据。
+ASR 组件证据为 focused runtime 14/14、完整 JVM 169/169、ASR Python 6/6、lint 0 errors/33 warnings，以及普通 Debug、arm64-v8a+x86_64 native-enabled Debug、AndroidTest 构建通过。编辑阶段完整 JVM 为 192/192，native-enabled app APK 为 417,446,841 bytes，AndroidTest APK 为 119,027 bytes；A13/A15 与编辑物理 UI 已进入最终真机积压，不得记录或推测冷/热真机数据。
 
 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG` 统一保存在 `PROJECT_STATE.md`。只有用户明确说“开始真机验证”时才集中执行；当前禁止连接、安装、等待或轮询真机，但允许 JVM、构建、静态和模拟器验证。
 

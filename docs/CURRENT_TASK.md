@@ -3,15 +3,24 @@
 ## Current status
 
 - Stage: `V3-EDITOR-001`
-- Status: `V3-EDITOR-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-EDITOR-001 / COMPONENT_VERIFIED / CANDIDATE_READY`
 - Previous stage: `V3-ASR-SESSION-001 / PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决；组件阶段已接受）
 - Scope: 识别成功后的主动编辑入口、字幕列表归位、项目级 `CaptionLayout`、默认样式、cue 覆盖、V2→V3 迁移，以及 Compose/ASS 共用解析
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
 - Implementation authorization: `APPROVED_BY_USER`
 - Physical-device gate: `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`；本阶段禁止连接、安装、等待或轮询真机
-- Review workflow: Developer 完成 E01–E18 后只回交候选状态；Brain 负责正式验收
-- Next action: 建立文档 checkpoint 后冻结 editor 共享接口和文件所有权，执行模型/迁移、Compose 交互、预览/ASS resolver 与允许的模拟器验证
+- Review workflow: Developer 已完成 E01–E18 组件证据并回交候选状态；Brain 负责正式验收
+- Next action: 等待 Brain 建立下一阶段完整验收矩阵；不得自行启动歌词链路或真机验证
+
+## Developer evidence (2026-08-10)
+
+- Candidate: `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`
+- E01–E18: component-level PASS. Model/archive, Compose policy, shared render resolver and ASS per-cue mapping are covered by focused JVM tests; no formal product PASS is claimed.
+- Verification: focused editor JVM 25/25; full `testDebugUnitTest` 192/192; `python tools\\asr_evaluate_test.py` 6/6; `lintDebug` 0 errors/33 warnings; `assembleDebug`, `-PenableWhisperNative=true assembleDebug`, and `assembleDebugAndroidTest` passed.
+- Artifacts: native-enabled app APK 417,446,841 bytes; AndroidTest APK 119,027 bytes.
+- Physical boundary: no device connection, install, polling or instrumentation was performed. ASR A13/A15 and editor physical UI remain in `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`; simulator instrumentation was not run in this turn.
+- Preserved scope: BYOK, ASR/session, media, lyrics, Whisper parameters and existing dirty/untracked state were not cleaned or broadened.
 
 ## V3-EDITOR-001 acceptance matrix
 
