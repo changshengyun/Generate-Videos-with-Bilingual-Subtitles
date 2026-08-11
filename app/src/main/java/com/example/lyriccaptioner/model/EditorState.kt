@@ -18,6 +18,7 @@ data class EditorState(
     val isWorking: Boolean = false,
     val asrRunning: Boolean = false,
     val translationRunning: Boolean = false,
+    val enhancementRunning: Boolean = false,
     val status: String = "Import a video up to 5 minutes to start.",
     val exportUri: Uri? = null,
     val pendingSidecarSrt: String? = null,

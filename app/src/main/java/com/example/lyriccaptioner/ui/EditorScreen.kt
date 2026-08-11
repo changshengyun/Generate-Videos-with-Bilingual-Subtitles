@@ -293,11 +293,23 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 onClick = viewModel::translateMissingChinese,
                             )
                         }
-                        if (state.asrRunning || state.translationRunning) {
+                        ActionRow {
+                            ActionButton(
+                                icon = "AI",
+                                label = "AI 增强字幕",
+                                enabled = state.captions.isNotEmpty() && !state.isWorking &&
+                                    deepSeekKeyUi.state == DeepSeekKeyState.CONFIGURED,
+                                primary = true,
+                                accessibilityId = "enhance_captions",
+                                onClick = viewModel::enhanceCaptions,
+                            )
+                        }
+                        if (state.asrRunning || state.translationRunning || state.enhancementRunning) {
                             ActionRow {
                                 SecondaryAction("取消当前任务", true) {
                                     if (state.asrRunning) viewModel.cancelGenerateCaptions()
                                     if (state.translationRunning) viewModel.cancelTranslation()
+                                    if (state.enhancementRunning) viewModel.cancelEnhancement()
                                 }
                             }
                         }

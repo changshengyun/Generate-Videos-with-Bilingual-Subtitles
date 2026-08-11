@@ -4,18 +4,26 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-AI-001 / COMPONENT_IMPLEMENTED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_AI_001 / MATRIX_DEFINED / IN_PROGRESS / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
+- Current gate: `V3_AI_001 / COMPONENT_IMPLEMENTED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
 - Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
-- Implementation result: V3-UI-001 remains closed at component/build level; V3-AI-001 is now active with the AI01-AI16 matrix defined in `CURRENT_TASK.md`.
+- Implementation result: V3-UI-001 remains closed at component/build level; V3-AI-001 production component path is implemented and awaits live DeepSeek runtime evidence.
 - Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
-- Next permitted action: implement and verify V3-AI-001 within AI01-AI16; do not start V3-CLEAN-001 or unrelated media/Whisper/archive work.
+- Next permitted action: perform authorized in-app live DeepSeek verification for AI15; do not start V3-CLEAN-001 or unrelated media/Whisper/archive work.
 
 ## V3-AI-001 dispatch
 
-The user has explicitly authorized the complete AI enhancement stage in one pass. This supersedes the historical R1-only prohibition on live Provider work for the current task. The fixed route is DeepSeek over HTTPS at https://api.deepseek.com with DEVICE_DIRECT_BYOK; no key may be requested in chat, terminal arguments, source, logs or test fixtures. Until authorized live evidence is collected, the maximum status is `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`.
+The user explicitly authorized the complete AI enhancement stage in one pass. The fixed route is DeepSeek over HTTPS at https://api.deepseek.com with DEVICE_DIRECT_BYOK; no key may be requested in chat, terminal arguments, source, logs or test fixtures. Component implementation is complete; until authorized live evidence is collected, the maximum status is `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`.
+
+## V3-AI-001 component implementation evidence (2026-08-11)
+
+- Production `DeepSeekCaptionEnhancementProvider` is wired to the existing coordinator and local OPUS-MT fallback. It sends only cue IDs, timestamps and raw English; it does not send audio, video, media paths or user URIs.
+- Full JVM 275/275, ASR Python 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. Provider focused tests 2/2 passed.
+- APKs: `app/build/outputs/apk/debug/app-debug.apk` 417,446,841 bytes; `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` 119,142 bytes (generated 2026-08-11 19:40-19:45 +08:00).
+- Secret scan found no real key or captured network material; synthetic `sk-test-*` values are pre-existing test sentinels. No live API, physical device, online lyrics or complete product validation was run.
+- AI15 remains required; this stage is component-verified only and is not formal product PASS.
 
 ## V3-UI-001 completion evidence (2026-08-11)
 

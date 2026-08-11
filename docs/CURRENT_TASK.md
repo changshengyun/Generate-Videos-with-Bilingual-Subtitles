@@ -3,11 +3,21 @@
 ## V3-AI-001 current status
 
 - Stage: `V3-AI-001`
-- Status: `V3-AI-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-AI-001 / COMPONENT_IMPLEMENTED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
 - Scope: implement the complete DeepSeek caption-enhancement path: production HTTPS Provider, strict prompt/schema, song matching and lyric-source metadata, per-cue English correction and Chinese translation, atomic commit, local fallback, cancellation, status UI and retry.
 - Route: `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED`; fixed base URL `https://api.deepseek.com`; saved keys may enter request construction only through `withDecryptedKey`.
 - Evidence ceiling before live authorization/evidence: `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`; no claim of formal product PASS without real authenticated network evidence.
 - Prohibited: sending audio/video/media/user paths, inventing lyrics, logging keys/headers/bodies/responses, changing Whisper/media/archive/style architecture, V3-CLEAN-001, or pushing.
+
+## V3-AI-001 component implementation evidence (2026-08-11)
+
+- AI01-AI14 and AI16 component paths are implemented: fixed DeepSeek `POST /chat/completions`, bounded JSON prompt/response contract, source/version/song-match persistence, atomic cloud/local outcome, cancellation and explicit UI action with retry-safe status.
+- Provider uses a dependency-free strict JSON codec and maps HTTP 401/403 to authentication, 408 to timeout, 429/5xx to retryable server, transport failures to connection and malformed payloads to invalid response. No media, URI, path, Authorization value, request body or response body is logged or persisted.
+- Saved BYOK is passed only through `DeepSeekByokManager.withDecryptedKey` around request construction and I/O. Project restore now restores `captionProcessing` metadata; archive v6 already persists source, processing version, error and song-match fields.
+- Focused provider tests: 2/2. Full JVM: 275/275, 0 failures, 0 skipped. ASR Python: 6/6. Lint: 0 errors / 33 warnings. Ordinary Debug, native-enabled Debug and AndroidTest builds passed.
+- APKs: `app/build/outputs/apk/debug/app-debug.apk` = 417,446,841 bytes (2026-08-11 19:45:04 +08:00); `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = 119,142 bytes (2026-08-11 19:40:18 +08:00).
+- Secret scan: no real key or captured network material; known synthetic `sk-test-*` sentinels remain only in pre-existing security tests. No live DeepSeek request, real key, online lyrics, physical device or full product flow was executed in this implementation pass.
+- Candidate ceiling: `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`. AI15 remains open and must be proven by authorized in-app key entry and real HTTPS runtime before any stronger status; do not claim formal product PASS.
 
 ## V3-AI-001 acceptance matrix (唯一活动矩阵)
 

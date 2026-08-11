@@ -58,6 +58,13 @@ import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStatus
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiMapper
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekModelsAuthenticationProbe
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementCoordinator
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementErrorKind
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementException
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementService
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
+import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.DeepSeekCaptionEnhancementProvider
 import com.example.lyriccaptioner.project.AndroidProjectRepository
 import com.example.lyriccaptioner.project.MediaAccessResult
 import com.example.lyriccaptioner.project.ProjectLoadResult
@@ -101,6 +108,7 @@ class MainViewModel(
         AppPipelineFactory.createTranslationDefault(context),
     ),
     private val deepSeekManager: DeepSeekByokManager = createDefaultDeepSeekManager(context),
+    private val captionEnhancementService: CaptionEnhancementService? = null,
     private val mediaStoreGateway: MediaStoreExportGateway? = null,
 ) : ViewModel() {
     private val appContext = context.applicationContext
@@ -116,9 +124,16 @@ class MainViewModel(
         DeepSeekKeyUiMapper.from(deepSeekManager.status()),
     )
     val deepSeekKeyUi: StateFlow<DeepSeekKeyUiModel> = mutableDeepSeekKeyUi.asStateFlow()
+    private val enhancementService: CaptionEnhancementService by lazy {
+        captionEnhancementService ?: CaptionEnhancementCoordinator(
+            provider = DeepSeekCaptionEnhancementProvider(deepSeekManager),
+            localTranslation = translationModule,
+        )
+    }
     private var exportJob: Job? = null
     private var asrJob: Job? = null
     private var translationJob: Job? = null
+    private var enhancementJob: Job? = null
     private var deepSeekKeyOperationJob: Job? = null
     private var deepSeekKeyOperationGeneration = 0L
 
@@ -368,6 +383,105 @@ class MainViewModel(
             Log.i(LOG_TAG, "event=translation_cancel_requested")
             translationJob?.cancel()
         }
+    }
+
+    /** Runs one complete provider batch; partial cloud results are never committed. */
+    fun enhanceCaptions() {
+        val snapshot = state.value
+        if (snapshot.captions.isEmpty()) {
+            mutableState.update { it.copy(status = "Generate or import captions before AI enhancement.") }
+            return
+        }
+        if (enhancementJob?.isActive == true || snapshot.isWorking) return
+        val jobId = "caption-${elapsedRealtimeMs()}"
+        enhancementJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    isWorking = true,
+                    enhancementRunning = true,
+                    status = "Enhancing captions with DeepSeek...",
+                    captionProcessing = it.captionProcessing.copy(
+                        state = CaptionEnhancementState.CLOUD_PENDING,
+                        lastErrorKind = null,
+                    ),
+                )
+            }
+            try {
+                val outcome = enhancementService.enhance(
+                    jobId = jobId,
+                    captions = snapshot.captions,
+                    onStateChanged = { processingState ->
+                        mutableState.update { current ->
+                            current.copy(
+                                captionProcessing = current.captionProcessing.copy(state = processingState),
+                                status = when (processingState) {
+                                    CaptionEnhancementState.CLOUD_PENDING -> "Sending subtitle cues to DeepSeek..."
+                                    CaptionEnhancementState.CLOUD_VALIDATING -> "Validating enhanced subtitle batch..."
+                                    CaptionEnhancementState.LOCAL_FALLBACK_APPLIED -> "DeepSeek unavailable; applying local Chinese fallback..."
+                                    else -> current.status
+                                },
+                            )
+                        }
+                    },
+                )
+                mutableState.update { current ->
+                    if (current.captions != snapshot.captions) {
+                        current.copy(
+                            isWorking = false,
+                            enhancementRunning = false,
+                            status = "Enhancement was not applied because captions changed. Retry.",
+                            captionProcessing = current.captionProcessing.copy(
+                                state = CaptionEnhancementState.RAW_ASR_READY,
+                                lastErrorKind = outcome.errorKind,
+                            ),
+                        )
+                    } else {
+                        DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
+                            isWorking = false,
+                            enhancementRunning = false,
+                            captions = outcome.captions,
+                            captionProcessing = com.example.lyriccaptioner.model.CaptionProcessingSnapshot.from(outcome),
+                            status = if (outcome.source == CaptionResultSource.CLOUD_AI) {
+                                "DeepSeek enhanced ${outcome.captions.size} captions."
+                            } else {
+                                "Applied local fallback to ${outcome.captions.size} captions."
+                            },
+                        ))
+                    }
+                }
+            } catch (_: CancellationException) {
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        enhancementRunning = false,
+                        status = "Caption enhancement cancelled. No changes were applied.",
+                        captionProcessing = it.captionProcessing.copy(state = CaptionEnhancementState.CANCELLED),
+                    )
+                }
+            } catch (error: CaptionEnhancementException) {
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        enhancementRunning = false,
+                        status = when (error.kind) {
+                            CaptionEnhancementErrorKind.AUTHENTICATION -> "DeepSeek authentication failed. Check the saved key."
+                            CaptionEnhancementErrorKind.LOCAL_TRANSLATION -> "Local Chinese fallback failed. Retry."
+                            else -> "DeepSeek enhancement failed. Retry."
+                        },
+                        captionProcessing = it.captionProcessing.copy(
+                            state = CaptionEnhancementState.RAW_ASR_READY,
+                            lastErrorKind = error.kind,
+                        ),
+                    )
+                }
+            } finally {
+                enhancementJob = null
+            }
+        }
+    }
+
+    fun cancelEnhancement() {
+        if (enhancementJob?.isActive == true) enhancementJob?.cancel()
     }
 
     fun generateCaptions() {
@@ -989,6 +1103,7 @@ class MainViewModel(
                             mediaState = mediaState,
                             requiresVideoAssociation = requiresVideoAssociation,
                             captions = snapshot.captions,
+                            captionProcessing = snapshot.captionProcessing,
                             selectedCaptionId = snapshot.captions.firstOrNull()?.id,
                             exportProfile = snapshot.exportProfile,
                             captionLayout = snapshot.captionLayout,
