@@ -4,14 +4,25 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Current task: `V3-EDITOR-002 / R3 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R2_VERIFIED / BRAIN_REVIEW_PENDING`
-- Process gate: `V3_EDITOR_002_R2_CANDIDATE_READY`
+- Current gate: `V3_EDITOR_002_R3_MATRIX_DEFINED / IN_PROGRESS`
+- Process gate: `V3_EDITOR_002_R3_IN_PROGRESS`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: Brain re-adjudication only; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+- Next permitted action: execute only `V3-EDITOR-002 / R3`; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+
+## Brain R2 adjudication (2026-08-11)
+
+- Formal verdict: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`.
+- Accepted R2 evidence: shared FIT geometry covers the primary square-pixel path; normal/fullscreen and ASS consume the geometry resolver; normalized x/y/width and anchors are shared; hidden Compose padding is removed; R1 and v5 behavior remain intact.
+- P1: Compose treats `fontSizeSp` as device sp while ASS treats it as 1080-PlayRes pixels, so relative visual size differs across normal preview, fullscreen and export.
+- P1: Compose uses a blurred offset Shadow for outline colour while ASS uses real glyph Outline plus Shadow; final outline semantics are different.
+- P1: `VideoSize.pixelWidthHeightRatio` is discarded, so anamorphic media can produce a different PlayerView FIT rectangle than the overlay.
+- P2: shared FIT rounds adjusted dimensions while Media3 truncates them, creating a known 1px difference; focused tests do not exercise production Compose sizing, outline, pixel ratio or Media3 rounding.
+- Full JVM XML confirms 212/212 with no failures/errors/skips; APK sizes match the returned evidence. Build success does not close the render differences above.
+- R3 matrix and bounded Limbs plan are frozen in `CURRENT_TASK.md`; implementation is in progress under the user dispatch.
 
 ## Current V3-EDITOR-002 / R2 implementation evidence
 
@@ -183,7 +194,7 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（R2 Developer candidate / Brain review pending） |
+| V3-EDITOR-002 | `MATRIX_DEFINED / IN_PROGRESS`（R3 matrix and Limbs dispatched） |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |

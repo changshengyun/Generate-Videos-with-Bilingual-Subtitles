@@ -3,16 +3,58 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Status: `V3-EDITOR-002 / R3 / MATRIX_DEFINED / IN_PROGRESS`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `R2_DISPATCHED / COMPLETE`
+- Implementation authorization: `R3_DISPATCHED / IN_PROGRESS`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain owns formal adjudication; Developer returns only the R2 candidate. Checkpoint: `b78c795`; prior R1 feature: `c0dafb44da5d6d3bf6f6bc5841d8d585123046fb`.
-- Next action: Brain re-adjudication only; do not start `V3-AI-001`.
+- Review workflow: Brain 已复核 R2 功能提交 `935a2a86d7d757af20d279f3b99c54f16f6a188e`；R3 已由用户派发，Developer 仅回交候选
+- Next action: 执行并验证 `V3-EDITOR-002 / R3`；关闭 R3 前不得启动 `V3-AI-001`
+
+## Brain R2 adjudication (2026-08-11)
+
+- Verdict: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`。
+- R2-01/R2-02/R2-03 的主要方形像素路径通过代码复核：普通/全屏与 ASS 均消费 `CaptionGeometryResolver`，FIT 主矩形、归一化 x/y/width、anchor 语义成立，未建模 Compose padding 已移除。
+- R2-04 未通过（字号）：Compose 把 `fontSizeSp` 当设备 `sp`，受 density/fontScale 影响且不会随有效视频矩形缩放；ASS 把同一整数当 1080 PlayRes 字号。共享整数不等于相同源视频相对字号。
+- R2-04 未通过（描边）：Compose 只绘制 offset/blur `Shadow`；ASS 使用 `BorderStyle=1 / Outline=2 / Shadow=1` 的真实字形描边。颜色相同不代表最终描边相同。
+- R2-01/R2-05 未完整通过：Media3 `VideoSize.pixelWidthHeightRatio` 未进入共享模型，非方形像素视频会产生不同黑边；共享 FIT 使用 `roundToInt`，而 Media3 FIT 对调整尺寸使用整数截断，存在 1px 偏差。
+- R2-06 未通过：focused tests 只验证纯 geometry 与 ASS 字符串，没有覆盖生产 Compose 的 density/fontScale 字号、真实描边、pixel aspect ratio 或 Media3 截断行为。
+- R2-07 的 212/212 JVM、构建与 APK 证据和磁盘实物一致；R1 清除覆盖、cue 隔离、中文颜色作用域及 v5 迁移未发现回归。
+
+## V3-EDITOR-002 / R3 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| R3-01 | 字号唯一规范值改为相对源视频高度的 `fontSizeRatio`；默认值和 cue override 都使用同一单位。归档升级为 v6，v1-v5 的 `fontSizeSp` 按固定 `LEGACY_PLAY_RES_Y=1080` 安全迁移并完整 round-trip。 |
+| R3-02 | Compose 根据 `fontSizeRatio * effectiveVideoRect.height` 得到目标物理像素，再正确抵消 density/fontScale；普通与全屏的字号随有效视频画面同比缩放，系统字体缩放不得改变导出一致性。 |
+| R3-03 | ASS 根据同一 `fontSizeRatio * PlayResY` 生成 Fontsize，并与 Compose 使用同一 rounding、clamp 和最小值规则；不得把同一整数分别解释为设备 sp 与 PlayRes px。 |
+| R3-04 | 描边宽度使用共享的源视频相对规范值；Compose 必须绘制真实字形 stroke 再绘制 fill，ASS 使用等价 Outline 宽度。不得继续用模糊 Shadow 冒充描边；若保留阴影，必须作为独立共享参数等价建模。 |
+| R3-05 | `SourceVideoSize` 纳入合法的 `pixelWidthHeightRatio`，有效显示宽高比与 Media3 PlayerView 一致；FIT 的尺寸截断和居中余数分配必须复现当前 Media3 行为，不允许已知 1px 漂移。 |
+| R3-06 | 生产 Compose 与 ASS 都消费共享的最终 render spec，至少包含 fontSizePx、outlineWidthPx、字体、bold、italic、中英颜色和对齐；不得只共享原始字段或在 renderer 内再次解释单位。 |
+| R3-07 | focused tests 覆盖 density/fontScale 组合、普通/全屏同比字号、1080/720/4K PlayRes、真实 stroke/fill、方形与非方形像素、Media3 FIT 截断/居中、16:9/9:16/1:1、九宫格 anchor、中英样式及两 cue 隔离。 |
+| R3-08 | v1-v5→v6 迁移、v6 round-trip、R1/R2 保持项、focused/full JVM、ASR Python、lint、普通 Debug、native Debug、AndroidTest 构建全部通过并报告当前 APK 实物；不执行真机 UI。 |
+
+| Category | V3-EDITOR-002 / R3 requirement |
+|---|---|
+| Main path | 旧项目或新项目得到源视频相对字号/描边 -> 普通与全屏预览按有效视频矩形缩放 -> ASS 导出按同一比例和参数渲染。 |
+| Mandatory evidence | R3-01–R3-08；v6 迁移；共享最终 render spec 的生产消费路径；Media3 FIT/pixel ratio、字号与描边 focused tests；完整回归和产物证据。 |
+| Prohibited | 不降低 S01-S14 或 R1/R2；不以 raw `sp`、固定 ASS px 或 Shadow 冒充共享最终样式；不启动 `V3-AI-001`；不触碰 BYOK、Whisper、在线歌词、媒体入口或无关 UI；不执行真机验证；不清理既有脏状态；不 push。 |
+| Exit | R3 全部通过后只允许再次回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 重新裁决。 |
+| Incomplete | 任一字号、描边、pixel ratio 或 FIT 行为仍不一致：`PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED`；迁移不能证明安全：`BLOCKED / ARCHIVE_V6_MIGRATION_REQUIRED`。 |
+
+## V3-EDITOR-002 / R3 Limbs parallel plan
+
+| Role | 独占范围 | 交付物与边界 |
+|---|---|---|
+| Limb A: canonical style and archive | `CaptionStyleModel.kt`、`ProjectArchive.kt` 及专属 migration/round-trip tests；不得修改 Compose、ASS exporter 或三份活动文档 | 引入 `fontSizeRatio` 与共享描边宽度，完成 v1-v5→v6 迁移、严格校验和 v6 round-trip；冻结兼容常量与 rounding/clamp 规则 |
+| Limb B: Media3 geometry parity | `CaptionGeometryModel.kt`、`CaptionGeometryModelTest.kt`；不得修改 Compose、ASS exporter、archive 或三份活动文档 | 纳入 `pixelWidthHeightRatio`，复现 Media3 FIT 截断和居中行为，输出供 renderer 使用的有效视频矩形与源视频相对像素换算 |
+| Limb C: renderer parity | `EditorScreen.kt`、`FfmpegKitSubtitleExporter.kt` 及专属 Compose/ASS render-spec tests；不得修改 archive 或三份活动文档 | 在 Limb A/B 接口冻结后，让 Compose/ASS 消费同一最终 render spec；实现真实 stroke+fill、源视频相对字号/描边和 density/fontScale 独立性 |
+| Orchestrator | 三份活动文档、接口协调、共享热点集成、完整回归、产物核验与 scoped Git commits | 先提交三份文档 checkpoint；Limb A/B 第一波并行，接口冻结后启动/接线 Limb C；独占冲突合并与最终 R3-01–R3-08 裁决，不让子 Agent 相互调度 |
+
+- 并行顺序：Limb A 与 Limb B 可完全并行；Limb C 可先准备独占测试，但生产接线必须等待 A/B 接口冻结。共享文件冲突由 Orchestrator 串行合并，不强行并行。
 
 ## Brain R1 re-adjudication (2026-08-11)
 
