@@ -41,7 +41,9 @@ internal fun captionStyleUiState(
     cue: CaptionCue,
 ): CaptionStyleUiState = CaptionStyleUiState(
     resolved = resolveCaptionStyle(defaultStyle, cue.styleOverride),
-    hasOverride = cue.styleOverride?.isEmpty == false,
+    // A cue override includes both visual style and placement.  In particular,
+    // a position-only edit must keep the card's clear action enabled.
+    hasOverride = cue.styleOverride?.isEmpty == false || cue.layoutOverride?.isEmpty == false,
 )
 
 private const val LOCAL_ASR_SUCCESS_PREFIX = "Local Whisper JNI generated "

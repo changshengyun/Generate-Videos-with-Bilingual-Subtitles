@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R1 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-EDITOR-002 / R1 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
@@ -11,8 +11,8 @@
 - Implementation authorization: `APPROVED_BY_USER`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已复核功能提交 `21a5d43d72dbc522aac9bf2a73bc80acb88f0c44`；R1 修复进行中，完成后回交 Developer 候选，不能自验收
-- Next action: 只执行 `V3-EDITOR-002 / R1`；关闭 R1 前不得启动 `V3-AI-001`
+- Review workflow: Brain 已复核功能提交 `21a5d43d72dbc522aac9bf2a73bc80acb88f0c44`；R1 修复已完成，现回交 Developer 候选，不能自验收
+- Next action: 等待 Brain 重新验收 `V3-EDITOR-002 / R1`；不得启动 `V3-AI-001`
 
 ## Brain adjudication (2026-08-11)
 
@@ -22,6 +22,15 @@
 - S10 未通过（几何）：Compose 固定 `BottomCenter` 并以 bottom padding 解释 y；ASS 按 y 切换 top/middle/bottom anchor，且两端对 x/width 的映射不同，不能证明同一规范坐标产生相同预览与导出位置。
 - S14 构建通过主张保留为 Developer 证据，但 AndroidTest APK 实物为 `119,048 bytes`，不是回交中的 `119,027 bytes`；App APK 实物为 `417,446,841 bytes`。
 - v5 迁移、cueId 写入链路与逐 cue 隔离未发现新的阻断；物理设备 UI 继续按用户授权豁免，不把缺失证据伪造为 PASS。
+
+## V3-EDITOR-002 / R1 implementation evidence (2026-08-11)
+
+- R1-01/R1-02/R1-05：纯位置覆盖现在可清除；clear action 同时清除目标 cue 的 style/layout override，并保留其他 cue；清除后回落到默认布局。`cueId` 是唯一写入目标。
+- R1-03：ASS 中文行在同一 Dialogue 内显式使用解析后的 `secondaryColorHex`，英文行和后续 Dialogue 不继承该 override。
+- R1-04：Compose 与 ASS 共用 `CaptionVerticalAnchor`、归一化 x/y/width 和相同 top/middle/bottom anchor 语义；新增左/中/右与上/中/下映射回归。
+- R1-06 artifacts: `D:\DevEnv\Projects\lyric-captioner-android\app\build\outputs\apk\debug\app-debug.apk` = `417446841` bytes；`D:\DevEnv\Projects\lyric-captioner-android\app\build\outputs\apk\androidTest\debug\app-debug-androidTest.apk` = `119048` bytes。
+- R1-07: focused JVM 39/39；完整 `testDebugUnitTest` 203/203；`python tools\\asr_evaluate_test.py` 6/6；`lintDebug` 0 errors/33 warnings；普通 Debug、`-PenableWhisperNative=true assembleDebug`、`assembleDebugAndroidTest` 全部通过。
+- Boundary: 未执行真机 UI；未触碰 DeepSeek、真实 Key、在线歌词、Provider 或 Prompt。Developer candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，等待 Brain 重新裁决。
 
 ## V3-EDITOR-002 / R1 acceptance matrix
 

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -84,10 +85,13 @@ import com.example.lyriccaptioner.captions.CaptionTimeline
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionVerticalAnchor
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ResolvedCaptionStyle
+import com.example.lyriccaptioner.model.verticalAnchor
+import com.example.lyriccaptioner.model.verticalAnchorOffsetRatio
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
@@ -1494,15 +1498,21 @@ private fun SubtitlePreviewOverlay(
     )
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val verticalBand = layout.verticalAnchor()
+        val verticalAlignment = when (verticalBand) {
+            CaptionVerticalAnchor.TOP -> Alignment.TopStart
+            CaptionVerticalAnchor.MIDDLE -> Alignment.CenterStart
+            CaptionVerticalAnchor.BOTTOM -> Alignment.BottomStart
+        }
+        // x/y/width are source-video normalized coordinates.  ASS uses the same
+        // anchor band and coordinate origin; keep Compose as a direct mapping
+        // instead of reinterpreting y as bottom padding.
+        val yOffset = maxHeight * layout.verticalAnchorOffsetRatio()
         Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(layout.widthRatio.coerceIn(0.1f, 1f))
-                .padding(
-                    start = maxWidth * layout.xRatio,
-                    end = maxWidth * (1f - layout.xRatio - layout.widthRatio).coerceAtLeast(0f),
-                    bottom = maxHeight * (1f - layout.yRatio).coerceIn(0f, 1f),
-                )
+                .align(verticalAlignment)
+                .offset(x = maxWidth * layout.xRatio, y = yOffset)
+                .width(maxWidth * layout.widthRatio)
                 .background(Color.Black.copy(alpha = 0.42f), RoundedCornerShape(4.dp))
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

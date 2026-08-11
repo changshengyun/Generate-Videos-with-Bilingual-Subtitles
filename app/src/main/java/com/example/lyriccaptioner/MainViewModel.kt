@@ -10,6 +10,7 @@ import com.example.lyriccaptioner.captions.CaptionTimingEditor
 import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.clearOverridesForCue
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
@@ -854,7 +855,11 @@ class MainViewModel(
     }
 
     fun clearCueStyleOverride(cueId: String) {
-        updateCue(cueId) { it.copy(styleOverride = null, layoutOverride = null) }
+        mutableState.update { current ->
+            DerivedOutputPolicy.invalidateDerivedOutputs(
+                current.copy(captions = current.captions.clearOverridesForCue(cueId)),
+            )
+        }
     }
 
     fun updateSelectedCueEnglishColor(colorHex: String) {
@@ -904,7 +909,11 @@ class MainViewModel(
 
     fun clearSelectedCueStyleOverride() {
         val selectedId = state.value.selectedCaptionId ?: return
-        updateCue(selectedId) { it.copy(styleOverride = null) }
+        mutableState.update { current ->
+            DerivedOutputPolicy.invalidateDerivedOutputs(
+                current.copy(captions = current.captions.clearOverridesForCue(selectedId)),
+            )
+        }
     }
 
     fun saveProjectArchive(destinationUri: Uri) {

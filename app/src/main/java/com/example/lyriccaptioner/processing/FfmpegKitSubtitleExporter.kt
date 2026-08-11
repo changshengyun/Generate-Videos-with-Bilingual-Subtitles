@@ -16,10 +16,12 @@ import com.arthenica.ffmpegkit.ReturnCode
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionVerticalAnchor
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.SubtitleStyle
 import com.example.lyriccaptioner.model.toCaptionLayout
 import com.example.lyriccaptioner.model.toDefaultCaptionStyle
+import com.example.lyriccaptioner.model.verticalAnchor
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -369,9 +371,7 @@ internal object AssSubtitleWriter {
         val cues = CaptionRenderResolver.resolveAll(captions, layout, defaultStyle)
             .sortedBy { it.caption.startMs }
             .mapIndexedNotNull { index, render ->
-                val english = escapeText(render.caption.english)
-                val chinese = escapeText(render.caption.chinese)
-                val text = listOf(english, chinese).filter { it.isNotEmpty() }.joinToString("\\N")
+                val text = dialogueText(render)
                 if (text.isEmpty() || render.caption.endMs <= render.caption.startMs) {
                     null
                 } else {
@@ -410,6 +410,26 @@ internal object AssSubtitleWriter {
         }
     }
 
+    /**
+     * ASS does not apply SecondaryColour to the second line of a Dialogue. Keep the
+     * bilingual cue in one Dialogue for timing/position consistency, but explicitly
+     * switch to the resolved Chinese colour immediately before the Chinese text.
+     * Override tags are scoped to this Dialogue by ASS, so they cannot affect the
+     * English text before the line break or a subsequent Dialogue.
+     */
+    private fun dialogueText(render: ResolvedCaptionRender): String {
+        val english = escapeText(render.caption.english)
+        val chinese = escapeText(render.caption.chinese)
+        val chineseWithColor = chinese.takeIf { it.isNotEmpty() }?.let {
+            "{\\c${assColor(render.style.secondaryColorHex, "F4E7A1")}&}$it"
+        }.orEmpty()
+        return when {
+            english.isNotEmpty() && chineseWithColor.isNotEmpty() -> "$english\\N$chineseWithColor"
+            english.isNotEmpty() -> english
+            else -> chineseWithColor
+        }
+    }
+
     fun write(captions: List<CaptionCue>, style: SubtitleStyle): String = write(
         captions = captions,
         layout = style.toCaptionLayout(),
@@ -445,10 +465,10 @@ internal object AssSubtitleWriter {
             CaptionAlignment.RIGHT -> rightEdge
         }.coerceIn(0, PLAY_RES_X)
         val positionY = (layout.yRatio * PLAY_RES_Y).toInt().coerceIn(0, PLAY_RES_Y)
-        val verticalBand = when {
-            layout.yRatio < ONE_THIRD -> VerticalBand.TOP
-            layout.yRatio > TWO_THIRDS -> VerticalBand.BOTTOM
-            else -> VerticalBand.MIDDLE
+        val verticalBand = when (layout.verticalAnchor()) {
+            CaptionVerticalAnchor.TOP -> VerticalBand.TOP
+            CaptionVerticalAnchor.MIDDLE -> VerticalBand.MIDDLE
+            CaptionVerticalAnchor.BOTTOM -> VerticalBand.BOTTOM
         }
         val assAlignment = when (verticalBand) {
             VerticalBand.TOP -> when (alignment) {
@@ -535,6 +555,4 @@ internal object AssSubtitleWriter {
 
     private const val PLAY_RES_X = 1_920
     private const val PLAY_RES_Y = 1_080
-    private const val ONE_THIRD = 1f / 3f
-    private const val TWO_THIRDS = 2f / 3f
 }

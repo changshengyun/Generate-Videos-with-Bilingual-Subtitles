@@ -32,6 +32,16 @@ class CaptionStyleModelTest {
     }
 
     @Test
+    fun sharedVerticalAnchorMappingCoversTopMiddleAndBottom() {
+        assertEquals(CaptionVerticalAnchor.TOP, CaptionLayout(yRatio = 0.2f).verticalAnchor())
+        assertEquals(0.2f, CaptionLayout(yRatio = 0.2f).verticalAnchorOffsetRatio())
+        assertEquals(CaptionVerticalAnchor.MIDDLE, CaptionLayout(yRatio = 0.5f).verticalAnchor())
+        assertEquals(0f, CaptionLayout(yRatio = 0.5f).verticalAnchorOffsetRatio())
+        assertEquals(CaptionVerticalAnchor.BOTTOM, CaptionLayout(yRatio = 0.8f).verticalAnchor())
+        assertEquals(-0.2f, CaptionLayout(yRatio = 0.8f).verticalAnchorOffsetRatio(), 0.0001f)
+    }
+
+    @Test
     fun defaultStyleAppliesWhenCueHasNoOverride() {
         val default = DefaultCaptionStyle(fontSizeSp = 30, bold = true, alignment = CaptionAlignment.LEFT)
 
@@ -62,6 +72,38 @@ class CaptionStyleModelTest {
         assertEquals(40, resolveCaptionStyle(default, overridden.styleOverride).fontSizeSp)
         assertEquals(27, resolveCaptionStyle(default, cleared.styleOverride).fontSizeSp)
         assertNull(cleared.styleOverride)
+    }
+
+    @Test
+    fun clearingOverridesByCueIdRemovesStyleAndLayoutOnlyFromTargetCue() {
+        val target = CaptionCue(
+            "target",
+            0,
+            100,
+            "a",
+            "甲",
+            0.9f,
+            styleOverride = CaptionStyleOverride(fontSizeSp = 32),
+            layoutOverride = CaptionLayoutOverride(yRatio = 0.2f),
+        )
+        val sibling = CaptionCue(
+            "sibling",
+            100,
+            200,
+            "b",
+            "乙",
+            0.9f,
+            styleOverride = CaptionStyleOverride(italic = true),
+            layoutOverride = CaptionLayoutOverride(xRatio = 0.1f),
+        )
+
+        val cleared = listOf(target, sibling).clearOverridesForCue("target")
+
+        assertNull(cleared[0].styleOverride)
+        assertNull(cleared[0].layoutOverride)
+        assertEquals(CaptionLayout(0.05f, 0.88f, 0.9f), resolveCaptionLayout(CaptionLayout(), cleared[0].layoutOverride))
+        assertEquals(sibling.styleOverride, cleared[1].styleOverride)
+        assertEquals(sibling.layoutOverride, cleared[1].layoutOverride)
     }
 
     @Test

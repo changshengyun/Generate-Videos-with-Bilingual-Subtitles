@@ -18,3 +18,8 @@ data class CaptionCue(
     val needsReview: Boolean
         get() = confidence < 0.82f || correctionCandidates.isNotEmpty()
 }
+
+/** Clear both visual and placement overrides for exactly one stable cue id. */
+internal fun List<CaptionCue>.clearOverridesForCue(cueId: String): List<CaptionCue> = map { cue ->
+    if (cue.id == cueId) cue.copy(styleOverride = null, layoutOverride = null) else cue
+}

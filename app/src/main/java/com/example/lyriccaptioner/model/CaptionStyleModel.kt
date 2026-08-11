@@ -33,6 +33,26 @@ data class CaptionLayout(
     }
 }
 
+enum class CaptionVerticalAnchor {
+    TOP,
+    MIDDLE,
+    BOTTOM,
+}
+
+/** Shared source-video anchor semantics for Compose preview and ASS export. */
+fun CaptionLayout.verticalAnchor(): CaptionVerticalAnchor = when {
+    yRatio < 1f / 3f -> CaptionVerticalAnchor.TOP
+    yRatio > 2f / 3f -> CaptionVerticalAnchor.BOTTOM
+    else -> CaptionVerticalAnchor.MIDDLE
+}
+
+/** Offset from the corresponding top/center/bottom parent anchor to the cue y coordinate. */
+fun CaptionLayout.verticalAnchorOffsetRatio(): Float = when (verticalAnchor()) {
+    CaptionVerticalAnchor.TOP -> yRatio
+    CaptionVerticalAnchor.MIDDLE -> yRatio - 0.5f
+    CaptionVerticalAnchor.BOTTOM -> yRatio - 1f
+}
+
 /**
  * Optional per-cue placement changes.  Null fields inherit the project layout;
  * a non-null field replaces only that coordinate for the cue.

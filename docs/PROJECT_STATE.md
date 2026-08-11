@@ -4,14 +4,22 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R1 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-EDITOR-002 / R1 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R1_MATRIX_DEFINED / IN_PROGRESS`
-- Process gate: `V3_EDITOR_002_R1_IN_PROGRESS`
+- Current gate: `V3_EDITOR_002_R1_CANDIDATE`
+- Process gate: `V3_EDITOR_002_R1_READY_FOR_BRAIN`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: execute only the `V3-EDITOR-002 / R1` matrix in `CURRENT_TASK.md`; do not start DeepSeek subtitle enhancement, Provider or Prompt work until R1 is closed.
+- Next permitted action: Brain re-adjudication of the V3-EDITOR-002/R1 candidate; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+
+## Current V3-EDITOR-002 / R1 implementation evidence
+
+- R1-01/R1-02/R1-05 pass: position-only overrides are clearable; clear by stable cueId removes both style and layout overrides from only the target cue and restores default layout.
+- R1-03/R1-04 pass: ASS applies an explicit scoped Chinese `secondaryColorHex` override; Compose and ASS share normalized coordinate and vertical-anchor semantics.
+- R1-06 artifacts: app APK `417446841` bytes at `app/build/outputs/apk/debug/app-debug.apk`; AndroidTest APK `119048` bytes at `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`.
+- R1-07 verification: focused JVM 39/39, full JVM 203/203, ASR Python 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed.
+- No physical UI, DeepSeek, Key, online lyrics, Provider or Prompt work was performed. Developer candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns acceptance.
 
 ## Brain adjudication of V3-EDITOR-002 (2026-08-11)
 
@@ -158,7 +166,7 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`（R1 active） |
+| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（R1 candidate; Brain re-adjudication required） |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |

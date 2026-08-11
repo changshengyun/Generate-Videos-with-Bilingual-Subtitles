@@ -1,6 +1,7 @@
 package com.example.lyriccaptioner.ui
 
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import org.junit.Assert.assertEquals
@@ -78,6 +79,23 @@ class EditorUiPolicyTest {
         assertEquals(24, siblingUi.resolved.fontSizeSp)
         assertFalse(clearedUi.hasOverride)
         assertEquals(24, clearedUi.resolved.fontSizeSp)
+    }
+
+    @Test
+    fun positionOnlyOverrideKeepsClearActionEnabledAndClearingBothFallsBackToDefaults() {
+        val defaults = DefaultCaptionStyle(fontSizeSp = 24)
+        val positioned = cue("positioned").copy(
+            layoutOverride = CaptionLayoutOverride(yRatio = 0.2f),
+        )
+
+        val positionedUi = captionStyleUiState(defaults, positioned)
+        val clearedUi = captionStyleUiState(
+            defaults,
+            positioned.copy(styleOverride = null, layoutOverride = null),
+        )
+
+        assertTrue("position-only overrides are clearable", positionedUi.hasOverride)
+        assertFalse("clearing style and layout removes the override", clearedUi.hasOverride)
     }
 
     @Test
