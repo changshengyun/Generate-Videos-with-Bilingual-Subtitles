@@ -1,6 +1,5 @@
 package com.example.lyriccaptioner.model
 
-import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** Source video dimensions reported by the player or media metadata. */
@@ -142,17 +141,21 @@ object CaptionGeometryResolver {
         source: SourceVideoSize,
         container: PreviewContainerSize,
     ): VideoRect {
-        val containerAspect = container.width.toDouble() / container.height.toDouble()
-        val displayedAspect = source.displayedAspectRatio
+        // Match Media3 1.10.1 AspectRatioFrameLayout exactly: all aspect and
+        // resize arithmetic is Float, and the adjusted dimension is truncated
+        // with toInt rather than rounded/floored from a Double expression.
+        val containerAspect = container.width.toFloat() / container.height.toFloat()
+        val displayedAspect = (source.width.toFloat() * source.pixelWidthHeightRatio) /
+            source.height.toFloat()
         // AspectRatioFrameLayout intentionally leaves dimensions untouched for
         // negligible deformation (|videoAspect/containerAspect - 1| <= 1%).
-        val deformation = displayedAspect / containerAspect - 1.0
+        val deformation = displayedAspect / containerAspect - 1f
         val (width, height) = if (kotlin.math.abs(deformation) <= ASPECT_DEFORMATION_TOLERANCE) {
             container.width to container.height
         } else if (displayedAspect > containerAspect) {
-            container.width to floor(container.width.toDouble() / displayedAspect).toInt().coerceIn(1, container.height)
+            container.width to (container.width.toFloat() / displayedAspect).toInt().coerceIn(1, container.height)
         } else {
-            floor(container.height.toDouble() * displayedAspect).toInt().coerceIn(1, container.width) to container.height
+            (container.height.toFloat() * displayedAspect).toInt().coerceIn(1, container.width) to container.height
         }
         return VideoRect(
             left = ((container.width - width) / 2).coerceAtLeast(0),

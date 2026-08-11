@@ -104,6 +104,7 @@ import com.example.lyriccaptioner.model.SourceVideoSize
 import com.example.lyriccaptioner.model.resolveCaptionLayout
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.CaptionRenderResolver
+import com.example.lyriccaptioner.processing.CaptionPaintPlan
 import com.example.lyriccaptioner.processing.ResolvedCaptionRender
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
@@ -1528,12 +1529,13 @@ private fun SubtitlePreviewOverlay(
             container = containerSize,
         )
         val geometry = spec.geometry
-        val fontSizeSp = CaptionRenderResolver.physicalPixelsToSp(
-            physicalPixels = spec.fontSizePx,
-            density = density.density,
-            fontScale = density.fontScale,
-        ).sp
-        val outlineColor = parseComposeColor(spec.style.outlineColorHex, Color.Black)
+        val englishPlan = cue.english.takeIf { it.isNotBlank() }?.let {
+            CaptionPaintPlan.from(spec = spec, text = it, fillColorHex = spec.style.primaryColorHex)
+        }
+        val chinesePlan = cue.chinese.takeIf { it.isNotBlank() }?.let {
+            CaptionPaintPlan.from(spec = spec, text = it, fillColorHex = spec.style.secondaryColorHex)
+        }
+        val positionPlan = englishPlan ?: chinesePlan ?: return@BoxWithConstraints
         val verticalBand = geometry.anchor
         val verticalAlignment = when (verticalBand) {
             CaptionVerticalAnchor.TOP -> Alignment.TopStart
@@ -1541,11 +1543,11 @@ private fun SubtitlePreviewOverlay(
             CaptionVerticalAnchor.BOTTOM -> Alignment.BottomStart
         }
         val yOffsetPx = when (verticalBand) {
-            CaptionVerticalAnchor.TOP -> geometry.anchorYpx
-            CaptionVerticalAnchor.MIDDLE -> geometry.anchorYpx - containerSize.height / 2
-            CaptionVerticalAnchor.BOTTOM -> geometry.anchorYpx - containerSize.height
+            CaptionVerticalAnchor.TOP -> positionPlan.stroke.topPx
+            CaptionVerticalAnchor.MIDDLE -> positionPlan.stroke.topPx - containerSize.height / 2
+            CaptionVerticalAnchor.BOTTOM -> positionPlan.stroke.topPx - containerSize.height
         }
-        val xOffsetPx = geometry.textBoxLeftPx
+        val xOffsetPx = positionPlan.stroke.leftPx
         Column(
             modifier = Modifier
                 .align(verticalAlignment)
@@ -1553,35 +1555,19 @@ private fun SubtitlePreviewOverlay(
                     x = with(density) { xOffsetPx.toDp() },
                     y = with(density) { yOffsetPx.toDp() },
                 )
-                .width(with(density) { geometry.textBoxWidthPx.toDp() }),
+                .width(with(density) { positionPlan.stroke.widthPx.toDp() }),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (cue.english.isNotBlank()) {
                 CaptionOutlinedText(
                     modifier = Modifier.fillMaxWidth(),
-                    text = cue.english,
-                    fillColor = parseComposeColor(spec.style.primaryColorHex, Color.White),
-                    outlineColor = outlineColor,
-                    fontSize = fontSizeSp,
-                    outlineWidthPx = spec.outlineWidthPx,
-                    fontFamily = subtitleFontFamily(spec.style.fontFamily),
-                    fontWeight = if (spec.style.bold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (spec.style.italic) FontStyle.Italic else FontStyle.Normal,
-                    textAlign = spec.style.alignment.toTextAlign(),
+                    plan = englishPlan ?: error("English paint plan missing"),
                 )
             }
             if (cue.chinese.isNotBlank()) {
                 CaptionOutlinedText(
                     modifier = Modifier.fillMaxWidth(),
-                    text = cue.chinese,
-                    fillColor = parseComposeColor(spec.style.secondaryColorHex, Color(0xFFF4E7A1)),
-                    outlineColor = outlineColor,
-                    fontSize = fontSizeSp,
-                    outlineWidthPx = spec.outlineWidthPx,
-                    fontFamily = subtitleFontFamily(spec.style.fontFamily),
-                    fontWeight = if (spec.style.bold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (spec.style.italic) FontStyle.Italic else FontStyle.Normal,
-                    textAlign = spec.style.alignment.toTextAlign(),
+                    plan = chinesePlan ?: error("Chinese paint plan missing"),
                 )
             }
         }
@@ -1590,39 +1576,39 @@ private fun SubtitlePreviewOverlay(
 
 @Composable
 private fun CaptionOutlinedText(
-    text: String,
-    fillColor: Color,
-    outlineColor: Color,
-    fontSize: androidx.compose.ui.unit.TextUnit,
-    outlineWidthPx: Int,
-    fontFamily: FontFamily,
-    fontWeight: FontWeight,
-    fontStyle: FontStyle,
-    textAlign: TextAlign,
+    plan: CaptionPaintPlan,
     modifier: Modifier = Modifier,
 ) {
+    val stroke = plan.stroke
+    val fill = plan.fill
+    val density = LocalDensity.current
+    val fontSize = CaptionRenderResolver.physicalPixelsToSp(
+        physicalPixels = stroke.fontSizePx,
+        density = density.density,
+        fontScale = density.fontScale,
+    ).sp
     val baseStyle = MaterialTheme.typography.bodyMedium.copy(
         fontSize = fontSize,
-        fontFamily = fontFamily,
-        fontWeight = fontWeight,
-        fontStyle = fontStyle,
-        textAlign = textAlign,
+        fontFamily = subtitleFontFamily(stroke.fontFamily),
+        fontWeight = if (stroke.bold) FontWeight.Bold else FontWeight.Normal,
+        fontStyle = if (stroke.italic) FontStyle.Italic else FontStyle.Normal,
+        textAlign = stroke.alignment.toTextAlign(),
     )
     Box(modifier = modifier) {
-        if (outlineWidthPx > 0) {
+        if (stroke.outlineWidthPx > 0) {
             Text(
                 modifier = Modifier.fillMaxWidth(),
-                text = text,
-                color = outlineColor,
+                text = stroke.text,
+                color = parseComposeColor(stroke.colorHex, Color.Black),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                style = baseStyle.copy(drawStyle = Stroke(width = outlineWidthPx.toFloat())),
+                style = baseStyle.copy(drawStyle = Stroke(width = stroke.outlineWidthPx.toFloat())),
             )
         }
         Text(
             modifier = Modifier.fillMaxWidth(),
-            text = text,
-            color = fillColor,
+            text = fill.text,
+            color = parseComposeColor(fill.colorHex, Color.White),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             style = baseStyle.copy(drawStyle = Fill),

@@ -4,14 +4,26 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R4 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-EDITOR-002 / R4 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R4_MATRIX_DEFINED / IN_PROGRESS`
-- Process gate: `V3_EDITOR_002_R4_IN_PROGRESS`
+- Current gate: `V3_EDITOR_002_R4_VERIFIED / BRAIN_REVIEW_PENDING`
+- Process gate: `V3_EDITOR_002_R4_BRAIN_REVIEW_PENDING`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
 - Next permitted action: implement the bounded R4 canonical style-write and paint-path evidence matrix; do not start DeepSeek subtitle enhancement, Provider, Prompt, media-stage work or physical-device UI work.
+
+- Current action override: wait for Brain R4 adjudication; do not implement further R4 work or start `V3-AI-001`, media work or physical-device UI.
+
+## Current V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
+
+- R4 dispatch is complete; this evidence supersedes the earlier `Next permitted action` dispatch wording. Wait for Brain adjudication and do not start `V3-AI-001`, media work or physical-device UI.
+- Candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; R4 implementation and verification are complete, Brain formal adjudication is pending.
+- Canonical ratio writes are used by default, selected-cue and cueId A+/A- paths; v1-v5 edit/save/reload, v6 cue edit/reload, 14/48 clamp and sibling isolation pass (archive focused 5/5; write-path contract 3/3).
+- Media3 1.10.1 Float FIT parity is covered: 3:5 in 1080x1920 truncates to 1799px; 1% tolerance, odd centering, square and anamorphic PAR geometry pass (15/15).
+- Production Compose consumes the shared render spec through a two-layer `CaptionPaintPlan` (real Stroke then Fill); paint-plan focused tests pass 4/4. ASS remains shared-spec Outline with `Shadow=0`.
+- Full JVM 241/241, ASR Python 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. APKs: app `417,446,841` bytes at `app/build/outputs/apk/debug/app-debug.apk` (2026-08-11 16:06:41 +08:00); AndroidTest `119,048` bytes at `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` (2026-08-10 21:46:37 +08:00). Secret scan across 12 source/test/APK files: 0 pattern hits.
+- Boundary: no real-device UI, DeepSeek, Key, online lyrics, Provider, Prompt, media or Whisper work was performed; do not call this formal product PASS.
 
 ## Brain R3 adjudication (2026-08-11)
 
@@ -21,7 +33,7 @@
 - P1 evidence path: `MainViewModel.kt` default write at 762-765 and cue writes at 798-808 conflict with ratio precedence in `CaptionStyleModel.kt` at 168-170, 186-202 and 210-215.
 - P1 FIT parity: current `Double + floor` geometry differs from Media3 1.10.1 `Float` arithmetic plus integer truncation. The concrete 3:5 in 1080x1920 case resolves to 1800 instead of Media3's 1799, and current tests do not cover this precision boundary.
 - Evidence gap: no focused test references the Compose `CaptionOutlinedText` / `DrawStyle.Stroke` / fill production bridge, despite the R3-07 claim. Numeric resolver tests do not close that paint-path requirement.
-- R4 is authorized and its full acceptance matrix plus Limbs plan are authoritative in `CURRENT_TASK.md`. R3 is not formally closed.
+- R4 is authorized and its full acceptance matrix plus internal-Agent plan are authoritative in `CURRENT_TASK.md`. R3 is not formally closed.
 
 ## Brain R2 adjudication (2026-08-11)
 
@@ -32,7 +44,7 @@
 - P1: `VideoSize.pixelWidthHeightRatio` is discarded, so anamorphic media can produce a different PlayerView FIT rectangle than the overlay.
 - P2: shared FIT rounds adjusted dimensions while Media3 truncates them, creating a known 1px difference; focused tests do not exercise production Compose sizing, outline, pixel ratio or Media3 rounding.
 - Full JVM XML confirms 212/212 with no failures/errors/skips; APK sizes match the returned evidence. Build success does not close the render differences above.
-- R3 matrix and bounded Limbs plan are frozen in `CURRENT_TASK.md`; implementation and regression are complete under the user dispatch, with Brain review pending.
+- R3 matrix and bounded internal-Agent plan are frozen in `CURRENT_TASK.md`; implementation and regression are complete under the user dispatch, with Brain review pending.
 
 ## Current V3-EDITOR-002 / R3 implementation evidence (2026-08-11)
 
@@ -55,7 +67,7 @@
 - P1: Compose adds unmodelled horizontal padding inside the normalized width and therefore narrows/shifts the text area.
 - P1: Compose and ASS still disagree on Chinese font size, bold/italic application and the non-bold English weight.
 - P1: current tests cover helper values and ASS strings but do not exercise Compose effective-video geometry, black bars, aspect-ratio changes, normal/fullscreen parity or final bilingual style parity.
-- R2 matrix and bounded Limbs parallel plan were defined in `CURRENT_TASK.md`; implementation is complete and the Developer candidate is recorded above for Brain re-adjudication.
+- R2 matrix and bounded internal-Agent parallel plan were defined in `CURRENT_TASK.md`; implementation is complete and the Developer candidate is recorded above for Brain re-adjudication.
 
 ## Current V3-EDITOR-002 / R1 implementation evidence
 

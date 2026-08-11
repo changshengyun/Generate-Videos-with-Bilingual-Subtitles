@@ -32,7 +32,7 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 
-一次只激活一个实施阶段。当前活动阶段为 `V3-EDITOR-002 / R4`，Brain 已完成 R3 裁决并确认 canonical ratio 写路径 P1 与 stroke/fill 测试证据缺口；完整 R4 验收矩阵与 Limbs 并行计划只保存在 `CURRENT_TASK.md`。R4 正式关闭后优先进入 `V3-AI-001`，但必须先取得用户批准的 production Prompt、模型和触发方式；在此之前不得启动 AI 实现或真机 UI。
+一次只激活一个实施阶段。当前活动阶段为 `V3-EDITOR-002 / R4`，Brain 已完成 R3 裁决并确认 canonical ratio 写路径 P1 与 stroke/fill 测试证据缺口；完整 R4 验收矩阵与内部 Agent 并行计划只保存在 `CURRENT_TASK.md`。R4 正式关闭后优先进入 `V3-AI-001`，但必须先取得用户批准的 production Prompt、模型和触发方式；在此之前不得启动 AI 实现或真机 UI。
 
 `V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
 
@@ -41,6 +41,12 @@ ASR 组件证据为 focused runtime 14/14、完整 JVM 169/169、ASR Python 6/6�
 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG` 统一保存在 `PROJECT_STATE.md`。用户已停止该批次作为当前开发门禁；已有失败和缺失指标继续保留为 `EVIDENCE_NOT_MEASURED`，不得改写为真机已验证。
 
 ## 阶段入口验收矩阵门禁
+
+## Current R4 status
+
+`V3-EDITOR-002 / R4` is `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`. Implementation and verification are complete; Brain formal adjudication is pending. The next action is to wait for Brain and not start `V3-AI-001`, media work or physical-device UI.
+
+R4 evidence: canonical ratio writes and v1-v5/v6 edit-save-reload passed; Media3 1.10.1 Float FIT 3:5/1080x1920 truncates to 1799px; production Compose Stroke→Fill paint-plan evidence passed. Full JVM 241/241, ASR 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. APKs are 417,446,841 and 119,048 bytes. No real-device UI, DeepSeek, Key, online lyrics, Provider, Prompt, media or Whisper evidence was collected.
 
 所有 V3 阶段统一执行以下顺序：
 

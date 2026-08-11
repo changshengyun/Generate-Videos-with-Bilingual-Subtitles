@@ -178,4 +178,44 @@ class CaptionGeometryModelTest {
             CaptionGeometryResolver.sourceHeightToPreviewPixels(source, container, -1f)
         }
     }
+
+    @Test
+    fun media3FloatFitThreeToFiveSourceKeepsTheKnownTruncationBoundary() {
+        // Media3 1.10.1 performs Float arithmetic before toInt().  The
+        // 3:5 portrait source therefore truncates 1799.999... to 1799,
+        // rather than rounding the mathematically exact 1800.
+        val rect = CaptionGeometryResolver.effectiveVideoRect(
+            SourceVideoSize(3, 5),
+            PreviewContainerSize(1080, 1920),
+        )
+
+        assertEquals(VideoRect(0, 60, 1080, 1799), rect)
+    }
+
+    @Test
+    fun media3FloatFitToleranceUsesStrictOnePercentBoundary() {
+        val source = SourceVideoSize(1000, 1000, pixelWidthHeightRatio = 1.01f)
+
+        // The exact tolerance boundary is still treated as deformable by
+        // AspectRatioFrameLayout; implementations must not switch to a
+        // letterbox rectangle because of Double-only arithmetic.
+        assertEquals(
+            VideoRect(0, 0, 1000, 1000),
+            CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(1000, 1000)),
+        )
+    }
+
+    @Test
+    fun anamorphicParAndOddCenteringStayStableTogether() {
+        val rect = CaptionGeometryResolver.effectiveVideoRect(
+            SourceVideoSize(720, 576, pixelWidthHeightRatio = 16f / 15f),
+            PreviewContainerSize(1001, 1001),
+        )
+
+        assertEquals(VideoRect(0, 125, 1001, 750), rect)
+        assertEquals(rect.left, (1001 - rect.width) / 2)
+        assertEquals(rect.top, (1001 - rect.height) / 2)
+        assertEquals(1001 - rect.right, (1001 - rect.width + 1) / 2)
+        assertEquals(1001 - rect.bottom, (1001 - rect.height + 1) / 2)
+    }
 }

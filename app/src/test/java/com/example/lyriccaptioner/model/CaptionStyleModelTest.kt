@@ -180,4 +180,56 @@ class CaptionStyleModelTest {
         assertEquals(40f / LEGACY_PLAY_RES_Y, resolved.fontSizeRatio, 0.000001f)
         assertEquals(24f / LEGACY_PLAY_RES_Y, resolveCaptionStyle(default, null).fontSizeRatio, 0.000001f)
     }
+
+    @Test
+    fun canonicalRatioWinsOverConflictingLegacyProjectionAndKeepsItInSync() {
+        val override = CaptionStyleOverride(
+            fontSizeSp = 48,
+            fontSizeRatio = 29f / LEGACY_PLAY_RES_Y,
+        ).validated()
+
+        assertEquals(29, override.fontSizeSp)
+        assertEquals(29f / LEGACY_PLAY_RES_Y, override.fontSizeRatio ?: Float.NaN, 0.000001f)
+        assertEquals(29, resolveCaptionStyle(DefaultCaptionStyle(), override).fontSizeSp)
+    }
+
+    @Test
+    fun ratioWritesClampAndRoundAtCanonicalBoundaries() {
+        assertEquals(MIN_CAPTION_FONT_SIZE_RATIO, canonicalCaptionFontSizeRatio(-1f), 0.000001f)
+        assertEquals(MAX_CAPTION_FONT_SIZE_RATIO, canonicalCaptionFontSizeRatio(1f), 0.000001f)
+        assertEquals(DEFAULT_CAPTION_FONT_SIZE_RATIO, canonicalCaptionFontSizeRatio(Float.NaN), 0.000001f)
+        // Non-finite ratios are invalid input and safely fall back to the
+        // default projection; finite values at the boundaries are clamped.
+        assertEquals(24, ratioToLegacyFontSize(Float.NEGATIVE_INFINITY))
+        assertEquals(24, ratioToLegacyFontSize(Float.POSITIVE_INFINITY))
+        assertEquals(MIN_CAPTION_OUTLINE_WIDTH_RATIO, canonicalCaptionOutlineWidthRatio(-1f), 0.000001f)
+        assertEquals(DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO, canonicalCaptionOutlineWidthRatio(Float.POSITIVE_INFINITY), 0.000001f)
+        assertEquals(DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO, canonicalCaptionOutlineWidthRatio(Float.NaN), 0.000001f)
+    }
+
+    @Test
+    fun adjustRatioUsesOneCanonicalStepForDefaultAndCueWrites() {
+        val default = DefaultCaptionStyle().withFontSizeRatio(
+            adjustCaptionFontSizeRatio(DEFAULT_CAPTION_FONT_SIZE_RATIO, 5),
+        )
+        val cue = CaptionStyleOverride(fontSizeSp = 24).withFontSizeRatio(
+            adjustCaptionFontSizeRatio(24f / LEGACY_PLAY_RES_Y, -20),
+        )
+
+        assertEquals(29, default.fontSizeSp)
+        assertEquals(29f / LEGACY_PLAY_RES_Y, default.fontSizeRatio, 0.000001f)
+        assertEquals(14, cue.fontSizeSp)
+        assertEquals(14f / LEGACY_PLAY_RES_Y, cue.fontSizeRatio ?: Float.NaN, 0.000001f)
+    }
+
+    @Test
+    fun explicitRatioSurvivesLegacyStyleChangesAndLegacyOnlyInputStillMigrates() {
+        val canonical = DefaultCaptionStyle(fontSizeSp = 40, fontSizeRatio = 30f / LEGACY_PLAY_RES_Y).validated()
+        val legacyOnly = CaptionStyleOverride(fontSizeSp = 32).validated()
+
+        assertEquals(30, canonical.fontSizeSp)
+        assertEquals(30f / LEGACY_PLAY_RES_Y, canonical.fontSizeRatio, 0.000001f)
+        assertEquals(32, legacyOnly.fontSizeSp)
+        assertEquals(32f / LEGACY_PLAY_RES_Y, legacyOnly.fontSizeRatio ?: Float.NaN, 0.000001f)
+    }
 }

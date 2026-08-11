@@ -3,16 +3,26 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R4 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-EDITOR-002 / R4 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `R4_DISPATCHED / IN_PROGRESS`
+- Implementation authorization: `R4_VERIFIED / BRAIN_REVIEW_PENDING`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
 - Review workflow: Brain 已复核 R3 功能提交 `1a971af11a56806d2e10aca3d0a7d3cf3c15b83d`；R3 的几何、共享 render spec、v6 基础迁移与构建证据保留，但 canonical ratio 编辑写路径存在 P1，不能正式关闭
 - Next action: 实施并验证下方 `V3-EDITOR-002 / R4`；不得启动 `V3-AI-001`、媒体阶段或真实设备 UI
+
+## V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
+
+- R4 dispatch is complete; the current action is to wait for Brain adjudication. The stale pre-implementation next-action wording above is superseded by this status.
+- R4-01/R4-02/R4-03: default, selected-cue and cueId font-size writes now calculate and persist canonical `fontSizeRatio`, synchronizing the legacy `fontSizeSp` projection through one helper. Focused source-contract tests pass 3/3.
+- R4-04/R4-07: v1-v5 import -> edit -> v6 save/reload, v6 cue edit/reload, 14/48 clamp and sibling isolation pass in `ProjectArchiveR4EditSaveReloadTest` (5/5); existing R1-R3 behavior remains in the full suite.
+- R4-05: `CaptionGeometryResolver` matches Media3 1.10.1 Float FIT arithmetic, 1% tolerance, `toInt` truncation and trailing odd remainder; 3:5 in 1080x1920 is 1799px, with square/PAR focused geometry 15/15.
+- R4-06: production Compose builds `CaptionPaintPlan` from the shared render spec and paints real `Stroke` then `Fill` with identical text/font/size/position/style. `CaptionPaintPlanTest` passes 4/4; ASS continues to consume the shared spec with equivalent Outline and `Shadow=0`.
+- R4-08: full JVM 241/241 (0 failures, 0 skipped), ASR Python 6/6, lint 0 errors/33 warnings, ordinary Debug, native-enabled Debug and AndroidTest builds all pass. APKs: `app/build/outputs/apk/debug/app-debug.apk` = `417,446,841` bytes (2026-08-11 16:06:41 +08:00); `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = `119,048` bytes (2026-08-10 21:46:37 +08:00). Source/test/APK secret scan: 0 pattern hits across 12 files.
+- Boundary: no real-device UI, DeepSeek, BYOK key, online lyrics, Provider, Prompt or media/Whisper work was performed. Candidate only: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns formal acceptance.
 
 ## Brain R3 adjudication (2026-08-11)
 
@@ -45,16 +55,16 @@
 | Exit | R4 全部通过后只允许回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 正式关闭编辑阶段。 |
 | Incomplete | 任一默认/cue 编辑仍可能保存旧 ratio、FIT 仍与 Media3 有已知像素漂移，或 stroke/fill 生产证据仍缺失：保持 `PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED`。迁移破坏或数据不可恢复：`BLOCKED / ARCHIVE_V6_MIGRATION_REQUIRED`。 |
 
-## V3-EDITOR-002 / R4 Limbs parallel plan
+## V3-EDITOR-002 / R4 内部 Agent 并行计划
 
 | Role | 独占范围 | 交付物与边界 |
 |---|---|---|
-| Limb A: canonical style write API | `CaptionStyleModel.kt` 及专属 model tests；不得修改 `MainViewModel.kt`、Compose、ASS、archive 或三份活动文档 | 建立唯一 ratio 更新 helper，冻结 clamp/rounding/legacy projection 规则，覆盖默认与 override 的旧值/新值组合 |
-| Limb B: paint-path evidence | 新增独立 paint-plan model/test，并在接口冻结后修改 `EditorScreen.kt`；不得修改 `MainViewModel.kt`、archive、ASS exporter 或三份活动文档 | 让生产 Compose 直接消费可测试的 stroke-then-fill plan；测试层顺序与共享文字/样式参数，不改产品布局 |
-| Limb C: regression proof | 归档/MainViewModel 与 geometry 专属测试文件；第一波只写 RED tests，不修改生产 `MainViewModel.kt`、model、Compose 或三份活动文档 | 覆盖 v1-v5/v6 edit-save-reload、默认/cue A+/A-、边界、sibling isolation，以及 Media3 Float 3:5/容差/奇数余量/PAR 反例，先证明当前失败再等待 Orchestrator 接线 |
-| Orchestrator | `MainViewModel.kt`、`CaptionGeometryModel.kt`、共享接口集成、必要的 archive 生产修正、三份活动文档、完整回归、secret scan 与 scoped Git commits | 先创建文档 checkpoint；第一波并行 Limb A/B/C，接口冻结后由 Orchestrator 串行接入 MainViewModel 与 Media3 FIT 修正并合并冲突；最终逐项裁决 R4-01–R4-08 |
+| 内部 Agent A：canonical style write API | `CaptionStyleModel.kt` 及专属 model tests；不得修改 `MainViewModel.kt`、Compose、ASS、archive 或三份活动文档 | 建立唯一 ratio 更新 helper，冻结 clamp/rounding/legacy projection 规则，覆盖默认与 override 的旧值/新值组合 |
+| 内部 Agent B：paint-path evidence | 新增独立 paint-plan model/test，并在接口冻结后修改 `EditorScreen.kt`；不得修改 `MainViewModel.kt`、archive、ASS exporter 或三份活动文档 | 让生产 Compose 直接消费可测试的 stroke-then-fill plan；测试层顺序与共享文字/样式参数，不改产品布局 |
+| 内部 Agent C：regression proof | 归档/MainViewModel 与 geometry 专属测试文件；第一波只写 RED tests，不修改生产 `MainViewModel.kt`、model、Compose 或三份活动文档 | 覆盖 v1-v5/v6 edit-save-reload、默认/cue A+/A-、边界、sibling isolation，以及 Media3 Float 3:5/容差/奇数余量/PAR 反例，先证明当前失败再等待主 Agent 接线 |
+| 主 Agent（协调与集成） | `MainViewModel.kt`、`CaptionGeometryModel.kt`、共享接口集成、必要的 archive 生产修正、三份活动文档、完整回归、secret scan 与 scoped Git commits | 先创建文档 checkpoint；第一波并行内部 Agent A/B/C，接口冻结后由主 Agent 串行接入 MainViewModel 与 Media3 FIT 修正并合并冲突；最终逐项裁决 R4-01–R4-08 |
 
-- 不便并行的 `MainViewModel.kt` 与共享 archive 接线由 Orchestrator 串行完成，不让多个 Limb 同时修改热点文件。
+- 不便并行的 `MainViewModel.kt` 与共享 archive 接线由主 Agent 串行完成，不让多个内部 Agent 同时修改热点文件。
 
 ## Brain R2 adjudication (2026-08-11)
 
@@ -95,16 +105,16 @@
 | Exit | R3 全部通过后只允许再次回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 重新裁决。 |
 | Incomplete | 任一字号、描边、pixel ratio 或 FIT 行为仍不一致：`PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED`；迁移不能证明安全：`BLOCKED / ARCHIVE_V6_MIGRATION_REQUIRED`。 |
 
-## V3-EDITOR-002 / R3 Limbs parallel plan
+## V3-EDITOR-002 / R3 内部 Agent 并行计划
 
 | Role | 独占范围 | 交付物与边界 |
 |---|---|---|
-| Limb A: canonical style and archive | `CaptionStyleModel.kt`、`ProjectArchive.kt` 及专属 migration/round-trip tests；不得修改 Compose、ASS exporter 或三份活动文档 | 引入 `fontSizeRatio` 与共享描边宽度，完成 v1-v5→v6 迁移、严格校验和 v6 round-trip；冻结兼容常量与 rounding/clamp 规则 |
-| Limb B: Media3 geometry parity | `CaptionGeometryModel.kt`、`CaptionGeometryModelTest.kt`；不得修改 Compose、ASS exporter、archive 或三份活动文档 | 纳入 `pixelWidthHeightRatio`，复现 Media3 FIT 截断和居中行为，输出供 renderer 使用的有效视频矩形与源视频相对像素换算 |
-| Limb C: renderer parity | `EditorScreen.kt`、`FfmpegKitSubtitleExporter.kt` 及专属 Compose/ASS render-spec tests；不得修改 archive 或三份活动文档 | 在 Limb A/B 接口冻结后，让 Compose/ASS 消费同一最终 render spec；实现真实 stroke+fill、源视频相对字号/描边和 density/fontScale 独立性 |
-| Orchestrator | 三份活动文档、接口协调、共享热点集成、完整回归、产物核验与 scoped Git commits | 先提交三份文档 checkpoint；Limb A/B 第一波并行，接口冻结后启动/接线 Limb C；独占冲突合并与最终 R3-01–R3-08 裁决，不让子 Agent 相互调度 |
+| 内部 Agent A：canonical style and archive | `CaptionStyleModel.kt`、`ProjectArchive.kt` 及专属 migration/round-trip tests；不得修改 Compose、ASS exporter 或三份活动文档 | 引入 `fontSizeRatio` 与共享描边宽度，完成 v1-v5→v6 迁移、严格校验和 v6 round-trip；冻结兼容常量与 rounding/clamp 规则 |
+| 内部 Agent B：Media3 geometry parity | `CaptionGeometryModel.kt`、`CaptionGeometryModelTest.kt`；不得修改 Compose、ASS exporter、archive 或三份活动文档 | 纳入 `pixelWidthHeightRatio`，复现 Media3 FIT 截断和居中行为，输出供 renderer 使用的有效视频矩形与源视频相对像素换算 |
+| 内部 Agent C：renderer parity | `EditorScreen.kt`、`FfmpegKitSubtitleExporter.kt` 及专属 Compose/ASS render-spec tests；不得修改 archive 或三份活动文档 | 在内部 Agent A/B 接口冻结后，让 Compose/ASS 消费同一最终 render spec；实现真实 stroke+fill、源视频相对字号/描边和 density/fontScale 独立性 |
+| 主 Agent（协调与集成） | 三份活动文档、接口协调、共享热点集成、完整回归、产物核验与 scoped Git commits | 先提交三份文档 checkpoint；内部 Agent A/B 第一波并行，接口冻结后启动/接线内部 Agent C；独占冲突合并与最终 R3-01–R3-08 裁决，不让内部 Agent 相互调度 |
 
-- 并行顺序：Limb A 与 Limb B 可完全并行；Limb C 可先准备独占测试，但生产接线必须等待 A/B 接口冻结。共享文件冲突由 Orchestrator 串行合并，不强行并行。
+- 并行顺序：内部 Agent A 与内部 Agent B 可完全并行；内部 Agent C 可先准备独占测试，但生产接线必须等待 A/B 接口冻结。共享文件冲突由主 Agent 串行合并，不强行并行。
 
 ## Brain R1 re-adjudication (2026-08-11)
 
@@ -144,16 +154,16 @@
 | Exit | R2 全部通过后只允许再次回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 重新裁决。 |
 | Incomplete | 任一有效画面、几何或最终样式差异仍存在：`PARTIAL_PASS / RENDER_INTEGRATION_REQUIRED`；无法获得源视频尺寸或共享模型不能安全落地：`HUMAN_DECISION / SOURCE_VIDEO_GEOMETRY_REQUIRED`。 |
 
-## V3-EDITOR-002 / R2 Limbs parallel plan
+## V3-EDITOR-002 / R2 内部 Agent 并行计划
 
 | Role | 独占范围 | 交付物与边界 |
 |---|---|---|
-| Limb A: geometry core | 新增共享的有效视频矩形/归一化坐标纯模型及其 focused JVM tests；不得修改 `EditorScreen.kt`、ASS exporter 或三份活动文档 | 计算 Media3 FIT 下的 letterbox/pillarbox/no-bars 矩形，输出普通/全屏均可消费的 x/y/width/anchor 映射；覆盖 16:9、9:16、1:1 和不同容器比例 |
-| Limb B: Compose integration | `EditorScreen.kt` 及专属 Compose/render-style tests；不得修改 ASS exporter 或三份活动文档 | 普通与全屏 overlay 消费 Limb A 的共享几何；消除未建模 padding；让中英文最终字号、字重、bold、italic、颜色、描边和对齐严格消费 resolver 结果 |
-| Limb C: ASS and parity verification | `FfmpegKitSubtitleExporter.kt`、`AssSubtitleWriterTest.kt` 及不与 Limb A/B 重叠的一致性 fixtures；不得修改 Compose 或三份活动文档 | 核对 ASS 对共享坐标/最终样式的消费，补齐跨纵横比、黑边、九宫格 anchor、双语样式和 R1 保持项的对照证据；仅在证明需要时修改 exporter |
-| Orchestrator | 三份活动文档、任务分派、共享接口协调、冲突集成、完整回归、产物核验与 scoped Git commits | 先提交三份文档 checkpoint；冻结 Limb A 接口后协调 B/C 消费；独占跨 Limb 共享热点的最终合并，不让子 Agent 相互调度；最后逐项裁决 R2-01–R2-07 并回交 Developer 候选 |
+| 内部 Agent A：geometry core | 新增共享的有效视频矩形/归一化坐标纯模型及其 focused JVM tests；不得修改 `EditorScreen.kt`、ASS exporter 或三份活动文档 | 计算 Media3 FIT 下的 letterbox/pillarbox/no-bars 矩形，输出普通/全屏均可消费的 x/y/width/anchor 映射；覆盖 16:9、9:16、1:1 和不同容器比例 |
+| 内部 Agent B：Compose integration | `EditorScreen.kt` 及专属 Compose/render-style tests；不得修改 ASS exporter 或三份活动文档 | 普通与全屏 overlay 消费内部 Agent A 的共享几何；消除未建模 padding；让中英文最终字号、字重、bold、italic、颜色、描边和对齐严格消费 resolver 结果 |
+| 内部 Agent C：ASS and parity verification | `FfmpegKitSubtitleExporter.kt`、`AssSubtitleWriterTest.kt` 及不与内部 Agent A/B 重叠的一致性 fixtures；不得修改 Compose 或三份活动文档 | 核对 ASS 对共享坐标/最终样式的消费，补齐跨纵横比、黑边、九宫格 anchor、双语样式和 R1 保持项的对照证据；仅在证明需要时修改 exporter |
+| 主 Agent（协调与集成） | 三份活动文档、任务分派、共享接口协调、冲突集成、完整回归、产物核验与 scoped Git commits | 先提交三份文档 checkpoint；冻结内部 Agent A 接口后协调 B/C 消费；独占跨内部 Agent 共享热点的最终合并，不让内部 Agent 相互调度；最后逐项裁决 R2-01–R2-07 并回交 Developer 候选 |
 
-- 并行顺序：Limb A/B/C 可先并行完成各自独占范围；涉及 Limb A 新接口的最终接线由 Orchestrator 在接口冻结后集成。若发现必须同时修改同一热点文件，停止该文件的并行写入并交由 Orchestrator 串行合并，不强行并行。
+- 并行顺序：内部 Agent A/B/C 可先并行完成各自独占范围；涉及内部 Agent A 新接口的最终接线由主 Agent 在接口冻结后集成。若发现必须同时修改同一热点文件，停止该文件的并行写入并交由主 Agent 串行合并，不强行并行。
 
 ## Brain adjudication (2026-08-11)
 
@@ -331,7 +341,7 @@
 - 取消顺序固定为请求 abort -> `whisper_full` 返回 -> 推理线程结束 -> 清理任务临时状态 -> context 失效并安全释放；本阶段取消后的 context 不复用。
 - 严重内存压力下空闲 context 立即释放，活跃 context 标记 pending release 并在任务退出后释放。
 - create、transcribe 或 free 失败不得留下可复用的半有效 handle；release/close 必须幂等。
-- Orchestrator 独占三份活动文档、Git、共享接口及 `WhisperLocalSpeechRecognizer.kt`、`AppPipelineFactory.kt`、`MainViewModel.kt` 等集成热点。
+- 主 Agent（协调与集成）独占三份活动文档、Git、共享接口及 `WhisperLocalSpeechRecognizer.kt`、`AppPipelineFactory.kt`、`MainViewModel.kt` 等集成热点。
 
 ## Developer evidence and A01–A16 result (2026-08-10)
 
@@ -417,18 +427,18 @@
 ## Historical R1 implementation evidence before security rework (2026-08-10)
 
 - R1 checkpoint: `a18574`; implementation commits: `6e77550`, `d9addce`; no push.
-- Agent A: strict fallback allowlist and sanitized provider/validation/programming/cancellation failures in `CaptionEnhancementCoordinator.kt`.
-- Agent B: `DeepSeekByokManagerImpl` plus `AndroidKeystoreDeepSeekKeyStore`; AES-256-GCM, Android Keystore alias, random 12-byte IV, atomic private `noBackupFilesDir` record, replacement/delete/corruption/concurrency handling.
-- Agent C: injectable manager in `MainViewModel.kt` and a collapsible AI service configuration panel in `EditorScreen.kt`; password input is transient and cleared after actions/collapse; only masked suffix is exposed.
+- 内部 Agent A: strict fallback allowlist and sanitized provider/validation/programming/cancellation failures in `CaptionEnhancementCoordinator.kt`.
+- 内部 Agent B: `DeepSeekByokManagerImpl` plus `AndroidKeystoreDeepSeekKeyStore`; AES-256-GCM, Android Keystore alias, random 12-byte IV, atomic private `noBackupFilesDir` record, replacement/delete/corruption/concurrency handling.
+- 内部 Agent C: injectable manager in `MainViewModel.kt` and a collapsible AI service configuration panel in `EditorScreen.kt`; password input is transient and cleared after actions/collapse; only masked suffix is exposed.
 - R1 focused security/BYOK/UI tests: 16 passed. Full `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebug`, native-equivalent `-PenableWhisperNative=true :app:assembleDebug`, and `:app:assembleDebugAndroidTest` passed.
 - `:app:assembleNativeDebug` remains absent in this checkout; native-enabled Debug exercised the configured CMake route. Kotlin daemon/NDK strip permission warnings remain environmental.
 - No real DeepSeek key, live probe, network call, device product-flow verification, provider lyrics retrieval, backup restore test, or APK/runtime secret scan with a real key was performed. Brain must keep `LIVE_KEY_TEST_REQUIRED`.
 
-## Orchestrator implementation evidence (2026-08-10)
+## 主 Agent implementation evidence (2026-08-10)
 
 - Checkpoint commit: `bfc7751` (`test(v3): freeze caption enhancement contract`).
 - Feature commit: `69b991e` (`feat(v3): implement caption enhancement contract`). No push performed.
-- Agent A owns request mapping and response validation; Agent B owns coordinator/error mapping/local fallback; Agent C owns processing snapshot, atomic commit policy, editor/project state and V3 archive compatibility.
+- 内部 Agent A owns request mapping and response validation; 内部 Agent B owns coordinator/error mapping/local fallback; 内部 Agent C owns processing snapshot, atomic commit policy, editor/project state and V3 archive compatibility.
 - Focused four-test command: PASS. Full `:app:testDebugUnitTest`: PASS. `:app:lintDebug`: PASS. `:app:assembleDebug`: PASS. Native-equivalent `-PenableWhisperNative=true :app:assembleDebug`: PASS. `:app:assembleDebugAndroidTest`: PASS.
 - The requested `:app:assembleNativeDebug` task does not exist in this checkout; the native-enabled Debug command above exercised the configured CMake native path. Kotlin daemon and NDK strip permission warnings were environmental; fallback compilation/build completed successfully.
 - No live Provider, API key, network lyrics retrieval, device run, UI/media change, model/cache change, or V2 cleanup was performed. Brain must adjudicate the stage; this is not a formal product acceptance claim.

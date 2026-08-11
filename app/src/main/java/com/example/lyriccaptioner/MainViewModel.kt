@@ -16,6 +16,7 @@ import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
+import com.example.lyriccaptioner.model.adjustCaptionFontSizeRatio
 import com.example.lyriccaptioner.model.CueEditingPolicy
 import com.example.lyriccaptioner.model.DerivedOutputPolicy
 import com.example.lyriccaptioner.model.EditorState
@@ -24,6 +25,8 @@ import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.normalizeSubtitleColor
 import com.example.lyriccaptioner.model.resolveCaptionStyle
+import com.example.lyriccaptioner.model.withFontSizeRatio
+import com.example.lyriccaptioner.model.validated
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
@@ -761,7 +764,8 @@ class MainViewModel(
 
     fun updateFontSize(delta: Int) {
         updateDefaultCaptionStyle { style ->
-            style.copy(fontSizeSp = (style.fontSizeSp + delta).coerceIn(14, 48))
+            val ratio = adjustCaptionFontSizeRatio(style.validated().fontSizeRatio, delta)
+            style.withFontSizeRatio(ratio)
         }
     }
 
@@ -798,14 +802,14 @@ class MainViewModel(
     fun updateSelectedCueFontSize(delta: Int) {
         updateSelectedCueStyle { cue, override ->
             val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-            override.copy(fontSizeSp = (resolved.fontSizeSp + delta).coerceIn(14, 48))
+            override.withFontSizeRatio(adjustCaptionFontSizeRatio(resolved.fontSizeRatio, delta))
         }
     }
 
     /** Cue-card API: every write is explicitly bound to the card's stable cue id. */
     fun updateCueFontSize(cueId: String, delta: Int) = updateCueStyle(cueId) { cue, override ->
         val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-        override.copy(fontSizeSp = (resolved.fontSizeSp + delta).coerceIn(14, 48))
+        override.withFontSizeRatio(adjustCaptionFontSizeRatio(resolved.fontSizeRatio, delta))
     }
 
     fun updateCueEnglishColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->

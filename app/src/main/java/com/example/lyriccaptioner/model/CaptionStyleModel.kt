@@ -195,11 +195,11 @@ fun DefaultCaptionStyle.validated(): DefaultCaptionStyle {
     } else {
         fontSizeRatio
     }
-    val safeRatio = ratio.coerceIn(MIN_CAPTION_FONT_SIZE_RATIO, MAX_CAPTION_FONT_SIZE_RATIO)
+    val safeRatio = canonicalCaptionFontSizeRatio(ratio)
     return copy(
         fontSizeSp = ratioToLegacyFontSize(safeRatio),
         fontSizeRatio = safeRatio,
-        outlineWidthRatio = outlineWidthRatio.coerceIn(MIN_CAPTION_OUTLINE_WIDTH_RATIO, MAX_CAPTION_OUTLINE_WIDTH_RATIO),
+        outlineWidthRatio = canonicalCaptionOutlineWidthRatio(outlineWidthRatio),
         primaryColorHex = normalizeSubtitleColor(primaryColorHex, "#FFFFFF"),
         secondaryColorHex = normalizeSubtitleColor(secondaryColorHex, "#F4E7A1"),
         outlineColorHex = normalizeSubtitleColor(outlineColorHex, "#000000"),
@@ -209,10 +209,14 @@ fun DefaultCaptionStyle.validated(): DefaultCaptionStyle {
 
 fun CaptionStyleOverride.validated(): CaptionStyleOverride {
     val legacyRatio = fontSizeSp?.let(::legacyFontSizeToRatio)
+    val canonicalRatio = fontSizeRatio?.let(::canonicalCaptionFontSizeRatio) ?: legacyRatio
     return copy(
-        fontSizeSp = fontSizeSp?.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP),
-        fontSizeRatio = (fontSizeRatio ?: legacyRatio)?.coerceIn(MIN_CAPTION_FONT_SIZE_RATIO, MAX_CAPTION_FONT_SIZE_RATIO),
-        outlineWidthRatio = outlineWidthRatio?.coerceIn(MIN_CAPTION_OUTLINE_WIDTH_RATIO, MAX_CAPTION_OUTLINE_WIDTH_RATIO),
+        // Ratio is canonical when both fields are supplied.  Keep the legacy
+        // projection in sync so an archive round-trip cannot resurrect a
+        // stale fontSizeSp value after an A+/A- edit.
+        fontSizeSp = canonicalRatio?.let(::ratioToLegacyFontSize),
+        fontSizeRatio = canonicalRatio,
+        outlineWidthRatio = outlineWidthRatio?.let(::canonicalCaptionOutlineWidthRatio),
         primaryColorHex = primaryColorHex?.let { normalizeSubtitleColor(it, "#FFFFFF") },
         secondaryColorHex = secondaryColorHex?.let { normalizeSubtitleColor(it, "#F4E7A1") },
         outlineColorHex = outlineColorHex?.let { normalizeSubtitleColor(it, "#000000") },
@@ -224,8 +228,44 @@ fun CaptionStyleOverride.validated(): CaptionStyleOverride {
 fun legacyFontSizeToRatio(fontSizeSp: Int): Float =
     fontSizeSp.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP).toFloat() / LEGACY_PLAY_RES_Y
 
+/** Canonical source-relative ratio used by every style write path. */
+fun canonicalCaptionFontSizeRatio(fontSizeRatio: Float): Float {
+    val finite = if (fontSizeRatio.isFinite()) fontSizeRatio else DEFAULT_CAPTION_FONT_SIZE_RATIO
+    return finite.coerceIn(MIN_CAPTION_FONT_SIZE_RATIO, MAX_CAPTION_FONT_SIZE_RATIO)
+}
+
+/** Canonical outline ratio; invalid values fall back to the default width. */
+fun canonicalCaptionOutlineWidthRatio(outlineWidthRatio: Float): Float {
+    val finite = if (outlineWidthRatio.isFinite()) outlineWidthRatio else DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO
+    return finite.coerceIn(MIN_CAPTION_OUTLINE_WIDTH_RATIO, MAX_CAPTION_OUTLINE_WIDTH_RATIO)
+}
+
+/** Stable 1080p display projection for legacy controls and diagnostics. */
 fun ratioToLegacyFontSize(fontSizeRatio: Float): Int =
-    kotlin.math.round(fontSizeRatio * LEGACY_PLAY_RES_Y).toInt()
+    kotlin.math.round(canonicalCaptionFontSizeRatio(fontSizeRatio) * LEGACY_PLAY_RES_Y)
+        .toInt()
+
+/**
+ * Adjust a source-relative font ratio by a legacy integer step.  The step is
+ * interpreted in 1080p projection units, then clamped once at the canonical
+ * ratio boundary so Compose, ASS and archive writes observe the same value.
+ */
+fun adjustCaptionFontSizeRatio(currentRatio: Float, deltaSp: Int): Float {
+    val deltaRatio = deltaSp.toFloat() / LEGACY_PLAY_RES_Y
+    return canonicalCaptionFontSizeRatio(canonicalCaptionFontSizeRatio(currentRatio) + deltaRatio)
+}
+
+/** Canonical write helper for a project/default style. */
+fun DefaultCaptionStyle.withFontSizeRatio(fontSizeRatio: Float): DefaultCaptionStyle {
+    val canonical = canonicalCaptionFontSizeRatio(fontSizeRatio)
+    return copy(fontSizeRatio = canonical, fontSizeSp = ratioToLegacyFontSize(canonical))
+}
+
+/** Canonical write helper for a cue override. */
+fun CaptionStyleOverride.withFontSizeRatio(fontSizeRatio: Float): CaptionStyleOverride {
+    val canonical = canonicalCaptionFontSizeRatio(fontSizeRatio)
+    return copy(fontSizeRatio = canonical, fontSizeSp = ratioToLegacyFontSize(canonical))
+}
 
 fun DefaultCaptionStyle.sourceRelativeFontSizeRatio(): Float = validated().fontSizeRatio
 fun DefaultCaptionStyle.sourceRelativeOutlineWidthRatio(): Float = validated().outlineWidthRatio
