@@ -42,7 +42,7 @@ class ProjectArchiveV3ContractTest {
         val encoded = archive.write(snapshot)
         val restored = archive.read(encoded)
 
-        assertTrue(encoded.startsWith("# LyricCaptionerProject v5\n"))
+        assertTrue(encoded.startsWith("# LyricCaptionerProject v6\n"))
         assertEquals(snapshot, restored)
     }
 

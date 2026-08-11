@@ -14,6 +14,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.lyriccaptioner.model.LEGACY_PLAY_RES_Y
 
 class ProjectArchiveV4EditorTest {
     private val archive = ProjectArchive()
@@ -33,7 +34,7 @@ class ProjectArchiveV4EditorTest {
                     confidence = 0.91f,
                     confirmed = true,
                     styleOverride = CaptionStyleOverride(
-                        fontSizeSp = 33,
+                        fontSizeRatio = 33f / LEGACY_PLAY_RES_Y,
                         primaryColorHex = "#123456",
                         bold = false,
                         alignment = CaptionAlignment.RIGHT,
@@ -53,13 +54,14 @@ class ProjectArchiveV4EditorTest {
                 bold = true,
                 italic = true,
                 alignment = CaptionAlignment.LEFT,
+                fontSizeRatio = 29f / LEGACY_PLAY_RES_Y,
             ),
         )
 
         val encoded = archive.write(snapshot)
         val restored = archive.read(encoded)
 
-        assertTrue(encoded.startsWith("# LyricCaptionerProject v5\n"))
+        assertTrue(encoded.startsWith("# LyricCaptionerProject v6\n"))
         assertEquals(snapshot, restored)
         assertNull(restored.captions[1].styleOverride)
         assertNull(restored.captions[1].layoutOverride)
@@ -84,6 +86,44 @@ captions=
         assertEquals("serif", restored.defaultCaptionStyle.fontFamily)
         assertEquals(0.8f, restored.captionLayout.yRatio)
         assertTrue(restored.captions.all { it.styleOverride == null })
+        assertEquals(30f / LEGACY_PLAY_RES_Y, restored.defaultCaptionStyle.fontSizeRatio, 0.000001f)
+    }
+
+    @Test
+    fun v6RoundTripPreservesSourceRelativeStyleAndPartialOverride() {
+        val snapshot = ProjectSnapshot(
+            videoUri = null,
+            videoDurationMs = null,
+            captions = listOf(
+                CaptionCue(
+                    "ratio", 0, 100, "en", "中", 1f,
+                    styleOverride = CaptionStyleOverride(
+                        fontSizeRatio = 32f / LEGACY_PLAY_RES_Y,
+                        outlineWidthRatio = 3f / LEGACY_PLAY_RES_Y,
+                        bold = true,
+                    ),
+                ),
+                CaptionCue(
+                    "color-only", 100, 200, "en2", "中2", 1f,
+                    styleOverride = CaptionStyleOverride(primaryColorHex = "#123456"),
+                ),
+            ),
+            exportProfile = ExportProfile(),
+            defaultCaptionStyle = DefaultCaptionStyle(
+                fontSizeRatio = 26f / LEGACY_PLAY_RES_Y,
+                outlineWidthRatio = 2.5f / LEGACY_PLAY_RES_Y,
+            ),
+        )
+
+        val restored = archive.read(archive.write(snapshot))
+
+        assertEquals(26f / LEGACY_PLAY_RES_Y, restored.defaultCaptionStyle.fontSizeRatio, 0.000001f)
+        assertEquals(2.5f / LEGACY_PLAY_RES_Y, restored.defaultCaptionStyle.outlineWidthRatio, 0.000001f)
+        assertEquals(32f / LEGACY_PLAY_RES_Y, restored.captions[0].styleOverride?.fontSizeRatio ?: Float.NaN, 0.000001f)
+        assertEquals(3f / LEGACY_PLAY_RES_Y, restored.captions[0].styleOverride?.outlineWidthRatio ?: Float.NaN, 0.000001f)
+        assertEquals("#123456", restored.captions[1].styleOverride?.primaryColorHex)
+        assertNull(restored.captions[1].styleOverride?.fontSizeRatio)
+        assertNull(restored.captions[1].styleOverride?.outlineWidthRatio)
     }
 
     @Test

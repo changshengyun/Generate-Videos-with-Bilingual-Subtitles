@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R3 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-EDITOR-002 / R3 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R3_MATRIX_DEFINED / IN_PROGRESS`
-- Process gate: `V3_EDITOR_002_R3_IN_PROGRESS`
+- Current gate: `V3_EDITOR_002_R3_IMPLEMENTED / BRAIN_REVIEW_PENDING`
+- Process gate: `V3_EDITOR_002_R3_VERIFIED / BRAIN_REVIEW_PENDING`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: execute only `V3-EDITOR-002 / R3`; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+- Next permitted action: wait for Brain R3 adjudication; do not start DeepSeek subtitle enhancement, Provider, Prompt or physical-device UI work.
 
 ## Brain R2 adjudication (2026-08-11)
 
@@ -22,7 +22,13 @@
 - P1: `VideoSize.pixelWidthHeightRatio` is discarded, so anamorphic media can produce a different PlayerView FIT rectangle than the overlay.
 - P2: shared FIT rounds adjusted dimensions while Media3 truncates them, creating a known 1px difference; focused tests do not exercise production Compose sizing, outline, pixel ratio or Media3 rounding.
 - Full JVM XML confirms 212/212 with no failures/errors/skips; APK sizes match the returned evidence. Build success does not close the render differences above.
-- R3 matrix and bounded Limbs plan are frozen in `CURRENT_TASK.md`; implementation is in progress under the user dispatch.
+- R3 matrix and bounded Limbs plan are frozen in `CURRENT_TASK.md`; implementation and regression are complete under the user dispatch, with Brain review pending.
+
+## Current V3-EDITOR-002 / R3 implementation evidence (2026-08-11)
+
+- R3 source-relative rendering is implemented with archive v6 ratio fields, safe v1-v5 migration, shared `CaptionRenderSpec`, Compose stroke+fill, ASS Outline parity, `pixelWidthHeightRatio`, and Media3 FIT truncation/centering.
+- Verification: full JVM `222/222`, ASR Python `6/6`, lint `0 errors / 33 warnings`, ordinary Debug, native-enabled Debug and AndroidTest builds passed. APKs are `app/build/outputs/apk/debug/app-debug.apk` (`417,446,841` bytes, 2026-08-11 15:21:48 +08:00) and `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` (`119,048` bytes, 2026-08-10 21:46:37 +08:00).
+- Boundary: no device UI, DeepSeek, Key, online lyrics or Provider/Prompt work. Candidate only: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain formal adjudication remains required.
 
 ## Current V3-EDITOR-002 / R2 implementation evidence
 
@@ -194,7 +200,7 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `MATRIX_DEFINED / IN_PROGRESS`（R3 matrix and Limbs dispatched） |
+| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（R3 implementation complete; Brain review pending） |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |

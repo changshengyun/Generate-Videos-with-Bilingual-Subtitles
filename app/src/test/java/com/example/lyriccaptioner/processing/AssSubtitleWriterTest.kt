@@ -35,6 +35,7 @@ class AssSubtitleWriterTest {
         )
 
         assertTrue(ass.contains("Style: Cue0000,sans-serif,30,&H00332211,&H00CCBBAA,&H00000000"))
+        assertTrue(ass.contains(",2,0,"))
         assertTrue(ass.contains("Dialogue: 0,0:00:01.23,0:00:04.56"))
         assertTrue(ass.contains("Hello \\{world\\}\\N{\\c&H00CCBBAA&}你好"))
     }

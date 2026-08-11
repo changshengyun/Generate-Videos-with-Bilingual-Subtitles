@@ -105,6 +105,7 @@ fun CaptionLayoutOverride.validated(): CaptionLayoutOverride = CaptionLayoutOver
 )
 
 data class DefaultCaptionStyle(
+    /** Legacy UI/archive projection. New code must use [fontSizeRatio]. */
     val fontSizeSp: Int = 24,
     val primaryColorHex: String = "#FFFFFF",
     val secondaryColorHex: String = "#F4E7A1",
@@ -113,6 +114,10 @@ data class DefaultCaptionStyle(
     val bold: Boolean = false,
     val italic: Boolean = false,
     val alignment: CaptionAlignment = CaptionAlignment.CENTER,
+    /** Font size as a fraction of the source video's height. */
+    val fontSizeRatio: Float = DEFAULT_CAPTION_FONT_SIZE_RATIO,
+    /** Glyph outline width as a fraction of the source video's height. */
+    val outlineWidthRatio: Float = DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO,
 )
 
 data class CaptionStyleOverride(
@@ -124,6 +129,8 @@ data class CaptionStyleOverride(
     val bold: Boolean? = null,
     val italic: Boolean? = null,
     val alignment: CaptionAlignment? = null,
+    val fontSizeRatio: Float? = null,
+    val outlineWidthRatio: Float? = null,
 ) {
     val isEmpty: Boolean
         get() = fontSizeSp == null &&
@@ -133,10 +140,13 @@ data class CaptionStyleOverride(
             fontFamily == null &&
             bold == null &&
             italic == null &&
-            alignment == null
+            alignment == null &&
+            fontSizeRatio == null &&
+            outlineWidthRatio == null
 }
 
 data class ResolvedCaptionStyle(
+    /** Legacy 1080p projection retained for existing controls and diagnostics. */
     val fontSizeSp: Int,
     val primaryColorHex: String,
     val secondaryColorHex: String,
@@ -145,6 +155,8 @@ data class ResolvedCaptionStyle(
     val bold: Boolean,
     val italic: Boolean,
     val alignment: CaptionAlignment,
+    val fontSizeRatio: Float,
+    val outlineWidthRatio: Float,
 )
 
 fun resolveCaptionStyle(
@@ -153,8 +165,12 @@ fun resolveCaptionStyle(
 ): ResolvedCaptionStyle {
     val safeDefault = defaultStyle.validated()
     val safeOverride = override?.validated()
+    val ratio = safeOverride?.fontSizeRatio
+        ?: safeOverride?.fontSizeSp?.let(::legacyFontSizeToRatio)
+        ?: safeDefault.fontSizeRatio
+    val outlineRatio = safeOverride?.outlineWidthRatio ?: safeDefault.outlineWidthRatio
     return ResolvedCaptionStyle(
-        fontSizeSp = safeOverride?.fontSizeSp ?: safeDefault.fontSizeSp,
+        fontSizeSp = ratioToLegacyFontSize(ratio),
         primaryColorHex = safeOverride?.primaryColorHex ?: safeDefault.primaryColorHex,
         secondaryColorHex = safeOverride?.secondaryColorHex ?: safeDefault.secondaryColorHex,
         outlineColorHex = safeOverride?.outlineColorHex ?: safeDefault.outlineColorHex,
@@ -162,9 +178,65 @@ fun resolveCaptionStyle(
         bold = safeOverride?.bold ?: safeDefault.bold,
         italic = safeOverride?.italic ?: safeDefault.italic,
         alignment = safeOverride?.alignment ?: safeDefault.alignment,
+        fontSizeRatio = ratio,
+        outlineWidthRatio = outlineRatio,
     )
 }
 
+fun DefaultCaptionStyle.validated(): DefaultCaptionStyle {
+    // A style constructed by pre-v6 callers only has fontSizeSp. Prefer that
+    // value when the new field still has its default, then canonicalize both
+    // projections so subsequent renderers use the source-relative ratio.
+    val ratio = if (
+        fontSizeRatio == DEFAULT_CAPTION_FONT_SIZE_RATIO &&
+        fontSizeSp != DEFAULT_LEGACY_CAPTION_FONT_SIZE_SP
+    ) {
+        legacyFontSizeToRatio(fontSizeSp)
+    } else {
+        fontSizeRatio
+    }
+    val safeRatio = ratio.coerceIn(MIN_CAPTION_FONT_SIZE_RATIO, MAX_CAPTION_FONT_SIZE_RATIO)
+    return copy(
+        fontSizeSp = ratioToLegacyFontSize(safeRatio),
+        fontSizeRatio = safeRatio,
+        outlineWidthRatio = outlineWidthRatio.coerceIn(MIN_CAPTION_OUTLINE_WIDTH_RATIO, MAX_CAPTION_OUTLINE_WIDTH_RATIO),
+        primaryColorHex = normalizeSubtitleColor(primaryColorHex, "#FFFFFF"),
+        secondaryColorHex = normalizeSubtitleColor(secondaryColorHex, "#F4E7A1"),
+        outlineColorHex = normalizeSubtitleColor(outlineColorHex, "#000000"),
+        fontFamily = fontFamily.validatedCaptionFontFamily(),
+    )
+}
+
+fun CaptionStyleOverride.validated(): CaptionStyleOverride {
+    val legacyRatio = fontSizeSp?.let(::legacyFontSizeToRatio)
+    return copy(
+        fontSizeSp = fontSizeSp?.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP),
+        fontSizeRatio = (fontSizeRatio ?: legacyRatio)?.coerceIn(MIN_CAPTION_FONT_SIZE_RATIO, MAX_CAPTION_FONT_SIZE_RATIO),
+        outlineWidthRatio = outlineWidthRatio?.coerceIn(MIN_CAPTION_OUTLINE_WIDTH_RATIO, MAX_CAPTION_OUTLINE_WIDTH_RATIO),
+        primaryColorHex = primaryColorHex?.let { normalizeSubtitleColor(it, "#FFFFFF") },
+        secondaryColorHex = secondaryColorHex?.let { normalizeSubtitleColor(it, "#F4E7A1") },
+        outlineColorHex = outlineColorHex?.let { normalizeSubtitleColor(it, "#000000") },
+        fontFamily = fontFamily?.validatedCaptionFontFamily(),
+    )
+}
+
+/* Kept as a named helper for callers that need to migrate old records. */
+fun legacyFontSizeToRatio(fontSizeSp: Int): Float =
+    fontSizeSp.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP).toFloat() / LEGACY_PLAY_RES_Y
+
+fun ratioToLegacyFontSize(fontSizeRatio: Float): Int =
+    kotlin.math.round(fontSizeRatio * LEGACY_PLAY_RES_Y).toInt()
+
+fun DefaultCaptionStyle.sourceRelativeFontSizeRatio(): Float = validated().fontSizeRatio
+fun DefaultCaptionStyle.sourceRelativeOutlineWidthRatio(): Float = validated().outlineWidthRatio
+
+/*
+ * Deprecated compatibility accessors are intentionally represented by the
+ * existing fontSizeSp field. New persistence and render code must consume the
+ * ratio fields above; the integer is only a 1080p display projection.
+ */
+/* old validation implementation retained below only for color/font helpers */
+/*
 fun DefaultCaptionStyle.validated(): DefaultCaptionStyle = copy(
     fontSizeSp = fontSizeSp.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP),
     primaryColorHex = normalizeSubtitleColor(primaryColorHex, "#FFFFFF"),
@@ -172,14 +244,7 @@ fun DefaultCaptionStyle.validated(): DefaultCaptionStyle = copy(
     outlineColorHex = normalizeSubtitleColor(outlineColorHex, "#000000"),
     fontFamily = fontFamily.validatedCaptionFontFamily(),
 )
-
-fun CaptionStyleOverride.validated(): CaptionStyleOverride = copy(
-    fontSizeSp = fontSizeSp?.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP),
-    primaryColorHex = primaryColorHex?.let { normalizeSubtitleColor(it, "#FFFFFF") },
-    secondaryColorHex = secondaryColorHex?.let { normalizeSubtitleColor(it, "#F4E7A1") },
-    outlineColorHex = outlineColorHex?.let { normalizeSubtitleColor(it, "#000000") },
-    fontFamily = fontFamily?.validatedCaptionFontFamily(),
-)
+*/
 
 fun SubtitleStyle.toDefaultCaptionStyle(): DefaultCaptionStyle {
     val legacy = validated()
@@ -189,6 +254,7 @@ fun SubtitleStyle.toDefaultCaptionStyle(): DefaultCaptionStyle {
         secondaryColorHex = legacy.secondaryColorHex,
         outlineColorHex = legacy.outlineColorHex,
         fontFamily = legacy.fontFamily,
+        fontSizeRatio = legacyFontSizeToRatio(legacy.fontSizeSp),
     )
 }
 
@@ -208,3 +274,11 @@ private fun String.validatedCaptionFontFamily(): String = when (this) {
 
 const val MIN_CAPTION_FONT_SIZE_SP = 14
 const val MAX_CAPTION_FONT_SIZE_SP = 48
+const val LEGACY_PLAY_RES_Y = 1080
+const val DEFAULT_LEGACY_CAPTION_FONT_SIZE_SP = 24
+const val MIN_CAPTION_FONT_SIZE_RATIO = 0.012962963f
+const val MAX_CAPTION_FONT_SIZE_RATIO = 0.044444446f
+const val DEFAULT_CAPTION_FONT_SIZE_RATIO = 0.022222223f
+const val MIN_CAPTION_OUTLINE_WIDTH_RATIO = 0f
+const val MAX_CAPTION_OUTLINE_WIDTH_RATIO = 0.011111112f
+const val DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO = 0.0018518519f

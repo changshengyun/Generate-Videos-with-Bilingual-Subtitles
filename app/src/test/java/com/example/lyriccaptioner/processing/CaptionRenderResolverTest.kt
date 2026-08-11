@@ -6,6 +6,8 @@ import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
+import com.example.lyriccaptioner.model.PreviewContainerSize
+import com.example.lyriccaptioner.model.SourceVideoSize
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -138,6 +140,61 @@ class CaptionRenderResolverTest {
         assertEquals("#FFFFFF", render.style.primaryColorHex)
         assertEquals("#000000", render.style.outlineColorHex)
         assertEquals("sans", render.style.fontFamily)
+    }
+
+    @Test
+    fun resolveSpecUsesOneSourceRelativePixelContractAcrossPreviewSizes() {
+        val source = SourceVideoSize(1920, 1080)
+        val caption = cue("scaled")
+        val layout = CaptionLayout(xRatio = 0.1f, yRatio = 0.8f, widthRatio = 0.8f)
+        val style = DefaultCaptionStyle(fontSizeRatio = 24f / 1080f, outlineWidthRatio = 2f / 1080f)
+
+        val normal = CaptionRenderResolver.resolveSpec(
+            caption, layout, style, source, PreviewContainerSize(1920, 1080),
+        )
+        val fullscreen = CaptionRenderResolver.resolveSpec(
+            caption, layout, style, source, PreviewContainerSize(1280, 720),
+        )
+
+        assertEquals(24, normal.fontSizePx)
+        assertEquals(2, normal.outlineWidthPx)
+        assertEquals(16, fullscreen.fontSizePx)
+        assertEquals(1, fullscreen.outlineWidthPx)
+        assertEquals(0.8f, normal.layout.widthRatio)
+        assertEquals(normal.style.fontSizeRatio, fullscreen.style.fontSizeRatio)
+    }
+
+    @Test
+    fun physicalPixelsToSpCancelsDensityAndFontScale() {
+        val physicalPixels = 24
+        assertEquals(24f, CaptionRenderResolver.physicalPixelsToSp(physicalPixels, 1f, 1f))
+        assertEquals(12f, CaptionRenderResolver.physicalPixelsToSp(physicalPixels, 2f, 1f))
+        assertEquals(12f, CaptionRenderResolver.physicalPixelsToSp(physicalPixels, 1f, 2f))
+        assertEquals(6f, CaptionRenderResolver.physicalPixelsToSp(physicalPixels, 2f, 2f))
+    }
+
+    @Test
+    fun resolveSpecScalesConsistentlyFor720pAnd4kAndKeepsCueIsolation() {
+        val layout = CaptionLayout()
+        val defaultStyle = DefaultCaptionStyle(fontSizeRatio = 24f / 1080f, outlineWidthRatio = 2f / 1080f)
+        val small = CaptionRenderResolver.resolveSpec(
+            cue("small"), layout, defaultStyle,
+            SourceVideoSize(1280, 720), PreviewContainerSize(1280, 720),
+        )
+        val large = CaptionRenderResolver.resolveSpec(
+            cue("large", CaptionStyleOverride(fontSizeRatio = 36f / 1080f, outlineWidthRatio = 4f / 1080f)),
+            layout, defaultStyle,
+            SourceVideoSize(3840, 2160), PreviewContainerSize(3840, 2160),
+        )
+
+        assertEquals(16, small.fontSizePx)
+        assertEquals(1, small.outlineWidthPx)
+        assertEquals(72, large.fontSizePx)
+        assertEquals(8, large.outlineWidthPx)
+        assertEquals("small", small.caption.id)
+        assertEquals("large", large.caption.id)
+        assertEquals(defaultStyle.fontSizeRatio, small.style.fontSizeRatio)
+        assertEquals(36f / 1080f, large.style.fontSizeRatio)
     }
 
     private fun cue(

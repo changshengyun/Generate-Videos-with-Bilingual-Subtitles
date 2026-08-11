@@ -1,16 +1,37 @@
 package com.example.lyriccaptioner.model
 
-import kotlin.math.min
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** Source video dimensions reported by the player or media metadata. */
 data class SourceVideoSize(
     val width: Int,
     val height: Int,
+    /**
+     * Media3's [VideoSize.pixelWidthHeightRatio]. A value other than one
+     * describes non-square source pixels and therefore changes the displayed
+     * aspect ratio without changing the coded dimensions.
+     */
+    val pixelWidthHeightRatio: Float = 1f,
 ) {
     init {
         require(width > 0 && height > 0) { "Source video dimensions must be positive" }
+        require(pixelWidthHeightRatio.isFinite() && pixelWidthHeightRatio > 0f) {
+            "Source pixel width/height ratio must be finite and positive"
+        }
     }
+
+    /** Width of the displayed image in square-pixel units. */
+    val displayedWidth: Double
+        get() = width.toDouble() * pixelWidthHeightRatio.toDouble()
+
+    /** Aspect ratio used by Media3's [AspectRatioFrameLayout]. */
+    val displayedAspectRatio: Double
+        get() = displayedWidth / height.toDouble()
+
+    /** Explicit name for the ratio consumed by the effective-rectangle resolver. */
+    val effectiveDisplayAspectRatio: Double
+        get() = displayedAspectRatio
 }
 
 /** Pixel dimensions of the Compose preview container. */
@@ -108,22 +129,61 @@ data class CaptionGeometry(
  * No renderer-specific padding, scale factor, or coordinate origin is used.
  */
 object CaptionGeometryResolver {
+    private const val ASPECT_DEFORMATION_TOLERANCE = 0.01
+
+    /**
+     * Computes the same FIT dimensions as Media3's AspectRatioFrameLayout:
+     * keep the measured dimension that constrains the image, truncate the
+     * other dimension to an integer, then center the child. Integer division
+     * deliberately leaves an odd remainder on the right/bottom, matching the
+     * FrameLayout center gravity used by PlayerView.
+     */
     fun effectiveVideoRect(
         source: SourceVideoSize,
         container: PreviewContainerSize,
     ): VideoRect {
-        val scale = min(
-            container.width.toDouble() / source.width.toDouble(),
-            container.height.toDouble() / source.height.toDouble(),
-        )
-        val width = (source.width * scale).roundToInt().coerceIn(1, container.width)
-        val height = (source.height * scale).roundToInt().coerceIn(1, container.height)
+        val containerAspect = container.width.toDouble() / container.height.toDouble()
+        val displayedAspect = source.displayedAspectRatio
+        // AspectRatioFrameLayout intentionally leaves dimensions untouched for
+        // negligible deformation (|videoAspect/containerAspect - 1| <= 1%).
+        val deformation = displayedAspect / containerAspect - 1.0
+        val (width, height) = if (kotlin.math.abs(deformation) <= ASPECT_DEFORMATION_TOLERANCE) {
+            container.width to container.height
+        } else if (displayedAspect > containerAspect) {
+            container.width to floor(container.width.toDouble() / displayedAspect).toInt().coerceIn(1, container.height)
+        } else {
+            floor(container.height.toDouble() * displayedAspect).toInt().coerceIn(1, container.width) to container.height
+        }
         return VideoRect(
-            left = (container.width - width) / 2,
-            top = (container.height - height) / 2,
+            left = ((container.width - width) / 2).coerceAtLeast(0),
+            top = ((container.height - height) / 2).coerceAtLeast(0),
             width = width,
             height = height,
         )
+    }
+
+    /** Convert a source-height-relative value to preview pixels. */
+    fun sourceHeightToPreviewPixels(
+        source: SourceVideoSize,
+        container: PreviewContainerSize,
+        sourcePixels: Float,
+    ): Float {
+        require(sourcePixels.isFinite() && sourcePixels >= 0f) {
+            "Source pixel value must be finite and non-negative"
+        }
+        return sourcePixels * effectiveVideoRect(source, container).height / source.height.toFloat()
+    }
+
+    /** Convert a source-width-relative value to preview pixels. */
+    fun sourceWidthToPreviewPixels(
+        source: SourceVideoSize,
+        container: PreviewContainerSize,
+        sourcePixels: Float,
+    ): Float {
+        require(sourcePixels.isFinite() && sourcePixels >= 0f) {
+            "Source pixel value must be finite and non-negative"
+        }
+        return sourcePixels * effectiveVideoRect(source, container).width / source.width.toFloat()
     }
 
     fun resolve(

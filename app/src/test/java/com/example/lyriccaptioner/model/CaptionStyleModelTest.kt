@@ -155,4 +155,29 @@ class CaptionStyleModelTest {
         assertEquals(0.85f, layout.yRatio)
         assertFalse(style.bold)
     }
+
+    @Test
+    fun sourceRelativeFontAndOutlineRatiosUseStableLegacyProjection() {
+        val style = DefaultCaptionStyle(
+            fontSizeRatio = 32f / LEGACY_PLAY_RES_Y,
+            outlineWidthRatio = 3f / LEGACY_PLAY_RES_Y,
+        )
+
+        val resolved = resolveCaptionStyle(style, null)
+
+        assertEquals(32, resolved.fontSizeSp)
+        assertEquals(32f / LEGACY_PLAY_RES_Y, resolved.fontSizeRatio, 0.000001f)
+        assertEquals(3f / LEGACY_PLAY_RES_Y, resolved.outlineWidthRatio, 0.000001f)
+    }
+
+    @Test
+    fun legacyFontSizeOverrideMigratesToRatioWithoutMutatingDefault() {
+        val default = DefaultCaptionStyle(fontSizeRatio = 24f / LEGACY_PLAY_RES_Y)
+        val override = CaptionStyleOverride(fontSizeSp = 40)
+
+        val resolved = resolveCaptionStyle(default, override)
+
+        assertEquals(40f / LEGACY_PLAY_RES_Y, resolved.fontSizeRatio, 0.000001f)
+        assertEquals(24f / LEGACY_PLAY_RES_Y, resolveCaptionStyle(default, null).fontSizeRatio, 0.000001f)
+    }
 }

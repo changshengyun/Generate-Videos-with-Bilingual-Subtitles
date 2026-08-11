@@ -3,16 +3,16 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R3 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-EDITOR-002 / R3 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `R3_DISPATCHED / IN_PROGRESS`
+- Implementation authorization: `R3_DISPATCHED / VERIFIED / BRAIN_REVIEW_PENDING`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已复核 R2 功能提交 `935a2a86d7d757af20d279f3b99c54f16f6a188e`；R3 已由用户派发，Developer 仅回交候选
-- Next action: 执行并验证 `V3-EDITOR-002 / R3`；关闭 R3 前不得启动 `V3-AI-001`
+- Review workflow: Brain 已复核 R2 功能提交 `935a2a86d7d757af20d279f3b99c54f16f6a188e`；R3 实现与回归已完成，Developer 仅回交候选，等待 Brain 正式裁决
+- Next action: 等待 Brain 重新裁决 R3；不得启动 `V3-AI-001` 或真实设备 UI
 
 ## Brain R2 adjudication (2026-08-11)
 
@@ -23,6 +23,14 @@
 - R2-01/R2-05 未完整通过：Media3 `VideoSize.pixelWidthHeightRatio` 未进入共享模型，非方形像素视频会产生不同黑边；共享 FIT 使用 `roundToInt`，而 Media3 FIT 对调整尺寸使用整数截断，存在 1px 偏差。
 - R2-06 未通过：focused tests 只验证纯 geometry 与 ASS 字符串，没有覆盖生产 Compose 的 density/fontScale 字号、真实描边、pixel aspect ratio 或 Media3 截断行为。
 - R2-07 的 212/212 JVM、构建与 APK 证据和磁盘实物一致；R1 清除覆盖、cue 隔离、中文颜色作用域及 v5 迁移未发现回归。
+
+## V3-EDITOR-002 / R3 implementation evidence (2026-08-11)
+
+- R3-01/R3-02: `fontSizeRatio` and `outlineWidthRatio` are canonical source-height-relative values; v1-v5 archives migrate through the fixed 1080 projection and v6 round-trip preserves ratio fields. Compose converts the shared physical-pixel result back through density and fontScale, while normal/fullscreen use the same effective video rectangle.
+- R3-03/R3-04/R3-06: `CaptionRenderSpec` is consumed by production Compose and ASS. It carries resolved geometry, font, bold/italic, bilingual colours, alignment, `fontSizePx` and `outlineWidthPx`; Compose draws stroke then fill and ASS emits equivalent Outline with `Shadow=0`.
+- R3-05/R3-07: `SourceVideoSize.pixelWidthHeightRatio`, Media3 FIT tolerance, integer truncation and centering remainder are covered by geometry tests; render-spec tests cover 1080/720/4K scaling and cue isolation. Existing R1/R2 style, text, timeline, anchor and migration tests remain green.
+- R3-08: focused/full JVM `222/222`, ASR Python `6/6`, `lintDebug` `0 errors / 33 warnings`, ordinary Debug, native-enabled Debug and AndroidTest builds passed. APKs: `app/build/outputs/apk/debug/app-debug.apk` = `417,446,841` bytes (2026-08-11 15:21:48 +08:00); `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = `119,048` bytes (2026-08-10 21:46:37 +08:00).
+- Boundary: no real-device UI, DeepSeek, Key, online lyrics, Provider or Prompt work. Physical UI evidence is waived by user; no formal product PASS is claimed. Developer candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns formal acceptance.
 
 ## V3-EDITOR-002 / R3 acceptance matrix
 

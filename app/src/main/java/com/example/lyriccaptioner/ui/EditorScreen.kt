@@ -61,8 +61,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -89,7 +89,6 @@ import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
-import com.example.lyriccaptioner.model.CaptionGeometryResolver
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
@@ -1381,7 +1380,11 @@ private fun VideoPlayer(
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: Media3VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
-                    sourceVideoSize = SourceVideoSize(videoSize.width, videoSize.height)
+                    sourceVideoSize = SourceVideoSize(
+                        width = videoSize.width,
+                        height = videoSize.height,
+                        pixelWidthHeightRatio = videoSize.pixelWidthHeightRatio,
+                    )
                 }
             }
         }
@@ -1437,6 +1440,7 @@ private fun VideoPlayer(
             SubtitlePreviewOverlay(
                 render = currentRender,
                 sourceVideoSize = sourceVideoSize,
+                defaultCaptionStyle = defaultCaptionStyle,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -1475,6 +1479,7 @@ private fun VideoPlayer(
                         SubtitlePreviewOverlay(
                             render = currentRender,
                             sourceVideoSize = sourceVideoSize,
+                            defaultCaptionStyle = defaultCaptionStyle,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1504,29 +1509,31 @@ private fun VideoPlayer(
 private fun SubtitlePreviewOverlay(
     render: ResolvedCaptionRender,
     sourceVideoSize: SourceVideoSize?,
+    defaultCaptionStyle: DefaultCaptionStyle,
     modifier: Modifier = Modifier,
 ) {
     val cue = render.caption
-    val style = render.style
     val layout = render.layout
-    val shadow = Shadow(
-        color = parseComposeColor(style.outlineColorHex, Color.Black),
-        offset = Offset(0f, 2f),
-        blurRadius = 4f,
-    )
-
     if (sourceVideoSize == null) return
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val containerSize = with(density) {
             PreviewContainerSize(maxWidth.roundToPx(), maxHeight.roundToPx())
         }
-        val geometry = CaptionGeometryResolver.resolve(
+        val spec = CaptionRenderResolver.resolveSpec(
+            caption = cue,
+            layout = layout,
+            defaultStyle = defaultCaptionStyle,
             source = sourceVideoSize,
             container = containerSize,
-            layout = layout,
-            alignment = style.alignment,
         )
+        val geometry = spec.geometry
+        val fontSizeSp = CaptionRenderResolver.physicalPixelsToSp(
+            physicalPixels = spec.fontSizePx,
+            density = density.density,
+            fontScale = density.fontScale,
+        ).sp
+        val outlineColor = parseComposeColor(spec.style.outlineColorHex, Color.Black)
         val verticalBand = geometry.anchor
         val verticalAlignment = when (verticalBand) {
             CaptionVerticalAnchor.TOP -> Alignment.TopStart
@@ -1550,36 +1557,76 @@ private fun SubtitlePreviewOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (cue.english.isNotBlank()) {
-                Text(
+                CaptionOutlinedText(
                     modifier = Modifier.fillMaxWidth(),
                     text = cue.english,
-                    color = parseComposeColor(style.primaryColorHex, Color.White),
-                    fontSize = style.fontSizeSp.coerceIn(14, 48).sp,
-                    fontFamily = subtitleFontFamily(style.fontFamily),
-                    fontWeight = if (style.bold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (style.italic) FontStyle.Italic else FontStyle.Normal,
-                    textAlign = style.alignment.toTextAlign(),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium.copy(shadow = shadow),
+                    fillColor = parseComposeColor(spec.style.primaryColorHex, Color.White),
+                    outlineColor = outlineColor,
+                    fontSize = fontSizeSp,
+                    outlineWidthPx = spec.outlineWidthPx,
+                    fontFamily = subtitleFontFamily(spec.style.fontFamily),
+                    fontWeight = if (spec.style.bold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (spec.style.italic) FontStyle.Italic else FontStyle.Normal,
+                    textAlign = spec.style.alignment.toTextAlign(),
                 )
             }
             if (cue.chinese.isNotBlank()) {
-                Text(
+                CaptionOutlinedText(
                     modifier = Modifier.fillMaxWidth(),
                     text = cue.chinese,
-                    color = parseComposeColor(style.secondaryColorHex, Color(0xFFF4E7A1)),
-                    fontSize = style.fontSizeSp.coerceIn(14, 48).sp,
-                    fontFamily = subtitleFontFamily(style.fontFamily),
-                    fontWeight = if (style.bold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (style.italic) FontStyle.Italic else FontStyle.Normal,
-                    textAlign = style.alignment.toTextAlign(),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium.copy(shadow = shadow),
+                    fillColor = parseComposeColor(spec.style.secondaryColorHex, Color(0xFFF4E7A1)),
+                    outlineColor = outlineColor,
+                    fontSize = fontSizeSp,
+                    outlineWidthPx = spec.outlineWidthPx,
+                    fontFamily = subtitleFontFamily(spec.style.fontFamily),
+                    fontWeight = if (spec.style.bold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (spec.style.italic) FontStyle.Italic else FontStyle.Normal,
+                    textAlign = spec.style.alignment.toTextAlign(),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CaptionOutlinedText(
+    text: String,
+    fillColor: Color,
+    outlineColor: Color,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    outlineWidthPx: Int,
+    fontFamily: FontFamily,
+    fontWeight: FontWeight,
+    fontStyle: FontStyle,
+    textAlign: TextAlign,
+    modifier: Modifier = Modifier,
+) {
+    val baseStyle = MaterialTheme.typography.bodyMedium.copy(
+        fontSize = fontSize,
+        fontFamily = fontFamily,
+        fontWeight = fontWeight,
+        fontStyle = fontStyle,
+        textAlign = textAlign,
+    )
+    Box(modifier = modifier) {
+        if (outlineWidthPx > 0) {
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                text = text,
+                color = outlineColor,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                style = baseStyle.copy(drawStyle = Stroke(width = outlineWidthPx.toFloat())),
+            )
+        }
+        Text(
+            modifier = Modifier.fillMaxWidth(),
+            text = text,
+            color = fillColor,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = baseStyle.copy(drawStyle = Fill),
+        )
     }
 }
 

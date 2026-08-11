@@ -11,7 +11,7 @@ class CaptionGeometryModelTest {
 
         assertEquals(VideoRect(0, 0, 1600, 900), CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(1600, 900)))
         assertEquals(VideoRect(0, 547, 900, 506), CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(900, 1600)))
-        assertEquals(VideoRect(0, 218, 1000, 563), CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(1000, 1000)))
+        assertEquals(VideoRect(0, 219, 1000, 562), CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(1000, 1000)))
     }
 
     @Test
@@ -24,7 +24,7 @@ class CaptionGeometryModelTest {
             ),
         )
         assertEquals(
-            VideoRect(218, 0, 563, 1000),
+            VideoRect(219, 0, 562, 1000),
             CaptionGeometryResolver.effectiveVideoRect(
                 SourceVideoSize(1080, 1920),
                 PreviewContainerSize(1000, 1000),
@@ -49,7 +49,7 @@ class CaptionGeometryModelTest {
         val center = CaptionGeometryResolver.resolve(source, container, layout, CaptionAlignment.CENTER)
         val right = CaptionGeometryResolver.resolve(source, container, layout, CaptionAlignment.RIGHT)
 
-        assertEquals(VideoRect(0, 218, 1000, 563), left.videoRect)
+        assertEquals(VideoRect(0, 219, 1000, 562), left.videoRect)
         assertEquals(100, left.textBoxLeftPx)
         assertEquals(500, left.textBoxWidthPx)
         assertEquals(100, left.anchorXpx)
@@ -135,5 +135,47 @@ class CaptionGeometryModelTest {
         assertThrows(IllegalArgumentException::class.java) { SourceVideoSize(0, 1) }
         assertThrows(IllegalArgumentException::class.java) { PreviewContainerSize(1, 0) }
         assertThrows(IllegalArgumentException::class.java) { CaptionContentInsets(leftPx = -1) }
+        assertThrows(IllegalArgumentException::class.java) { SourceVideoSize(1, 1, 0f) }
+        assertThrows(IllegalArgumentException::class.java) { SourceVideoSize(1, 1, Float.NaN) }
+    }
+
+    @Test
+    fun nonSquarePixelsChangeDisplayedAspectAndFitRectangle() {
+        val source = SourceVideoSize(1000, 1000, pixelWidthHeightRatio = 2f)
+
+        assertEquals(2.0, source.displayedAspectRatio, 0.0001)
+        assertEquals(VideoRect(0, 250, 1000, 500), CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(1000, 1000)))
+    }
+
+    @Test
+    fun fitUsesMedia3IntegerTruncationAndKeepsOddRemainderOnTrailingEdge() {
+        val source = SourceVideoSize(16, 9)
+        val rect = CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(101, 101))
+
+        // 101 / (16/9) = 56.8125; Media3 truncates to 56, then centers at 22.
+        assertEquals(VideoRect(0, 22, 101, 56), rect)
+        assertEquals(23, 101 - rect.bottom)
+    }
+
+    @Test
+    fun negligibleAspectDeformationKeepsMeasuredContainerSize() {
+        val source = SourceVideoSize(1000, 1000, pixelWidthHeightRatio = 1.005f)
+
+        assertEquals(
+            VideoRect(0, 0, 1000, 1000),
+            CaptionGeometryResolver.effectiveVideoRect(source, PreviewContainerSize(1000, 1000)),
+        )
+    }
+
+    @Test
+    fun sourceRelativePixelsScaleWithEffectiveVideoRectangle() {
+        val source = SourceVideoSize(1920, 1080)
+        val container = PreviewContainerSize(960, 540)
+
+        assertEquals(54f, CaptionGeometryResolver.sourceHeightToPreviewPixels(source, container, 108f), 0.0001f)
+        assertEquals(96f, CaptionGeometryResolver.sourceWidthToPreviewPixels(source, container, 192f), 0.0001f)
+        assertThrows(IllegalArgumentException::class.java) {
+            CaptionGeometryResolver.sourceHeightToPreviewPixels(source, container, -1f)
+        }
     }
 }

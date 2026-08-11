@@ -15,7 +15,7 @@ import com.arthenica.ffmpegkit.LogCallback
 import com.arthenica.ffmpegkit.ReturnCode
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
-import com.example.lyriccaptioner.model.CaptionGeometryResolver
+import com.example.lyriccaptioner.model.CaptionGeometry
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
@@ -370,17 +370,23 @@ internal object AssSubtitleWriter {
     ): String {
         // Compose preview consumes this same resolved render.  Keep all per-cue style and
         // placement inheritance above the ASS-specific coordinate conversion boundary.
-        val cues = CaptionRenderResolver.resolveAll(captions, layout, defaultStyle)
-            .sortedBy { it.caption.startMs }
-            .mapIndexedNotNull { index, render ->
-                val text = dialogueText(render)
-                if (text.isEmpty() || render.caption.endMs <= render.caption.startMs) {
+        val cues = captions.sortedBy { it.startMs }
+            .mapIndexedNotNull { index, caption ->
+                val spec = CaptionRenderResolver.resolveSpec(
+                    caption = caption,
+                    layout = layout,
+                    defaultStyle = defaultStyle,
+                    source = SourceVideoSize(PLAY_RES_X, PLAY_RES_Y),
+                    container = PreviewContainerSize(PLAY_RES_X, PLAY_RES_Y),
+                )
+                val text = dialogueText(spec)
+                if (text.isEmpty() || spec.caption.endMs <= spec.caption.startMs) {
                     null
                 } else {
                     AssCue(
-                        render = render,
+                        spec = spec,
                         styleName = "Cue${index.toString().padStart(4, '0')}",
-                        geometry = resolveGeometry(render.layout, render.style.alignment),
+                        geometry = resolveGeometry(spec.geometry),
                         text = text,
                     )
                 }
@@ -400,7 +406,7 @@ internal object AssSubtitleWriter {
             appendLine("[Events]")
             appendLine("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text")
             cues.forEach { cue ->
-                val source = cue.render.caption
+                val source = cue.spec.caption
                 val geometry = cue.geometry
                 val overrides = "{\\an${geometry.alignment}\\pos(${geometry.positionX},${geometry.positionY})\\q0}"
                 appendLine(
@@ -419,11 +425,11 @@ internal object AssSubtitleWriter {
      * Override tags are scoped to this Dialogue by ASS, so they cannot affect the
      * English text before the line break or a subsequent Dialogue.
      */
-    private fun dialogueText(render: ResolvedCaptionRender): String {
-        val english = escapeText(render.caption.english)
-        val chinese = escapeText(render.caption.chinese)
+    private fun dialogueText(spec: CaptionRenderSpec): String {
+        val english = escapeText(spec.caption.english)
+        val chinese = escapeText(spec.caption.chinese)
         val chineseWithColor = chinese.takeIf { it.isNotEmpty() }?.let {
-            "{\\c${assColor(render.style.secondaryColorHex, "F4E7A1")}&}$it"
+            "{\\c${assColor(spec.style.secondaryColorHex, "F4E7A1")}&}$it"
         }.orEmpty()
         return when {
             english.isNotEmpty() && chineseWithColor.isNotEmpty() -> "$english\\N$chineseWithColor"
@@ -439,15 +445,16 @@ internal object AssSubtitleWriter {
     )
 
     private fun styleLine(cue: AssCue): String {
-        val style = cue.render.style
+        val spec = cue.spec
+        val style = spec.style
         val geometry = cue.geometry
         val primary = assColor(style.primaryColorHex, "FFFFFF")
         val secondary = assColor(style.secondaryColorHex, "F4E7A1")
         val outline = assColor(style.outlineColorHex, "000000")
         val bold = if (style.bold) -1 else 0
         val italic = if (style.italic) -1 else 0
-        return "Style: ${cue.styleName},${assFontName(style.fontFamily)},${style.fontSizeSp}," +
-            "$primary,$secondary,$outline,&H80000000,$bold,$italic,0,0,100,100,0,0,1,2,1," +
+        return "Style: ${cue.styleName},${assFontName(style.fontFamily)},${spec.fontSizePx}," +
+            "$primary,$secondary,$outline,&H80000000,$bold,$italic,0,0,100,100,0,0,1,${spec.outlineWidthPx},0," +
             "${geometry.alignment},${geometry.marginLeft},${geometry.marginRight}," +
             "${geometry.marginVertical},1"
     }
@@ -458,16 +465,7 @@ internal object AssSubtitleWriter {
      * this keeps normalized cue placement and anchor semantics shared while
      * leaving ASS-specific alignment/margin encoding at this boundary.
      */
-    private fun resolveGeometry(
-        layout: CaptionLayout,
-        alignment: CaptionAlignment,
-    ): AssGeometry {
-        val resolved = CaptionGeometryResolver.resolve(
-            source = SourceVideoSize(PLAY_RES_X, PLAY_RES_Y),
-            container = PreviewContainerSize(PLAY_RES_X, PLAY_RES_Y),
-            layout = layout,
-            alignment = alignment,
-        )
+    private fun resolveGeometry(resolved: CaptionGeometry): AssGeometry {
         val left = resolved.textBoxLeftPx
         val right = (resolved.videoRect.right -
             (resolved.textBoxLeftPx + resolved.textBoxWidthPx)).coerceIn(0, PLAY_RES_X)
@@ -479,17 +477,17 @@ internal object AssSubtitleWriter {
             CaptionVerticalAnchor.BOTTOM -> VerticalBand.BOTTOM
         }
         val assAlignment = when (verticalBand) {
-            VerticalBand.TOP -> when (alignment) {
+            VerticalBand.TOP -> when (resolved.alignment) {
                 CaptionAlignment.LEFT -> 7
                 CaptionAlignment.CENTER -> 8
                 CaptionAlignment.RIGHT -> 9
             }
-            VerticalBand.MIDDLE -> when (alignment) {
+            VerticalBand.MIDDLE -> when (resolved.alignment) {
                 CaptionAlignment.LEFT -> 4
                 CaptionAlignment.CENTER -> 5
                 CaptionAlignment.RIGHT -> 6
             }
-            VerticalBand.BOTTOM -> when (alignment) {
+            VerticalBand.BOTTOM -> when (resolved.alignment) {
                 CaptionAlignment.LEFT -> 1
                 CaptionAlignment.CENTER -> 2
                 CaptionAlignment.RIGHT -> 3
@@ -540,7 +538,7 @@ internal object AssSubtitleWriter {
     }
 
     private data class AssCue(
-        val render: ResolvedCaptionRender,
+        val spec: CaptionRenderSpec,
         val styleName: String,
         val geometry: AssGeometry,
         val text: String,
