@@ -4,14 +4,21 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED / HUMAN_DECISION`
+- Current task: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R2_MATRIX_DEFINED / HUMAN_DECISION`
-- Process gate: `V3_EDITOR_002_RENDER_INTEGRATION_REQUIRED`
+- Current gate: `V3_EDITOR_002_R2_VERIFIED / BRAIN_REVIEW_PENDING`
+- Process gate: `V3_EDITOR_002_R2_CANDIDATE_READY`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: after explicit user dispatch, execute only the `V3-EDITOR-002 / R2` matrix in `CURRENT_TASK.md`; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+- Next permitted action: Brain re-adjudication only; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+
+## Current V3-EDITOR-002 / R2 implementation evidence
+
+- Effective-video geometry is runtime-derived from Media3 `VideoSize` and the Compose container through shared `CaptionGeometryResolver`; normal/fullscreen Compose and ASS use the same normalized mapping and final resolved style.
+- Focused geometry: 8/8. Focused ASS: 8/8. Full JVM: 212/212. ASR Python: 6/6. Lint: 0 errors/33 warnings. Ordinary Debug, native-enabled Debug and AndroidTest builds passed.
+- APK artifacts: `app/build/outputs/apk/debug/app-debug.apk` = `417,446,841` bytes; `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = `119,048` bytes.
+- Boundary and candidate: no device, DeepSeek, Key, online lyrics, Provider or Prompt evidence; physical UI is waived. Candidate is `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns acceptance.
 
 ## Brain R1 re-adjudication (2026-08-11)
 
@@ -21,7 +28,7 @@
 - P1: Compose adds unmodelled horizontal padding inside the normalized width and therefore narrows/shifts the text area.
 - P1: Compose and ASS still disagree on Chinese font size, bold/italic application and the non-bold English weight.
 - P1: current tests cover helper values and ASS strings but do not exercise Compose effective-video geometry, black bars, aspect-ratio changes, normal/fullscreen parity or final bilingual style parity.
-- R2 matrix is defined in `CURRENT_TASK.md`. Per the failed-review boundary, implementation remains `HUMAN_DECISION` until the user explicitly dispatches R2.
+- R2 matrix and bounded Limbs parallel plan were defined in `CURRENT_TASK.md`; implementation is complete and the Developer candidate is recorded above for Brain re-adjudication.
 
 ## Current V3-EDITOR-002 / R1 implementation evidence
 
@@ -176,7 +183,7 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`（R2 matrix defined / HUMAN_DECISION） |
+| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（R2 Developer candidate / Brain review pending） |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |

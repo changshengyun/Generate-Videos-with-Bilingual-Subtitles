@@ -3,16 +3,16 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED / HUMAN_DECISION`
+- Status: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `R2_PENDING_USER_DISPATCH`
+- Implementation authorization: `R2_DISPATCHED / COMPLETE`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已复核 R1 功能提交 `c0dafb44da5d6d3bf6f6bc5841d8d585123046fb`；R1 候选未获正式接受，下一轮必须由用户明确派发 R2
-- Next action: 用户明确派发后只执行 `V3-EDITOR-002 / R2`；关闭 R2 前不得启动 `V3-AI-001`
+- Review workflow: Brain owns formal adjudication; Developer returns only the R2 candidate. Checkpoint: `b78c795`; prior R1 feature: `c0dafb44da5d6d3bf6f6bc5841d8d585123046fb`.
+- Next action: Brain re-adjudication only; do not start `V3-AI-001`.
 
 ## Brain R1 re-adjudication (2026-08-11)
 
@@ -23,6 +23,14 @@
 - R1-04 未通过：Compose 中文字号额外乘以 `0.82`，中文不继承 cue 的 bold/italic，英文在 `bold=false` 时仍使用 `SemiBold`；ASS 对中英文使用同一解析字号、bold/italic，最终样式并不一致。
 - R1-05 未通过：新增测试只验证 anchor helper 数值与 ASS 字符串，没有覆盖 Compose 有效视频矩形、黑边、不同纵横比、普通/全屏映射和最终样式一致性，因此无法证明 R1-04。
 - R1-06/R1-07 的产物和回归主张与磁盘实物一致，但测试/构建通过不能覆盖上述生产渲染差异。
+
+## V3-EDITOR-002 / R2 implementation evidence (2026-08-11)
+
+- R2-01/R2-02/R2-05: shared `CaptionGeometryResolver` computes the centered Media3 FIT effective video rectangle from runtime `VideoSize` and the actual Compose container, then maps normalized x/y/width plus left/center/right and top/middle/bottom semantics. Normal and fullscreen overlays consume this same model; ASS consumes the model against its 1920x1080 PlayRes.
+- R2-03/R2-04: `widthRatio` maps the complete text-box width; hidden Compose padding and background decoration were removed. Compose and ASS consume the same resolved font, size, bold, italic, English/Chinese colours, outline and alignment without Chinese scaling or non-bold weight substitution.
+- R2-06: focused geometry 8/8 and ASS 8/8 passed, covering 6:9, 9:16, 1:1, wide/tall/equal containers, letterbox/pillarbox, normal/fullscreen parity, anchors, alignments, explicit zero-inset contract, bilingual final style and cue isolation.
+- R2-07: full `testDebugUnitTest` 212/212, `python tools\\asr_evaluate_test.py` 6/6, `lintDebug` 0 errors/33 warnings, `assembleDebug`, native-enabled `assembleDebug`, and `assembleDebugAndroidTest` passed. APKs: `app/build/outputs/apk/debug/app-debug.apk` = `417,446,841` bytes; `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = `119,048` bytes.
+- Boundary: no real-device UI, DeepSeek, Key, online lyrics, Provider or Prompt work; physical UI remains waived and these are component/build proofs only. Developer candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns formal acceptance.
 
 ## V3-EDITOR-002 / R2 acceptance matrix
 
@@ -43,6 +51,17 @@
 | Prohibited | 不降低 S01-S14 或 R1；不以播放器容器代替有效视频矩形；不写仅验证 ASS 字符串的伪一致性测试；不启动 `V3-AI-001`；不触碰 BYOK、Whisper、在线歌词、媒体入口或无关 UI；不执行真机验证；不清理既有脏状态；不 push。 |
 | Exit | R2 全部通过后只允许再次回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 重新裁决。 |
 | Incomplete | 任一有效画面、几何或最终样式差异仍存在：`PARTIAL_PASS / RENDER_INTEGRATION_REQUIRED`；无法获得源视频尺寸或共享模型不能安全落地：`HUMAN_DECISION / SOURCE_VIDEO_GEOMETRY_REQUIRED`。 |
+
+## V3-EDITOR-002 / R2 Limbs parallel plan
+
+| Role | 独占范围 | 交付物与边界 |
+|---|---|---|
+| Limb A: geometry core | 新增共享的有效视频矩形/归一化坐标纯模型及其 focused JVM tests；不得修改 `EditorScreen.kt`、ASS exporter 或三份活动文档 | 计算 Media3 FIT 下的 letterbox/pillarbox/no-bars 矩形，输出普通/全屏均可消费的 x/y/width/anchor 映射；覆盖 16:9、9:16、1:1 和不同容器比例 |
+| Limb B: Compose integration | `EditorScreen.kt` 及专属 Compose/render-style tests；不得修改 ASS exporter 或三份活动文档 | 普通与全屏 overlay 消费 Limb A 的共享几何；消除未建模 padding；让中英文最终字号、字重、bold、italic、颜色、描边和对齐严格消费 resolver 结果 |
+| Limb C: ASS and parity verification | `FfmpegKitSubtitleExporter.kt`、`AssSubtitleWriterTest.kt` 及不与 Limb A/B 重叠的一致性 fixtures；不得修改 Compose 或三份活动文档 | 核对 ASS 对共享坐标/最终样式的消费，补齐跨纵横比、黑边、九宫格 anchor、双语样式和 R1 保持项的对照证据；仅在证明需要时修改 exporter |
+| Orchestrator | 三份活动文档、任务分派、共享接口协调、冲突集成、完整回归、产物核验与 scoped Git commits | 先提交三份文档 checkpoint；冻结 Limb A 接口后协调 B/C 消费；独占跨 Limb 共享热点的最终合并，不让子 Agent 相互调度；最后逐项裁决 R2-01–R2-07 并回交 Developer 候选 |
+
+- 并行顺序：Limb A/B/C 可先并行完成各自独占范围；涉及 Limb A 新接口的最终接线由 Orchestrator 在接口冻结后集成。若发现必须同时修改同一热点文件，停止该文件的并行写入并交由 Orchestrator 串行合并，不强行并行。
 
 ## Brain adjudication (2026-08-11)
 

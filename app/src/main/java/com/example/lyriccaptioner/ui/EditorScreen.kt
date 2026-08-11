@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +79,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize as Media3VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.lyriccaptioner.MainViewModel
@@ -86,17 +89,19 @@ import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
+import com.example.lyriccaptioner.model.CaptionGeometryResolver
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ResolvedCaptionStyle
 import com.example.lyriccaptioner.model.verticalAnchor
-import com.example.lyriccaptioner.model.verticalAnchorOffsetRatio
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
 import com.example.lyriccaptioner.model.VideoImportMode
+import com.example.lyriccaptioner.model.PreviewContainerSize
+import com.example.lyriccaptioner.model.SourceVideoSize
 import com.example.lyriccaptioner.model.resolveCaptionLayout
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.CaptionRenderResolver
@@ -1361,6 +1366,7 @@ private fun VideoPlayer(
     val context = LocalContext.current
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
     var fullscreen by remember(uri) { mutableStateOf(false) }
+    var sourceVideoSize by remember(uri) { mutableStateOf<SourceVideoSize?>(null) }
     val timeline = remember(captions) { CaptionTimeline(captions) }
     val currentCue = timeline.cueAt(positionMs)
     val currentRender = currentCue?.let { CaptionRenderResolver.resolve(it, captionLayout, defaultCaptionStyle) }
@@ -1372,7 +1378,16 @@ private fun VideoPlayer(
     }
 
     DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: Media3VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    sourceVideoSize = SourceVideoSize(videoSize.width, videoSize.height)
+                }
+            }
+        }
+        player.addListener(listener)
         onDispose {
+            player.removeListener(listener)
             player.release()
         }
     }
@@ -1418,9 +1433,10 @@ private fun VideoPlayer(
                 contentAlignment = Alignment.Center,
             ) { Text("正在全屏预览", color = Color.White) }
         }
-        if (currentRender != null) {
+        if (currentRender != null && sourceVideoSize != null) {
             SubtitlePreviewOverlay(
                 render = currentRender,
+                sourceVideoSize = sourceVideoSize,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -1455,9 +1471,10 @@ private fun VideoPlayer(
                         },
                         update = { playerView -> playerView.player = player },
                     )
-                    if (currentRender != null) {
+                    if (currentRender != null && sourceVideoSize != null) {
                         SubtitlePreviewOverlay(
                             render = currentRender,
+                            sourceVideoSize = sourceVideoSize,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1486,6 +1503,7 @@ private fun VideoPlayer(
 @Composable
 private fun SubtitlePreviewOverlay(
     render: ResolvedCaptionRender,
+    sourceVideoSize: SourceVideoSize?,
     modifier: Modifier = Modifier,
 ) {
     val cue = render.caption
@@ -1497,24 +1515,38 @@ private fun SubtitlePreviewOverlay(
         blurRadius = 4f,
     )
 
+    if (sourceVideoSize == null) return
+    val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
-        val verticalBand = layout.verticalAnchor()
+        val containerSize = with(density) {
+            PreviewContainerSize(maxWidth.roundToPx(), maxHeight.roundToPx())
+        }
+        val geometry = CaptionGeometryResolver.resolve(
+            source = sourceVideoSize,
+            container = containerSize,
+            layout = layout,
+            alignment = style.alignment,
+        )
+        val verticalBand = geometry.anchor
         val verticalAlignment = when (verticalBand) {
             CaptionVerticalAnchor.TOP -> Alignment.TopStart
             CaptionVerticalAnchor.MIDDLE -> Alignment.CenterStart
             CaptionVerticalAnchor.BOTTOM -> Alignment.BottomStart
         }
-        // x/y/width are source-video normalized coordinates.  ASS uses the same
-        // anchor band and coordinate origin; keep Compose as a direct mapping
-        // instead of reinterpreting y as bottom padding.
-        val yOffset = maxHeight * layout.verticalAnchorOffsetRatio()
+        val yOffsetPx = when (verticalBand) {
+            CaptionVerticalAnchor.TOP -> geometry.anchorYpx
+            CaptionVerticalAnchor.MIDDLE -> geometry.anchorYpx - containerSize.height / 2
+            CaptionVerticalAnchor.BOTTOM -> geometry.anchorYpx - containerSize.height
+        }
+        val xOffsetPx = geometry.textBoxLeftPx
         Column(
             modifier = Modifier
                 .align(verticalAlignment)
-                .offset(x = maxWidth * layout.xRatio, y = yOffset)
-                .width(maxWidth * layout.widthRatio)
-                .background(Color.Black.copy(alpha = 0.42f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .offset(
+                    x = with(density) { xOffsetPx.toDp() },
+                    y = with(density) { yOffsetPx.toDp() },
+                )
+                .width(with(density) { geometry.textBoxWidthPx.toDp() }),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (cue.english.isNotBlank()) {
@@ -1524,7 +1556,7 @@ private fun SubtitlePreviewOverlay(
                     color = parseComposeColor(style.primaryColorHex, Color.White),
                     fontSize = style.fontSizeSp.coerceIn(14, 48).sp,
                     fontFamily = subtitleFontFamily(style.fontFamily),
-                    fontWeight = if (style.bold) FontWeight.Bold else FontWeight.SemiBold,
+                    fontWeight = if (style.bold) FontWeight.Bold else FontWeight.Normal,
                     fontStyle = if (style.italic) FontStyle.Italic else FontStyle.Normal,
                     textAlign = style.alignment.toTextAlign(),
                     maxLines = 2,
@@ -1537,12 +1569,14 @@ private fun SubtitlePreviewOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     text = cue.chinese,
                     color = parseComposeColor(style.secondaryColorHex, Color(0xFFF4E7A1)),
-                    fontSize = (style.fontSizeSp.coerceIn(14, 48) * 0.82f).sp,
+                    fontSize = style.fontSizeSp.coerceIn(14, 48).sp,
                     fontFamily = subtitleFontFamily(style.fontFamily),
+                    fontWeight = if (style.bold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (style.italic) FontStyle.Italic else FontStyle.Normal,
                     textAlign = style.alignment.toTextAlign(),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall.copy(shadow = shadow),
+                    style = MaterialTheme.typography.bodyMedium.copy(shadow = shadow),
                 )
             }
         }

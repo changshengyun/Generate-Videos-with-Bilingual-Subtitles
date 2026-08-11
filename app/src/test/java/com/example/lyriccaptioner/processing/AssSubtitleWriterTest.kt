@@ -242,4 +242,38 @@ class AssSubtitleWriterTest {
             ),
         )
     }
+
+    @Test
+    fun usesSharedRoundedGeometryAndKeepsBilingualStyleUnscaled() {
+        val ass = AssSubtitleWriter.write(
+            captions = listOf(
+                CaptionCue(
+                    id = "geometry-style",
+                    startMs = 0L,
+                    endMs = 1_000L,
+                    english = "English",
+                    chinese = "中文",
+                    confidence = 1f,
+                    styleOverride = CaptionStyleOverride(
+                        fontSizeSp = 37,
+                        secondaryColorHex = "#123456",
+                        outlineColorHex = "#654321",
+                        bold = true,
+                        italic = true,
+                        alignment = com.example.lyriccaptioner.model.CaptionAlignment.LEFT,
+                    ),
+                ),
+            ),
+            layout = CaptionLayout(xRatio = 0.1234f, yRatio = 0.2345f, widthRatio = 0.4567f),
+            defaultStyle = DefaultCaptionStyle(),
+        )
+
+        // CaptionGeometryResolver rounds normalized source coordinates once;
+        // ASS must consume those same pixels rather than truncating independently.
+        assertTrue(ass.contains("{\\an7\\pos(237,253)\\q0}"))
+        assertTrue(ass.contains("Style: Cue0000,sans-serif,37,&H00FFFFFF,&H00563412,&H00214365"))
+        assertTrue(ass.contains("-1,-1,0,0,100,100"))
+        assertTrue(ass.contains("English\\N{\\c&H00563412&}中文"))
+        assertFalse(ass.contains("\\fs"))
+    }
 }

@@ -15,13 +15,15 @@ import com.arthenica.ffmpegkit.LogCallback
 import com.arthenica.ffmpegkit.ReturnCode
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionGeometryResolver
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
+import com.example.lyriccaptioner.model.PreviewContainerSize
+import com.example.lyriccaptioner.model.SourceVideoSize
 import com.example.lyriccaptioner.model.SubtitleStyle
 import com.example.lyriccaptioner.model.toCaptionLayout
 import com.example.lyriccaptioner.model.toDefaultCaptionStyle
-import com.example.lyriccaptioner.model.verticalAnchor
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -450,22 +452,28 @@ internal object AssSubtitleWriter {
             "${geometry.marginVertical},1"
     }
 
+    /**
+     * ASS uses a fixed 1920x1080 PlayRes. Resolve through the same effective
+     * video rectangle model as Compose with an equal virtual source/container;
+     * this keeps normalized cue placement and anchor semantics shared while
+     * leaving ASS-specific alignment/margin encoding at this boundary.
+     */
     private fun resolveGeometry(
         layout: CaptionLayout,
         alignment: CaptionAlignment,
     ): AssGeometry {
-        val left = (layout.xRatio * PLAY_RES_X).toInt().coerceIn(0, PLAY_RES_X)
-        val rightEdge = ((layout.xRatio + layout.widthRatio) * PLAY_RES_X)
-            .toInt()
-            .coerceIn(left, PLAY_RES_X)
-        val right = (PLAY_RES_X - rightEdge).coerceIn(0, PLAY_RES_X)
-        val positionX = when (alignment) {
-            CaptionAlignment.LEFT -> left
-            CaptionAlignment.CENTER -> left + (rightEdge - left) / 2
-            CaptionAlignment.RIGHT -> rightEdge
-        }.coerceIn(0, PLAY_RES_X)
-        val positionY = (layout.yRatio * PLAY_RES_Y).toInt().coerceIn(0, PLAY_RES_Y)
-        val verticalBand = when (layout.verticalAnchor()) {
+        val resolved = CaptionGeometryResolver.resolve(
+            source = SourceVideoSize(PLAY_RES_X, PLAY_RES_Y),
+            container = PreviewContainerSize(PLAY_RES_X, PLAY_RES_Y),
+            layout = layout,
+            alignment = alignment,
+        )
+        val left = resolved.textBoxLeftPx
+        val right = (resolved.videoRect.right -
+            (resolved.textBoxLeftPx + resolved.textBoxWidthPx)).coerceIn(0, PLAY_RES_X)
+        val positionX = resolved.anchorXpx.coerceIn(0, PLAY_RES_X)
+        val positionY = resolved.anchorYpx.coerceIn(0, PLAY_RES_Y)
+        val verticalBand = when (resolved.anchor) {
             CaptionVerticalAnchor.TOP -> VerticalBand.TOP
             CaptionVerticalAnchor.MIDDLE -> VerticalBand.MIDDLE
             CaptionVerticalAnchor.BOTTOM -> VerticalBand.BOTTOM
