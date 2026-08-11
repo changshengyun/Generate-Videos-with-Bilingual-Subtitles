@@ -28,7 +28,7 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-EDITOR-002` | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受并关闭；无二次验收） | canonical ratio、v6 编辑恢复、Media3 Float FIT/PAR、production Stroke→Fill/ASS Outline 与组件回归完成；物理 UI 仍未测量 |
 | `V3-MEDIA-001` | `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER` | 已完成 Photo Picker 唯一视频导入和 MediaStore 唯一成品视频导出，覆盖持久访问/重绑、API 26–36 权限、pending publish/rollback、取消竞态及源文件安全；未执行真实设备/相册媒体流，不声明正式产品 PASS |
 | `V3-AI-001` | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` | 当前只有安全 BYOK 与 `GET /models` 认证；真实 DeepSeek Provider、system/user prompt、Chat Completions、歌曲/歌词匹配和逐 cue 修正均未实现，必须使用单独阶段 |
-| `V3-UI-001` | `MATRIX_DEFINED / IN_PROGRESS` | 依据 CURRENT_TASK.md 的 U01-U12 整理正式产品级 Compose UI：移除 App 顶栏和开发标签，保留系统栏与 Window Insets、产品导航、主动进入编辑和清晰状态反馈；真机、真实相册、人工视觉和完整产品链路延期到最终验收 |
+| `V3-UI-001` | `PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER` | U01-U12 组件证据完成：移除 App 顶栏/开发标签，保留系统栏与 Window Insets、产品导航、主动进入编辑、编辑栏目字幕列表和隐私安全状态反馈；真机、真实相册、人工视觉和完整产品链路延期到最终验收 |
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 

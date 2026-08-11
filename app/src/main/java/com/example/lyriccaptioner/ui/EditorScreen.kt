@@ -228,7 +228,6 @@ fun EditorScreen(viewModel: MainViewModel) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Header()
                 DeepSeekKeySettingsPanel(
                     model = deepSeekKeyUi,
                     onSave = viewModel::saveDeepSeekKey,
@@ -245,11 +244,6 @@ fun EditorScreen(viewModel: MainViewModel) {
                     defaultCaptionStyle = state.defaultCaptionStyle,
                     status = state.status,
                     isWorking = state.isWorking,
-                )
-                RuntimeStatusStrip(
-                    speechReady = state.modelState.speechMode == SpeechMode.LOCAL &&
-                        state.modelState.speechModelInstalled && state.modelState.speechNativeLibraryReady,
-                    translationState = state.modelState.translationModelState,
                 )
                 WorkbenchTabs(activeSection = activeSection, onSectionSelected = { activeSection = it })
                 when (activeSection) {
@@ -1217,37 +1211,6 @@ private fun buildEditorSnapshot(state: EditorState): String = buildString {
 }
 
 
-@Composable
-private fun Header() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                text = "歌词字幕工作台",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = "导入 · 识别/翻译 · 字幕 · 导出",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF9EA5B1),
-            )
-        }
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = Color(0xFF1B2A18),
-            contentColor = Color(0xFFB7F36B),
-        ) {
-            Text("V2", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium)
-        }
-    }
-}
-
 private fun localizeStatus(status: String): String {
     return when {
         status.isBlank() -> "等待操作"
@@ -1358,7 +1321,7 @@ private fun VideoPreview(
                         modifier = Modifier
                             .size(1.dp)
                             .clearAndSetSemantics {
-                                contentDescription = "export_uri:${status.substringAfter(": ", status)}"
+                                contentDescription = "export_complete"
                             },
                     )
                 }

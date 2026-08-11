@@ -4,14 +4,21 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-UI-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V3-UI-001 / PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_UI_001 / MATRIX_DEFINED / IN_PROGRESS / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
+- Current gate: `V3_UI_001 / COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
 - Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
 - Implementation result: V3-MEDIA-001 remains closed at component/build level; V3-UI-001 is now active with the U01-U12 matrix defined in `CURRENT_TASK.md`.
 - Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
-- Next permitted action: implement and verify V3-UI-001 product Compose UI within U01-U12. Do not start V3-AI-001, V3-CLEAN-001, final E2E, physical-device/real-album/manual-visual verification, or cleanup.
+- Next permitted action: keep V3-UI-001 in the final physical-UI acceptance backlog; do not start V3-AI-001, V3-CLEAN-001, final E2E, physical-device/real-album/manual-visual verification, or cleanup.
+
+## V3-UI-001 completion evidence (2026-08-11)
+
+- U01-U12 component matrix completed. The app-owned Header call and V2 badge rendering were removed; runtime diagnostic chips were removed; system insets, product navigation, explicit edit entry, editor-only CaptionList, operation gating and privacy-safe export semantics remain.
+- Focused UI contracts: 11/11. Full JVM: 273/273. ASR Python: 6/6. lint: 0 errors/33 warnings. Ordinary Debug, native-enabled Debug and AndroidTest builds passed. Source/test/APK secret scan: 0 hits.
+- APKs: app/build/outputs/apk/debug/app-debug.apk = 417,446,841 bytes (2026-08-11 18:37:49 +08:00); app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk = 119,116 bytes (2026-08-11 16:59:49 +08:00).
+- Boundary: no real-device, real-album/private-media, network, DeepSeek/Key, online-lyrics, manual-visual or complete product E2E evidence; this is not formal product PASS.
 
 ## Closed V3-EDITOR-002 state (2026-08-11)
 

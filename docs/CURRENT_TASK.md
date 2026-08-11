@@ -3,7 +3,7 @@
 ## V3-UI-001 current status
 
 - Stage: `V3-UI-001`
-- Status: `V3-UI-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Status: `V3-UI-001 / PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
 - Scope: formal product-level Compose UI; remove the app-owned top bar and visible development/test labels while preserving system bars, Window Insets, and the frozen import -> recognition/translation -> explicit edit -> preview/export flow.
 - Evidence ceiling: `PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
 - Physical-device boundary: no device install/tap test, real album/private media, or manual visual acceptance in this stage. Keep those in the final product-acceptance backlog.
@@ -25,6 +25,23 @@
 | U10 | Narrow, portrait/landscape, and scrolling layouts remain reachable without clipping/overlap; automated component evidence is used and no manual visual verdict is claimed. |
 | U11 | Existing per-cue styles, preview/export resolver, Photo Picker, MediaStore, Whisper, and project-recovery tests do not regress. |
 | U12 | Focused UI tests, full JVM, ASR Python, lint, ordinary Debug, native Debug, AndroidTest build, and source/test/APK secret scan pass with actual counts and APK artifacts recorded. |
+
+## V3-UI-001 completion evidence (2026-08-11)
+
+- U01: PASS — rendered shell no longer calls the app-owned Header, no longer renders the V2 badge, and exposes a generic export-complete semantic instead of a raw URI.
+- U02: PASS — root content retains statusBarsPadding() and navigationBarsPadding(); no edge-to-edge or duplicate app bar was added.
+- U03: PASS — visible navigation is limited to import, recognition/translation, subtitle editing, and export; runtime diagnostic chips were removed from the shell.
+- U04: PASS — recognition success produces an in-place success card; no recognition callback changes the local section.
+- U05: PASS — the success card edit_captions control is the explicit editor entry.
+- U06: PASS — CaptionList is gated by showsCaptionList(activeSection) and the caption section.
+- U07: PASS — status text and action semantics use operation labels; raw export URI semantics were removed, and no private path is rendered.
+- U08: PASS — existing isWorking gates remain; pure ProductUiContract covers active-operation blocking, cancellation/failure and retry (6/6).
+- U09: PASS — navigation/action semantics remain stable and primary controls retain a minimum 52dp target; source contract tests cover these IDs (5/5).
+- U10: PASS (component evidence) — scroll container and LazyColumn remain; narrow/orientation behavior is covered only by automated source/component contracts, not manual visual review.
+- U11: PASS — full JVM regression remains green; no Photo Picker, MediaStore, Whisper, archive, style or resolver implementation was changed.
+- U12: PASS — focused UI contracts 11/11; full JVM 273/273; ASR Python 6/6; lint 0 errors/33 warnings; ordinary Debug, native-enabled Debug and AndroidTest builds pass; source/test/APK secret scan 0 hits.
+- Artifacts: app/build/outputs/apk/debug/app-debug.apk 417,446,841 bytes (2026-08-11 18:37:49 +08:00); app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk 119,116 bytes (2026-08-11 16:59:49 +08:00).
+- Boundary: no real-device install/tap, real album/private media, network, DeepSeek/Key, online lyrics, manual visual acceptance or complete product E2E was performed. This is not formal product PASS.
 
 ## Current status
 
