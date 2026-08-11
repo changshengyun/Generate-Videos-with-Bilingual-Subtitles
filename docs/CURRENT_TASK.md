@@ -1,28 +1,68 @@
-# Current Task: V3-EDITOR-002
+# Current Task: V3-MEDIA-001
 
 ## Current status
 
-- Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R4 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
-- Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
-- Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
+- Stage: `V3-MEDIA-001`
+- Status: `V3-MEDIA-001 / MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED`
+- Previous stage: `V3-EDITOR-002 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受 Developer 回交并直接关闭；不做二次验收）
+- Scope: 将产品视频入口统一为 AndroidX `PickVisualMedia(VideoOnly)`，将成品视频直接、原子地写入 `MediaStore.Video` 的 `Movies/LyricCaptioner`；保持项目/模型/支持文件的既有 SAF 能力和源媒体安全
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `R4_VERIFIED / BRAIN_REVIEW_PENDING`
+- Implementation authorization: `V3_MEDIA_001_DISPATCHED / DIRECT_STAGE_COMPLETION`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
-- AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已复核 R3 功能提交 `1a971af11a56806d2e10aca3d0a7d3cf3c15b83d`；R3 的几何、共享 render spec、v6 基础迁移与构建证据保留，但 canonical ratio 编辑写路径存在 P1，不能正式关闭
-- Next action: 实施并验证下方 `V3-EDITOR-002 / R4`；不得启动 `V3-AI-001`、媒体阶段或真实设备 UI
+- AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证，Developer 不得自拟 production Prompt
+- Process rule: 一个阶段只冻结一份完整矩阵；普通缺陷在 `V3-MEDIA-001` 内直接修到矩阵通过，不创建 R1/R2/R3/R4，不等待 Brain 二次验收
+- Next action: 直接实施并完成下方 `V3-MEDIA-001`；不得启动 `V3-AI-001`、UI 重设计、清理阶段或真实设备验证
+
+## V3-MEDIA-001 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| M01 | 产品“导入视频/重新绑定视频”唯一使用 AndroidX `ActivityResultContracts.PickVisualMedia` 与 `PickVisualMediaRequest(VideoOnly)`；移除产品视频入口对 `OpenDocument` 的直接调用。AndroidX 在系统 Photo Picker 不可用时自行回退 `ACTION_OPEN_DOCUMENT` 属于同一 contract，不得另做第二个产品入口。 |
+| M02 | 用户取消选择返回 `null` 时，当前项目、视频 URI、字幕、样式、导出 URI、工作状态和持久化权限均不改变，也不启动校验/识别任务。 |
+| M03 | 选中后继续验证 URI 可读、非空、存在视频轨、时长合法且不超过 5 分钟；拒绝非视频、空内容、不可读、时长未知/越界媒体。不得修改源文件、请求写权限、解析 raw filesystem path 或把完整源视频复制进长期私有存储。 |
+| M04 | 对 Photo Picker URI 尝试保留只读持久访问；成功、provider 不支持、仅会话可读和不可用状态必须明确区分。项目保存/重启恢复继续验证媒体访问；失效 URI 仍通过同一个 Photo Picker 入口重新绑定，并保留字幕、时间轴、样式和项目状态。 |
+| M05 | `NEW_VIDEO` 与 `RELINK` 继续遵守 `VideoImportPolicy`：新视频按既有规则失效不兼容派生输出；重新绑定只替换媒体关联，不破坏已有字幕和编辑状态。 |
+| M06 | 产品“导出视频”不再启动 `CreateDocument("video/mp4")`，点击后直接创建相册导出任务；项目归档、Whisper 模型及尚未进入清理阶段的支持文件 SAF 入口不在本阶段删除或改写。 |
+| M07 | API 29+ 通过 `MediaStore.Video.Media` 创建唯一、规范化 `.mp4` 名称，`MIME_TYPE=video/mp4`、`RELATIVE_PATH=Movies/LyricCaptioner`、`IS_PENDING=1`；不得构造或记录 raw filesystem path。只有完整写入和输出校验成功后才将 `IS_PENDING` 更新为 0。 |
+| M08 | minSdk 26–28 使用受限的 MediaStore legacy 写入策略；如确需存储权限，只允许 `WRITE_EXTERNAL_STORAGE` 且 `maxSdkVersion=28`，仅在 API 26–28 运行时请求。API 29+ 不得请求存储权限；整个应用不得新增 `READ_MEDIA_VIDEO`、`READ_EXTERNAL_STORAGE`、MANAGE_EXTERNAL_STORAGE 或全盘访问。权限拒绝必须可见，且不得创建目标行或启动 FFmpeg。 |
+| M09 | 导出目标必须以显式 task-owned destination/session 建模，不能继续只根据 URI 查询推断所有权。源 URI 与目标 URI/底层文件不得相同；既有 source-safety 和输出完整性校验必须保留。 |
+| M10 | 成功路径必须完成：创建 task-owned row → FFmpeg 生成并校验临时成品 → 可取消复制到目标 URI → 校验写入字节 → publish → 更新 `exportUri`。分享入口继续使用最终 content URI，并授予临时只读权限。 |
+| M11 | insert、FFmpeg、临时输出校验、目标复制、字节校验或 publish 任一步失败，都只删除本任务创建的未发布 row；不得删除源文件、既有相册媒体或用户其他文档，不得留下 0-byte/partial/pending 可见成品。 |
+| M12 | 取消与完成竞态使用幂等终态：取消 FFmpeg/copy，回滚未发布 row，状态为 cancelled；取消后不得 publish，publish 成功后不得被迟到的取消删除。重复 rollback/commit 不得崩溃或越权删除。 |
+| M13 | 同一时间最多一个导出任务；重复点击、重新导入/绑定媒体、字幕变化和项目切换必须按既有失效/串行规则处理，旧任务不得覆盖新项目状态。 |
+| M14 | UI 明确区分选择取消、权限拒绝、导入失败、导出中、取消、失败和“已保存到系统相册”；不得向界面、日志、异常、测试输出或 debug snapshot 暴露 raw path、完整私人 content URI 或媒体正文。内部 `exportUri` 仅用于播放/分享。 |
+| M15 | focused tests 使用 fake picker result、fake permission policy、fake MediaStore gateway 和 fake export engine，覆盖 API 26/28/29/36、cancel/null、persist grant、insert/publish/delete、所有失败点、重复终态、权限矩阵、同源拒绝、重绑保持和状态映射；禁止真实私人媒体、真实相册写入和网络。 |
+| M16 | 相关 focused tests、完整 JVM、ASR Python、lint、普通 Debug、native Debug、AndroidTest 构建全部通过；报告测试数与当前 APK 实物，执行源码/测试输出/APK secret scan。物理设备媒体流继续按用户授权豁免，不伪造相册运行时证据。 |
+
+| Category | V3-MEDIA-001 requirement |
+|---|---|
+| Main path | Photo Picker 选择单个视频 → 校验并保留只读访问 → 既有识别/编辑链保持 → 点击导出直接写入系统相册 `Movies/LyricCaptioner` → 成功后可分享最终 content URI。 |
+| Mandatory evidence | M01–M16；picker contract、持久访问/重绑、MediaStore task-owned session、API 26–36 权限策略、pending publish/rollback、取消竞态、完整回归、产物和 secret scan。 |
+| Prohibited | 不新增自定义视频文件选择/保存位置；不修改项目/模型 SAF；不删除 SRT/歌词分支；不修改 Whisper、DeepSeek、BYOK、Prompt、字幕时间轴/样式/渲染或无关 UI；不执行真实相册/真机验证；不清理既有脏状态；不 push。 |
+| Completion | M01–M16 全部通过后直接记录 `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`，同步三份活动文档并结束阶段；不回交 Brain 做二次验收。 |
+| Incomplete | 普通代码/测试/构建缺陷继续留在本阶段修复，不新建 R 编号。只有需要新增产品权限、破坏旧项目/源媒体或扩大范围时才返回 `HUMAN_DECISION`。 |
+
+## V3-MEDIA-001 内部 Agent 并行计划
+
+| Role | 独占范围 | 交付物与边界 |
+|---|---|---|
+| 内部 Agent A：picker/import contract | 新增 picker/import policy、URI access 纯模型及专属 tests；不得修改 `EditorScreen.kt`、`MainViewModel.kt`、exporter、Manifest 或三份活动文档 | 冻结 `PickVisualMedia(VideoOnly)` 请求、null cancel、persist/session-only/unavailable、NEW_VIDEO/RELINK 和恢复重绑契约 |
+| 内部 Agent B：MediaStore destination | 新增 MediaStore gateway、task-owned export session、API/permission policy 及专属 tests；不得修改 `EditorScreen.kt`、`MainViewModel.kt`、FFmpeg exporter 或三份活动文档 | 实现 insert/pending/publish/rollback、API 26–28 legacy 策略、唯一命名和幂等终态；平台调用置于可替换 gateway 后 |
+| 内部 Agent C：failure/race proof | 新增 export lifecycle、permission、state mapping 与集成测试文件；第一波只写 RED tests，不修改生产 UI/ViewModel/exporter 或三份活动文档 | 覆盖每个失败点、取消/完成竞态、重复终态、单任务串行、同源保护、重绑保持和隐私断言 |
+| 主 Agent（协调与集成） | `EditorScreen.kt`、`MainViewModel.kt`、`FfmpegKitSubtitleExporter.kt`、必要的 pipeline/interface、Manifest/Gradle、三份活动文档、完整回归、secret scan 和 Git | 先提交文档 checkpoint；第一波并行内部 Agent A/B/C，接口冻结后串行接入共享热点；内部 Agent 不提交、不 push、不修改三份活动文档 |
+
+- 不便并行的 UI launcher、ViewModel export Job、exporter ownership 接线和 Manifest 权限由主 Agent 串行完成；不得为了并行让多个内部 Agent 同时修改共享热点。
 
 ## V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
 
-- R4 dispatch is complete; the current action is to wait for Brain adjudication. The stale pre-implementation next-action wording above is superseded by this status.
+- Historical R4 implementation evidence retained below; the user accepted this handoff and closed `V3-EDITOR-002` without secondary Brain acceptance.
 - R4-01/R4-02/R4-03: default, selected-cue and cueId font-size writes now calculate and persist canonical `fontSizeRatio`, synchronizing the legacy `fontSizeSp` projection through one helper. Focused source-contract tests pass 3/3.
 - R4-04/R4-07: v1-v5 import -> edit -> v6 save/reload, v6 cue edit/reload, 14/48 clamp and sibling isolation pass in `ProjectArchiveR4EditSaveReloadTest` (5/5); existing R1-R3 behavior remains in the full suite.
 - R4-05: `CaptionGeometryResolver` matches Media3 1.10.1 Float FIT arithmetic, 1% tolerance, `toInt` truncation and trailing odd remainder; 3:5 in 1080x1920 is 1799px, with square/PAR focused geometry 15/15.
 - R4-06: production Compose builds `CaptionPaintPlan` from the shared render spec and paints real `Stroke` then `Fill` with identical text/font/size/position/style. `CaptionPaintPlanTest` passes 4/4; ASS continues to consume the shared spec with equivalent Outline and `Shadow=0`.
 - R4-08: full JVM 241/241 (0 failures, 0 skipped), ASR Python 6/6, lint 0 errors/33 warnings, ordinary Debug, native-enabled Debug and AndroidTest builds all pass. APKs: `app/build/outputs/apk/debug/app-debug.apk` = `417,446,841` bytes (2026-08-11 16:06:41 +08:00); `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = `119,048` bytes (2026-08-10 21:46:37 +08:00). Source/test/APK secret scan: 0 pattern hits across 12 files.
-- Boundary: no real-device UI, DeepSeek, BYOK key, online lyrics, Provider, Prompt or media/Whisper work was performed. Candidate only: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns formal acceptance.
+- Boundary: no real-device UI, DeepSeek, BYOK key, online lyrics, Provider, Prompt or media/Whisper work was performed. Final recorded editor state: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
 
 ## Brain R3 adjudication (2026-08-11)
 

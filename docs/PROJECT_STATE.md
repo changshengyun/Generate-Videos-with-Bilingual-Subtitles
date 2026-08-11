@@ -4,21 +4,34 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R4 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Current task: `V3-MEDIA-001 / MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R4_VERIFIED / BRAIN_REVIEW_PENDING`
-- Process gate: `V3_EDITOR_002_R4_BRAIN_REVIEW_PENDING`
-- Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
-- Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: implement the bounded R4 canonical style-write and paint-path evidence matrix; do not start DeepSeek subtitle enhancement, Provider, Prompt, media-stage work or physical-device UI work.
+- Current gate: `V3_MEDIA_001_MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED`
+- Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
+- Implementation authorization: granted for the bounded Photo Picker video-import and MediaStore gallery-export stage defined in `CURRENT_TASK.md`
+- Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
+- Next permitted action: implement and complete `V3-MEDIA-001`; do not start DeepSeek subtitle enhancement, Provider, Prompt, UI redesign, cleanup work or physical-device verification.
 
-- Current action override: wait for Brain R4 adjudication; do not implement further R4 work or start `V3-AI-001`, media work or physical-device UI.
+## Closed V3-EDITOR-002 state (2026-08-11)
+
+- User accepted the R4 Developer handoff and explicitly directed the workflow to proceed without secondary Brain acceptance.
+- Final recorded state: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
+- Final evidence: canonical ratio writes 3/3; edit-save-reload/boundary/isolation 5/5; Media3 FIT/PAR 15/15; production Stroke→Fill plan 4/4; JVM 241/241; ASR 6/6; lint 0 errors/33 warnings; ordinary/native Debug and AndroidTest builds passed; 12-file secret scan 0 hits.
+- Checkpoint `cf1c403`; feature/HEAD `b5298f55c419dcf7bfb9fb102e76a3e6bcdb9e86`; ahead/behind 31/0; staged empty; no push.
+- Physical UI remains unmeasured and waived; this is not a claim of device-verified product PASS.
+
+## Active V3-MEDIA-001 dispatch
+
+- Replace the direct video `OpenDocument` launcher with AndroidX `PickVisualMedia(VideoOnly)` while preserving read validation, access persistence, project restore and relink behavior.
+- Replace the product video `CreateDocument` destination with a task-owned `MediaStore.Video` session saved to `Movies/LyricCaptioner`; API 29+ uses `IS_PENDING`, and failure/cancel removes only the unpublished task-owned row.
+- Full M01–M16 matrix and the internal-Agent plan are authoritative in `CURRENT_TASK.md`.
+- Component/build completion ceiling: `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`.
 
 ## Current V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
 
-- R4 dispatch is complete; this evidence supersedes the earlier `Next permitted action` dispatch wording. Wait for Brain adjudication and do not start `V3-AI-001`, media work or physical-device UI.
-- Candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; R4 implementation and verification are complete, Brain formal adjudication is pending.
+- Historical R4 evidence retained below; the user accepted the completed Developer handoff and closed the editor stage without secondary Brain acceptance.
+- Final recorded state: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
 - Canonical ratio writes are used by default, selected-cue and cueId A+/A- paths; v1-v5 edit/save/reload, v6 cue edit/reload, 14/48 clamp and sibling isolation pass (archive focused 5/5; write-path contract 3/3).
 - Media3 1.10.1 Float FIT parity is covered: 3:5 in 1080x1920 truncates to 1799px; 1% tolerance, odd centering, square and anamorphic PAR geometry pass (15/15).
 - Production Compose consumes the shared render spec through a two-layer `CaptionPaintPlan` (real Stroke then Fill); paint-plan focused tests pass 4/4. ASS remains shared-spec Outline with `Shadow=0`.
@@ -222,8 +235,8 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（R3 implementation complete; Brain review pending） |
-| V3-MEDIA-001 | `PLANNED` |
+| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（user accepted; closed without secondary acceptance） |
+| V3-MEDIA-001 | `MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |
 | V3-CLEAN-001 | `PLANNED` |
@@ -236,4 +249,4 @@
 - Native-enabled app APK: 417,446,841 bytes. AndroidTest APK: 119,027 bytes.
 - Model/archive uses v4 with safe v1/v2/v3 migration, one normalized project layout, one default style, nullable per-cue overrides, and cue-preserving text/timeline/confirmation edits. Compose preview and ASS export consume the same `CaptionRenderResolver`.
 - No physical device was connected, installed, polled or instrumented. Editor physical UI, ASR A13/A15 and performance evidence remain in `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`; no formal product PASS is claimed.
-- Next action: wait for Brain to establish the next complete acceptance matrix; do not start the lyrics chain or physical verification autonomously.
+- Historical next action for `V3-EDITOR-001` is superseded by the closed `V3-EDITOR-002` result and active `V3-MEDIA-001` dispatch above.
