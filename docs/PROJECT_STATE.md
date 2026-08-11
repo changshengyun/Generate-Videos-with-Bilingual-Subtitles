@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-MEDIA-001 / PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`
+- Current task: `V3-UI-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_MEDIA_001 / COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`
+- Current gate: `V3_UI_001 / MATRIX_DEFINED / IN_PROGRESS / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
 - Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
-- Implementation result: bounded Photo Picker video-import and MediaStore gallery-export stage defined in `CURRENT_TASK.md` is implemented and component/build verified
+- Implementation result: V3-MEDIA-001 remains closed at component/build level; V3-UI-001 is now active with the U01-U12 matrix defined in `CURRENT_TASK.md`.
 - Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
-- Next permitted action: await the next explicitly authorized stage; do not start DeepSeek subtitle enhancement, Provider, Prompt, UI redesign, cleanup work or physical-device verification.
+- Next permitted action: implement and verify V3-UI-001 product Compose UI within U01-U12. Do not start V3-AI-001, V3-CLEAN-001, final E2E, physical-device/real-album/manual-visual verification, or cleanup.
 
 ## Closed V3-EDITOR-002 state (2026-08-11)
 

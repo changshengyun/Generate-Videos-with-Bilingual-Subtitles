@@ -1,9 +1,35 @@
-# Current Task: V3-MEDIA-001
+# Current Task: V3-UI-001
+
+## V3-UI-001 current status
+
+- Stage: `V3-UI-001`
+- Status: `V3-UI-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Scope: formal product-level Compose UI; remove the app-owned top bar and visible development/test labels while preserving system bars, Window Insets, and the frozen import -> recognition/translation -> explicit edit -> preview/export flow.
+- Evidence ceiling: `PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
+- Physical-device boundary: no device install/tap test, real album/private media, or manual visual acceptance in this stage. Keep those in the final product-acceptance backlog.
+- Prohibited: DeepSeek, network, real Key, online lyrics, V3-AI-001, V3-CLEAN-001, final E2E, Whisper/model changes, media lifecycle changes, archive-format changes, and unrelated UI.
+
+## V3-UI-001 acceptance matrix (唯一活动矩阵)
+
+| ID | 必须证明 |
+|---|---|
+| U01 | Production UI and semantics contain no app top bar, “歌词字幕工作台”, or visible V2/V3 development labels. |
+| U02 | System status/navigation bars and Window Insets remain correct without duplicate padding, occlusion, or unreachable content. |
+| U03 | Main navigation exposes only the product flow: import, recognition/translation, subtitle editing, preview/export; no diagnostic test-tool entry. |
+| U04 | Recognition success stays in the current section and shows a clear success state; it does not auto-navigate. |
+| U05 | Only an explicit user action labeled “编辑字幕” enters the editor section. |
+| U06 | Subtitle list and per-cue style cards render only in the editor section. |
+| U07 | Import, processing, cancel, failure, retry, save, and export states are clear and do not expose private URI/path/media content. |
+| U08 | Conflicting repeated actions are blocked while work is active; cancel/failure leaves a recoverable retry path. |
+| U09 | Key controls have clear semantics, understandable labels, and adequate touch targets. |
+| U10 | Narrow, portrait/landscape, and scrolling layouts remain reachable without clipping/overlap; automated component evidence is used and no manual visual verdict is claimed. |
+| U11 | Existing per-cue styles, preview/export resolver, Photo Picker, MediaStore, Whisper, and project-recovery tests do not regress. |
+| U12 | Focused UI tests, full JVM, ASR Python, lint, ordinary Debug, native Debug, AndroidTest build, and source/test/APK secret scan pass with actual counts and APK artifacts recorded. |
 
 ## Current status
 
-- Stage: `V3-MEDIA-001`
-- Status: `V3-MEDIA-001 / PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`
+- Stage: `V3-UI-001`
+- Status: `V3-UI-001 / MATRIX_DEFINED / IN_PROGRESS`
 - Previous stage: `V3-EDITOR-002 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受 Developer 回交并直接关闭；不做二次验收）
 - Scope: 将产品视频入口统一为 AndroidX `PickVisualMedia(VideoOnly)`，将成品视频直接、原子地写入 `MediaStore.Video` 的 `Movies/LyricCaptioner`；保持项目/模型/支持文件的既有 SAF 能力和源媒体安全
 - V2 functional baseline: `8a48d88`
