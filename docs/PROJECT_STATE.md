@@ -4,14 +4,24 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R3 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Current task: `V3-EDITOR-002 / R4 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R3_IMPLEMENTED / BRAIN_REVIEW_PENDING`
-- Process gate: `V3_EDITOR_002_R3_VERIFIED / BRAIN_REVIEW_PENDING`
+- Current gate: `V3_EDITOR_002_R4_MATRIX_DEFINED / IN_PROGRESS`
+- Process gate: `V3_EDITOR_002_R4_IN_PROGRESS`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: wait for Brain R3 adjudication; do not start DeepSeek subtitle enhancement, Provider, Prompt or physical-device UI work.
+- Next permitted action: implement the bounded R4 canonical style-write and paint-path evidence matrix; do not start DeepSeek subtitle enhancement, Provider, Prompt, media-stage work or physical-device UI work.
+
+## Brain R3 adjudication (2026-08-11)
+
+- Formal verdict: `PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
+- Retained evidence: source-relative render spec, PAR propagation and shared FIT architecture, Compose stroke/fill production code, ASS Outline, v6 base migration, 222/222 JVM and build/artifact evidence remain valid at component/build level; exact Media3 float parity is not accepted.
+- P1: default and cue font-size controls still write only legacy `fontSizeSp`. Once a restored style already contains canonical `fontSizeRatio`, validation and resolution prefer the stale ratio, so A+/A- may not affect preview, ASS or the next v6 archive.
+- P1 evidence path: `MainViewModel.kt` default write at 762-765 and cue writes at 798-808 conflict with ratio precedence in `CaptionStyleModel.kt` at 168-170, 186-202 and 210-215.
+- P1 FIT parity: current `Double + floor` geometry differs from Media3 1.10.1 `Float` arithmetic plus integer truncation. The concrete 3:5 in 1080x1920 case resolves to 1800 instead of Media3's 1799, and current tests do not cover this precision boundary.
+- Evidence gap: no focused test references the Compose `CaptionOutlinedText` / `DrawStyle.Stroke` / fill production bridge, despite the R3-07 claim. Numeric resolver tests do not close that paint-path requirement.
+- R4 is authorized and its full acceptance matrix plus Limbs plan are authoritative in `CURRENT_TASK.md`. R3 is not formally closed.
 
 ## Brain R2 adjudication (2026-08-11)
 

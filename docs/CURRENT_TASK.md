@@ -3,16 +3,58 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R3 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Status: `V3-EDITOR-002 / R4 / MATRIX_DEFINED / IN_PROGRESS`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `R3_DISPATCHED / VERIFIED / BRAIN_REVIEW_PENDING`
+- Implementation authorization: `R4_DISPATCHED / IN_PROGRESS`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已复核 R2 功能提交 `935a2a86d7d757af20d279f3b99c54f16f6a188e`；R3 实现与回归已完成，Developer 仅回交候选，等待 Brain 正式裁决
-- Next action: 等待 Brain 重新裁决 R3；不得启动 `V3-AI-001` 或真实设备 UI
+- Review workflow: Brain 已复核 R3 功能提交 `1a971af11a56806d2e10aca3d0a7d3cf3c15b83d`；R3 的几何、共享 render spec、v6 基础迁移与构建证据保留，但 canonical ratio 编辑写路径存在 P1，不能正式关闭
+- Next action: 实施并验证下方 `V3-EDITOR-002 / R4`；不得启动 `V3-AI-001`、媒体阶段或真实设备 UI
+
+## Brain R3 adjudication (2026-08-11)
+
+- Verdict: `PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
+- Accepted evidence: `CaptionRenderSpec`, source-height-relative render calculations, Compose stroke/fill production code, ASS `Outline` with `Shadow=0`, pixel-aspect-ratio propagation, the shared FIT architecture, v6 base migration, 222/222 JVM regression and reported build artifacts are retained as component/build evidence; exact Media3 float parity is not accepted.
+- P1 default write path: `MainViewModel.updateFontSize()` changes only `fontSizeSp`. After a v6/default style has a non-default `fontSizeRatio`, `DefaultCaptionStyle.validated()` preserves the old ratio, so A+/A- can leave Compose and ASS at the previous size.
+- P1 cue write path: `updateSelectedCueFontSize()` and `updateCueFontSize()` also change only `fontSizeSp` while retaining an existing `fontSizeRatio`. After v6 restore or migration, per-cue A+/A- can be ignored and `ProjectArchive` can persist the stale ratio again.
+- P1 FIT parity: the shared resolver uses `Double + floor`, while the pinned Media3 1.10.1 `AspectRatioFrameLayout` performs `Float` arithmetic followed by integer truncation. A 3:5 source in a 1080x1920 container yields 1800 in the current resolver but 1799 in Media3, so R3-05's no-known-1px-drift requirement is not met.
+- Evidence gap: R3-07 claimed focused coverage of true Compose stroke/fill, but the test tree contains no reference to `CaptionOutlinedText`, `DrawStyle.Stroke` or the stroke-before-fill production bridge. Resolver numeric tests alone do not prove the production paint path.
+- Consequence: R3-01, R3-07 and the active edit-save-restart path are not fully proved. Build/test success cannot upgrade the stage to the Developer candidate returned for R3.
+
+## V3-EDITOR-002 / R4 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| R4-01 | 默认字号的唯一可写规范值是 `fontSizeRatio`。A+/A- 必须从当前已解析字号计算新 ratio，同时同步或重新派生兼容用 `fontSizeSp`；v6 恢复后的非默认字号也必须立即生效。 |
+| R4-02 | `updateSelectedCueFontSize()` 与按 `cueId` 的 `updateCueFontSize()` 必须写入新的 canonical ratio，不能保留旧 ratio 覆盖新 `fontSizeSp`；目标 cue 生效，其他 cue 不变。 |
+| R4-03 | 消除“两个字段都可独立写”的歧义：新增单一 helper/API 负责 ratio、legacy projection、clamp 与 rounding。生产编辑路径不得直接只写 `fontSizeSp`。 |
+| R4-04 | 覆盖两条真实归档链：v1-v5 导入→编辑字号→保存 v6→重启恢复，以及 v6 恢复→编辑字号→再次保存/恢复。恢复后的 `CaptionRenderSpec`、Compose 输入与 ASS Fontsize 必须使用新值；描边 ratio 仍完整 round-trip。 |
+| R4-05 | FIT resolver 必须逐步复现当前 Media3 1.10.1 的 `Float` 运算、1% aspect tolerance、`toInt` 截断与居中余数分配。加入 3:5→1080x1920 的 1799px 反例、容差边界、奇数余量及 square/anamorphic PAR 回归。 |
+| R4-06 | 为生产 stroke-before-fill 桥建立 focused 证据：可提取纯 paint plan 供 JVM 测试，并由 Compose 生产代码直接消费；必须证明先 `Stroke` 后 `Fill`、同一文本/字体/字号/位置，ASS 继续消费同一 spec 的 `Outline` 且 `Shadow=0`。不得用仅检查 resolver 数值的测试替代。 |
+| R4-07 | focused tests 覆盖默认与 cue 的连续 A+/A-、14/48 边界、旧档迁移后编辑、v6 重启后编辑、cue 隔离、save/reload、Compose/ASS spec 一致性、普通/全屏、16:9/9:16/1:1、黑边、PAR 与完整九宫格组合；R1-R3 已通过能力不得回归。 |
+| R4-08 | focused/full JVM、ASR Python、lint、普通 Debug、native Debug、AndroidTest 构建全部通过；报告测试数与当前 APK 实物，并执行本阶段源码/测试输出/APK secret scan。不得执行真机 UI。 |
+
+| Category | V3-EDITOR-002 / R4 requirement |
+|---|---|
+| Main path | 恢复旧档或 v6 项目 → 在默认或某一 cue 卡片点击字号增减 → 预览与 ASS 同步变化 → 保存并重启 → 新字号和描边继续按 canonical ratio 恢复。 |
+| Mandatory evidence | R4-01–R4-08；默认/cue canonical 写路径；两代归档 edit-save-reload；Media3 Float/FIT 边界；production-adjacent stroke/fill focused evidence；完整回归、产物和 secret scan。 |
+| Prohibited | 不重做已通过的几何架构；不新增第二套字号真相；不启动 DeepSeek Provider/Prompt、媒体入口、Whisper 或无关 UI；不执行真机验证；不清理既有脏状态；不 push。 |
+| Exit | R4 全部通过后只允许回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 正式关闭编辑阶段。 |
+| Incomplete | 任一默认/cue 编辑仍可能保存旧 ratio、FIT 仍与 Media3 有已知像素漂移，或 stroke/fill 生产证据仍缺失：保持 `PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED`。迁移破坏或数据不可恢复：`BLOCKED / ARCHIVE_V6_MIGRATION_REQUIRED`。 |
+
+## V3-EDITOR-002 / R4 Limbs parallel plan
+
+| Role | 独占范围 | 交付物与边界 |
+|---|---|---|
+| Limb A: canonical style write API | `CaptionStyleModel.kt` 及专属 model tests；不得修改 `MainViewModel.kt`、Compose、ASS、archive 或三份活动文档 | 建立唯一 ratio 更新 helper，冻结 clamp/rounding/legacy projection 规则，覆盖默认与 override 的旧值/新值组合 |
+| Limb B: paint-path evidence | 新增独立 paint-plan model/test，并在接口冻结后修改 `EditorScreen.kt`；不得修改 `MainViewModel.kt`、archive、ASS exporter 或三份活动文档 | 让生产 Compose 直接消费可测试的 stroke-then-fill plan；测试层顺序与共享文字/样式参数，不改产品布局 |
+| Limb C: regression proof | 归档/MainViewModel 与 geometry 专属测试文件；第一波只写 RED tests，不修改生产 `MainViewModel.kt`、model、Compose 或三份活动文档 | 覆盖 v1-v5/v6 edit-save-reload、默认/cue A+/A-、边界、sibling isolation，以及 Media3 Float 3:5/容差/奇数余量/PAR 反例，先证明当前失败再等待 Orchestrator 接线 |
+| Orchestrator | `MainViewModel.kt`、`CaptionGeometryModel.kt`、共享接口集成、必要的 archive 生产修正、三份活动文档、完整回归、secret scan 与 scoped Git commits | 先创建文档 checkpoint；第一波并行 Limb A/B/C，接口冻结后由 Orchestrator 串行接入 MainViewModel 与 Media3 FIT 修正并合并冲突；最终逐项裁决 R4-01–R4-08 |
+
+- 不便并行的 `MainViewModel.kt` 与共享 archive 接线由 Orchestrator 串行完成，不让多个 Limb 同时修改热点文件。
 
 ## Brain R2 adjudication (2026-08-11)
 
