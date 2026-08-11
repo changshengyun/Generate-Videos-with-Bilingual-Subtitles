@@ -4,14 +4,18 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-UI-001 / PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
+- Current task: `V3-AI-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_UI_001 / COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
+- Current gate: `V3_AI_001 / MATRIX_DEFINED / IN_PROGRESS / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
 - Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
-- Implementation result: V3-MEDIA-001 remains closed at component/build level; V3-UI-001 is now active with the U01-U12 matrix defined in `CURRENT_TASK.md`.
+- Implementation result: V3-UI-001 remains closed at component/build level; V3-AI-001 is now active with the AI01-AI16 matrix defined in `CURRENT_TASK.md`.
 - Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
-- Next permitted action: keep V3-UI-001 in the final physical-UI acceptance backlog; do not start V3-AI-001, V3-CLEAN-001, final E2E, physical-device/real-album/manual-visual verification, or cleanup.
+- Next permitted action: implement and verify V3-AI-001 within AI01-AI16; do not start V3-CLEAN-001 or unrelated media/Whisper/archive work.
+
+## V3-AI-001 dispatch
+
+The user has explicitly authorized the complete AI enhancement stage in one pass. This supersedes the historical R1-only prohibition on live Provider work for the current task. The fixed route is DeepSeek over HTTPS at https://api.deepseek.com with DEVICE_DIRECT_BYOK; no key may be requested in chat, terminal arguments, source, logs or test fixtures. Until authorized live evidence is collected, the maximum status is `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`.
 
 ## V3-UI-001 completion evidence (2026-08-11)
 

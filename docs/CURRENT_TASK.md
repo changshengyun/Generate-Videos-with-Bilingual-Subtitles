@@ -1,30 +1,34 @@
-# Current Task: V3-UI-001
+# Current Task: V3-AI-001
 
-## V3-UI-001 current status
+## V3-AI-001 current status
 
-- Stage: `V3-UI-001`
-- Status: `V3-UI-001 / PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
-- Scope: formal product-level Compose UI; remove the app-owned top bar and visible development/test labels while preserving system bars, Window Insets, and the frozen import -> recognition/translation -> explicit edit -> preview/export flow.
-- Evidence ceiling: `PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER`
-- Physical-device boundary: no device install/tap test, real album/private media, or manual visual acceptance in this stage. Keep those in the final product-acceptance backlog.
-- Prohibited: DeepSeek, network, real Key, online lyrics, V3-AI-001, V3-CLEAN-001, final E2E, Whisper/model changes, media lifecycle changes, archive-format changes, and unrelated UI.
+- Stage: `V3-AI-001`
+- Status: `V3-AI-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Scope: implement the complete DeepSeek caption-enhancement path: production HTTPS Provider, strict prompt/schema, song matching and lyric-source metadata, per-cue English correction and Chinese translation, atomic commit, local fallback, cancellation, status UI and retry.
+- Route: `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED`; fixed base URL `https://api.deepseek.com`; saved keys may enter request construction only through `withDecryptedKey`.
+- Evidence ceiling before live authorization/evidence: `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`; no claim of formal product PASS without real authenticated network evidence.
+- Prohibited: sending audio/video/media/user paths, inventing lyrics, logging keys/headers/bodies/responses, changing Whisper/media/archive/style architecture, V3-CLEAN-001, or pushing.
 
-## V3-UI-001 acceptance matrix (唯一活动矩阵)
+## V3-AI-001 acceptance matrix (唯一活动矩阵)
 
 | ID | 必须证明 |
 |---|---|
-| U01 | Production UI and semantics contain no app top bar, “歌词字幕工作台”, or visible V2/V3 development labels. |
-| U02 | System status/navigation bars and Window Insets remain correct without duplicate padding, occlusion, or unreachable content. |
-| U03 | Main navigation exposes only the product flow: import, recognition/translation, subtitle editing, preview/export; no diagnostic test-tool entry. |
-| U04 | Recognition success stays in the current section and shows a clear success state; it does not auto-navigate. |
-| U05 | Only an explicit user action labeled “编辑字幕” enters the editor section. |
-| U06 | Subtitle list and per-cue style cards render only in the editor section. |
-| U07 | Import, processing, cancel, failure, retry, save, and export states are clear and do not expose private URI/path/media content. |
-| U08 | Conflicting repeated actions are blocked while work is active; cancel/failure leaves a recoverable retry path. |
-| U09 | Key controls have clear semantics, understandable labels, and adequate touch targets. |
-| U10 | Narrow, portrait/landscape, and scrolling layouts remain reachable without clipping/overlap; automated component evidence is used and no manual visual verdict is claimed. |
-| U11 | Existing per-cue styles, preview/export resolver, Photo Picker, MediaStore, Whisper, and project-recovery tests do not regress. |
-| U12 | Focused UI tests, full JVM, ASR Python, lint, ordinary Debug, native Debug, AndroidTest build, and source/test/APK secret scan pass with actual counts and APK artifacts recorded. |
+| AI01 | Whisper cue batch maps to a strict request preserving job/schema, cue IDs, order, timestamps and raw English. |
+| AI02 | Production DeepSeek request uses fixed HTTPS base URL, minimal supported generation endpoint, bounded parameters and a versioned system/user prompt; no media or path is sent. |
+| AI03 | Saved BYOK is decrypted only inside the shortest request-construction scope; Authorization, key and full request/response never enter logs, UI semantics, exceptions or snapshots. |
+| AI04 | Response parser strictly validates schema, job ID, cue set, timestamps, text bounds, Unicode and enum limits; any violation rejects the whole batch. |
+| AI05 | Song match is optional and evidence-bearing; unknown/unreliable matches remain unconfirmed and are never invented. |
+| AI06 | Valid cloud output returns one corrected English and Chinese result per cue and commits once atomically with CLOUD_AI source/version. |
+| AI07 | Offline, connection, timeout, retryable server and invalid-response errors use the original ASR batch for local OPUS-MT fallback; auth/unknown/programming errors remain visible. |
+| AI08 | Local fallback translates only missing Chinese from original Whisper English, commits atomically and marks LOCAL_FALLBACK without claiming AI English correction. |
+| AI09 | Cancellation stops the job, does not start fallback, does not overwrite captions and leaves a recoverable state. |
+| AI10 | Cloud/local partial failures preserve the previous complete project and invalidate derived output only after a complete commit. |
+| AI11 | Source, processing version, song-match state and error status survive project save/restore without changing cue IDs/times. |
+| AI12 | UI exposes one explicit enhancement action, working/cancelled/failed/fallback/success states, retry and no conflicting duplicate operation. |
+| AI13 | Existing BYOK, ASR, local translation, per-cue styles, archive, preview/export and media flows do not regress. |
+| AI14 | Deterministic fake-provider/local tests plus network-boundary tests prove request, parser, fallback, cancellation, atomicity and privacy behavior. |
+| AI15 | Authorized live DeepSeek runtime proves authentication, strict response handling and one complete enhancement batch without exposing secrets; no online-lyrics/product PASS is claimed beyond evidence. |
+| AI16 | Focused/full JVM, ASR Python, lint, ordinary/native Debug, AndroidTest build and secret scan pass; actual artifacts and remaining runtime boundaries are recorded. |
 
 ## V3-UI-001 completion evidence (2026-08-11)
 

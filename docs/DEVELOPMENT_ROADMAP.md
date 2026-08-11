@@ -27,12 +27,12 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-EDITOR-001` | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` | 原组件模型和共享 resolver 已完成，但用户确认独立“项目默认样式/当前字幕覆盖”面板不符合产品交互 |
 | `V3-EDITOR-002` | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受并关闭；无二次验收） | canonical ratio、v6 编辑恢复、Media3 Float FIT/PAR、production Stroke→Fill/ASS Outline 与组件回归完成；物理 UI 仍未测量 |
 | `V3-MEDIA-001` | `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER` | 已完成 Photo Picker 唯一视频导入和 MediaStore 唯一成品视频导出，覆盖持久访问/重绑、API 26–36 权限、pending publish/rollback、取消竞态及源文件安全；未执行真实设备/相册媒体流，不声明正式产品 PASS |
-| `V3-AI-001` | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` | 当前只有安全 BYOK 与 `GET /models` 认证；真实 DeepSeek Provider、system/user prompt、Chat Completions、歌曲/歌词匹配和逐 cue 修正均未实现，必须使用单独阶段 |
+| `V3-AI-001` | `MATRIX_DEFINED / IN_PROGRESS` | 用户已授权一次性实施完整 AI 增强：DeepSeek 生产 Provider、固定 HTTPS、严格 Prompt/Schema、歌曲匹配与来源元数据、逐 cue 英文修正/中文翻译、原子提交、本地回退、取消/重试与状态 UI；真机/真实网络证据仍需单独记录 |
 | `V3-UI-001` | `PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER` | U01-U12 组件证据完成：移除 App 顶栏/开发标签，保留系统栏与 Window Insets、产品导航、主动进入编辑、编辑栏目字幕列表和隐私安全状态反馈；真机、真实相册、人工视觉和完整产品链路延期到最终验收 |
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 
-一次只激活一个实施阶段。`V3-MEDIA-001` 已完成组件与构建验证，完整 M01–M16 验收矩阵与逐项证据保存在 `CURRENT_TASK.md`；物理设备媒体流按用户授权豁免。每个阶段只定义一次完整矩阵，Developer 在阶段内直接修到完成，不再追加 R1/R2/R3/R4，也不等待 Brain 二次验收。`V3-AI-001` 仍缺用户批准的 production Prompt、模型和触发方式，因此不得启动 AI 实现或真机验证。
+一次只激活一个实施阶段。`V3-MEDIA-001` 与 `V3-UI-001` 均已完成组件与构建验证，历史矩阵与证据保存在 `CURRENT_TASK.md`；当前活动阶段为 `V3-AI-001`，按 AI01-AI16 一次性实施，不再追加子阶段。真机和真实网络证据必须与组件证据分开记录。
 
 `V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
 
