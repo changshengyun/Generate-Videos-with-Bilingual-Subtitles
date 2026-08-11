@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / COMPONENT_VERIFIED / IN_PROGRESS`
+- Status: `V3-EDITOR-002 / R1 / MATRIX_DEFINED / IN_PROGRESS`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
@@ -11,16 +11,45 @@
 - Implementation authorization: `APPROVED_BY_USER`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已根据用户截图和生产代码完成范围复核；Developer 按本矩阵实施并回交候选，不能自验收
-- Next action: 只执行 `V3-EDITOR-002`；真实 DeepSeek 字幕增强及其 system/user prompt 留给单独 `V3-AI-001`
+- Review workflow: Brain 已复核功能提交 `21a5d43d72dbc522aac9bf2a73bc80acb88f0c44`；R1 修复进行中，完成后回交 Developer 候选，不能自验收
+- Next action: 只执行 `V3-EDITOR-002 / R1`；关闭 R1 前不得启动 `V3-AI-001`
 
-## V3-EDITOR-002 implementation evidence
+## Brain adjudication (2026-08-11)
+
+- Verdict: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`。
+- S08 未通过：仅修改位置时只产生 `layoutOverride`，但清除按钮的 `hasOverride` 只检查 `styleOverride`，因此纯位置覆盖无法从 UI 清除。
+- S10 未通过（颜色）：Compose 为中文使用 `secondaryColorHex`；ASS 把中英文写入同一 Dialogue，却未在中文行插入显式颜色 override，`SecondaryColour` 不会自动成为普通第二行文本颜色。
+- S10 未通过（几何）：Compose 固定 `BottomCenter` 并以 bottom padding 解释 y；ASS 按 y 切换 top/middle/bottom anchor，且两端对 x/width 的映射不同，不能证明同一规范坐标产生相同预览与导出位置。
+- S14 构建通过主张保留为 Developer 证据，但 AndroidTest APK 实物为 `119,048 bytes`，不是回交中的 `119,027 bytes`；App APK 实物为 `417,446,841 bytes`。
+- v5 迁移、cueId 写入链路与逐 cue 隔离未发现新的阻断；物理设备 UI 继续按用户授权豁免，不把缺失证据伪造为 PASS。
+
+## V3-EDITOR-002 / R1 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| R1-01 | cue 的“存在覆盖”状态同时覆盖 `styleOverride` 与 `layoutOverride`；仅有位置覆盖时，卡片内清除按钮仍可用。 |
+| R1-02 | 清除操作按显式 `cueId` 同时清除该 cue 的样式与位置覆盖，只回落到兼容性基础值，不改变其他 cue。 |
+| R1-03 | ASS 为中文行应用与 Compose `secondaryColorHex` 相同的显式文本颜色 override；颜色不得泄漏到英文行或下一条 Dialogue。 |
+| R1-04 | Compose 与 ASS 复用同一套源视频归一化 x/y/width 和 anchor 语义；不得分别解释 y、重复缩窄宽度或产生额外水平偏移。 |
+| R1-05 | focused 测试至少覆盖：纯位置覆盖可清除、清除 cue 隔离、中英文不同颜色导出、左/中/右与上/中/下位置映射，以及至少两条 cue 互不影响。 |
+| R1-06 | 更正构建产物证据，报告磁盘实物的绝对路径、字节数和生成批次；不得沿用旧 AndroidTest APK 数字。 |
+| R1-07 | focused/full JVM、ASR Python、lint、普通 Debug、native Debug 与 AndroidTest 构建全部通过；不执行真机 UI，不触碰 DeepSeek、Key、在线歌词、Provider 或 Prompt。 |
+
+| Category | V3-EDITOR-002 / R1 requirement |
+|---|---|
+| Main path | 在字幕卡片内修改纯位置或样式 -> 可清除该 cue 的全部覆盖 -> Compose 与 ASS 对中英文颜色、位置、宽度和 anchor 产生同一结果。 |
+| Mandatory evidence | R1-01–R1-07；针对三个 Brain 阻断的回归测试；更正后的 APK 实物证据；完整构建矩阵。 |
+| Prohibited | 不降低原 S01-S14；不启动 `V3-AI-001`；不修改 BYOK、Whisper、在线歌词、媒体入口或无关 UI；不执行真机验证；不清理既有脏状态；不 push。 |
+| Exit | R1 全部通过后只允许再次回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 重新裁决。 |
+| Incomplete | 任一清除、颜色或坐标映射问题仍存在：`PARTIAL_PASS / RENDER_INTEGRATION_REQUIRED`；跨 cue 污染：`BLOCKED / CUE_STYLE_ISOLATION_REQUIRED`。 |
+
+## Developer-returned V3-EDITOR-002 evidence (not formally accepted)
 
 - S01-S13：组件级通过。独立全局样式面板已从实际编辑页移除；每条字幕卡片提供 cue-id 作用域的可展开样式/位置控件，写操作显式携带 cueId，样式与布局覆盖通过 v5 归档保存并可恢复。
 - S10-S12：`CaptionRenderResolver` 同时供 Compose 预览边界与 ASS 导出；v1-v4 读取保持 layout override 为空并继承历史布局；v5 round-trip、非法/非有限/越界布局拒绝及两条 cue 隔离测试通过。
 - Verification: focused editor/data/resolver JVM 34/34；完整 `testDebugUnitTest` 198/198；`python tools\\asr_evaluate_test.py` 6/6；`lintDebug` 0 errors/33 warnings；`assembleDebug`、`-PenableWhisperNative=true assembleDebug`、`assembleDebugAndroidTest` 均通过。
 - Physical boundary: 本阶段按用户矩阵豁免真机 UI；没有真机、DeepSeek、真实 Key、在线歌词或 Provider/Prompt 证据，不声明正式产品 PASS。
-- Candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，等待 Brain 裁决。
+- Returned candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`；Brain 已按上方裁决降为 `RENDER_INTEGRATION_REQUIRED`。
 
 ## V3-EDITOR-002 acceptance matrix
 

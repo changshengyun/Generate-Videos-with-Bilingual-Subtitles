@@ -25,14 +25,14 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；R1 已关闭） | Brain 已正式接受唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的 BYOK 安全链路、`GET /models` 最小真实认证、Keystore 密文保存、masked 重启恢复、测试连接、same-key rotation、失败替换保留旧 Key、最终删除、完整回归和 secret scan 证据；在线歌词、歌曲匹配、逐 cue 增强与完整产品链路未验证，不得声明正式产品 PASS |
 | `V3-ASR-SESSION-001` | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决） | A01–A12、A14、A16 组件级通过；A13 真实连续识别/handle 复用与 A15 真机性能数据统一登记到 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`，不得升级为真机已验证 |
 | `V3-EDITOR-001` | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` | 原组件模型和共享 resolver 已完成，但用户确认独立“项目默认样式/当前字幕覆盖”面板不符合产品交互 |
-| `V3-EDITOR-002` | `COMPONENT_VERIFIED / IN_PROGRESS` | S01-S13 组件证据通过：逐字幕样式/位置卡片、cue layout override、v5 迁移和 Compose/ASS 共用 resolver 已实现；物理 UI 按矩阵豁免，等待 Brain 裁决 |
+| `V3-EDITOR-002` | `R1 / MATRIX_DEFINED / IN_PROGRESS` | cueId 隔离与 v5 迁移保留为部分通过证据；R1 修复纯位置覆盖清除、ASS 中文颜色及 Compose/ASS 坐标/anchor 语义；物理 UI 继续按用户授权豁免 |
 | `V3-MEDIA-001` | `PLANNED` | Photo Picker 唯一导入入口和 MediaStore 唯一导出目的地，保持源/目标文件安全 |
 | `V3-AI-001` | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` | 当前只有安全 BYOK 与 `GET /models` 认证；真实 DeepSeek Provider、system/user prompt、Chat Completions、歌曲/歌词匹配和逐 cue 修正均未实现，必须使用单独阶段 |
 | `V3-UI-001` | `PLANNED` | 删除 App 顶栏并基于已冻结交互重做产品级 Compose UI、状态反馈与无障碍 |
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 
-一次只激活一个实施阶段。当前活动阶段为 `V3-EDITOR-002`，组件证据已回交候选状态 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`；验收矩阵只保存在 `CURRENT_TASK.md`，等待 Brain 裁决。真实 DeepSeek 字幕增强必须等待单独 `V3-AI-001`。
+一次只激活一个实施阶段。当前活动阶段为 `V3-EDITOR-002 / R1`，Brain 正式裁决为 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`；完整 R1 验收矩阵只保存在 `CURRENT_TASK.md`。关闭 R1 前不得启动 `V3-AI-001`。
 
 `V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
 
