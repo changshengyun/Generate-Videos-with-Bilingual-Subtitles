@@ -1,11 +1,15 @@
 package com.example.lyriccaptioner.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -129,11 +133,14 @@ fun EditorScreen(viewModel: MainViewModel) {
     var pastedLyrics by remember { mutableStateOf("") }
     var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
     var activeSection by remember { mutableStateOf(EditorSection.IMPORT.index) }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             viewModel.importVideo(uri, videoImportMode)
         }
     }
+    val legacyWritePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { viewModel.exportVideo() }
     val srtPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             viewModel.importSrt(uri)
@@ -167,14 +174,6 @@ fun EditorScreen(viewModel: MainViewModel) {
     ) { uri: Uri? ->
         if (uri != null) viewModel.saveProjectArchive(uri)
     }
-    val videoCreator = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("video/mp4"),
-    ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.exportVideo(uri)
-        }
-    }
-
     LaunchedEffect(state.pendingSidecarSrt) {
         if (state.pendingSidecarSrt != null) {
             srtCreator.launch("lyric-captioner.srt")
@@ -264,7 +263,9 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 accessibilityId = "import_video",
                                 onClick = {
                                     videoImportMode = if (state.requiresVideoAssociation) VideoImportMode.RELINK else VideoImportMode.NEW_VIDEO
-                                    videoPicker.launch(arrayOf("video/*"))
+                                    videoPicker.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
+                                    )
                                 },
                             )
                             ActionButton(
@@ -361,7 +362,18 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 enabled = state.videoUri != null && state.captions.isNotEmpty() && !state.isWorking,
                                 primary = true,
                                 accessibilityId = "export_video",
-                                onClick = { videoCreator.launch(uniqueDocumentName(state.exportProfile.outputName)) },
+                                onClick = {
+                                    val needsPermission = Build.VERSION.SDK_INT in 26..28 &&
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                                        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (needsPermission) {
+                                        legacyWritePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    } else {
+                                        viewModel.exportVideo()
+                                    }
+                                },
                             )
                             ActionButton(
                                 icon = "↗",
@@ -1184,11 +1196,11 @@ private fun shareExportedVideo(context: Context, uri: Uri) {
 }
 
 private fun buildEditorSnapshot(state: EditorState): String = buildString {
-    append("video=").append(state.videoUri)
+    append("video=").append(if (state.videoUri == null) "none" else "present")
     append(";duration=").append(state.videoDurationMs)
     append(";media=").append(state.mediaState)
     append(";requiresAssociation=").append(state.requiresVideoAssociation)
-    append(";export=").append(state.exportUri)
+    append(";export=").append(if (state.exportUri == null) "none" else "present")
     append(";style=").append(state.exportProfile.subtitleStyle)
     append(";layout=").append(state.captionLayout)
     append(";defaultStyle=").append(state.defaultCaptionStyle)

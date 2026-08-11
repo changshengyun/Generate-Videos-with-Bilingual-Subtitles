@@ -26,13 +26,13 @@ V3 必须从“开发测试工作台”升级为可交付的移动端产品，�
 | `V3-ASR-SESSION-001` | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决） | A01–A12、A14、A16 组件级通过；A13 真实连续识别/handle 复用与 A15 真机性能数据统一登记到 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`，不得升级为真机已验证 |
 | `V3-EDITOR-001` | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` | 原组件模型和共享 resolver 已完成，但用户确认独立“项目默认样式/当前字幕覆盖”面板不符合产品交互 |
 | `V3-EDITOR-002` | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受并关闭；无二次验收） | canonical ratio、v6 编辑恢复、Media3 Float FIT/PAR、production Stroke→Fill/ASS Outline 与组件回归完成；物理 UI 仍未测量 |
-| `V3-MEDIA-001` | `MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED` | 单阶段完成 Photo Picker 唯一视频导入和 MediaStore 唯一成品视频导出，覆盖持久访问/重绑、API 26–36 权限、pending publish/rollback、取消竞态及源文件安全；普通缺陷不另建 R 编号 |
+| `V3-MEDIA-001` | `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER` | 已完成 Photo Picker 唯一视频导入和 MediaStore 唯一成品视频导出，覆盖持久访问/重绑、API 26–36 权限、pending publish/rollback、取消竞态及源文件安全；未执行真实设备/相册媒体流，不声明正式产品 PASS |
 | `V3-AI-001` | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` | 当前只有安全 BYOK 与 `GET /models` 认证；真实 DeepSeek Provider、system/user prompt、Chat Completions、歌曲/歌词匹配和逐 cue 修正均未实现，必须使用单独阶段 |
 | `V3-UI-001` | `PLANNED` | 删除 App 顶栏并基于已冻结交互重做产品级 Compose UI、状态反馈与无障碍 |
 | `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
 | `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
 
-一次只激活一个实施阶段。当前活动阶段为 `V3-MEDIA-001`，完整 M01–M16 验收矩阵与内部 Agent 并行计划只保存在 `CURRENT_TASK.md`。每个阶段只定义一次完整矩阵，Developer 在阶段内直接修到完成，不再追加 R1/R2/R3/R4，也不等待 Brain 二次验收。`V3-AI-001` 仍缺用户批准的 production Prompt、模型和触发方式，因此本阶段不得启动 AI 实现或真机验证。
+一次只激活一个实施阶段。`V3-MEDIA-001` 已完成组件与构建验证，完整 M01–M16 验收矩阵与逐项证据保存在 `CURRENT_TASK.md`；物理设备媒体流按用户授权豁免。每个阶段只定义一次完整矩阵，Developer 在阶段内直接修到完成，不再追加 R1/R2/R3/R4，也不等待 Brain 二次验收。`V3-AI-001` 仍缺用户批准的 production Prompt、模型和触发方式，因此不得启动 AI 实现或真机验证。
 
 `V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
 
@@ -42,9 +42,13 @@ ASR 组件证据为 focused runtime 14/14、完整 JVM 169/169、ASR Python 6/6�
 
 ## 阶段入口验收矩阵门禁
 
+## Completed V3-MEDIA-001 status (2026-08-11)
+
+`V3-MEDIA-001` is complete at component/build level as `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`. M01–M16 evidence is recorded in `CURRENT_TASK.md`: focused JVM 21/21, full JVM 262/262, ASR 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed, and source/test-output/APK secret scan found 0 hits. APKs are 417,446,841 bytes and 119,116 bytes at the paths recorded in the current task (Debug generated 2026-08-11 17:14:18 +08:00). The product video path now uses Photo Picker `VideoOnly` and task-owned MediaStore export; API 26–28 permission handling and API 29+ pending publish are covered. No real device, real album, private media, network or Key verification was performed, so this is not formal product PASS. Existing dirty files and untracked content remain; no push.
+
 ## Closed V3-EDITOR-002 status
 
-`V3-EDITOR-002` is closed as `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`. The user accepted the completed Developer handoff and explicitly waived secondary Brain acceptance; `V3-MEDIA-001` is now active.
+`V3-EDITOR-002` is closed as `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`. The user accepted the completed Developer handoff and explicitly waived secondary Brain acceptance; `V3-MEDIA-001` is now closed at component/build level with physical media flow waived.
 
 R4 evidence: canonical ratio writes and v1-v5/v6 edit-save-reload passed; Media3 1.10.1 Float FIT 3:5/1080x1920 truncates to 1799px; production Compose Stroke→Fill paint-plan evidence passed. Full JVM 241/241, ASR 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. APKs are 417,446,841 and 119,048 bytes. No real-device UI, DeepSeek, Key, online lyrics, Provider, Prompt, media or Whisper evidence was collected.
 

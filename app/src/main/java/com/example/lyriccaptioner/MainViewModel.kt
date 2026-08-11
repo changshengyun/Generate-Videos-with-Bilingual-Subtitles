@@ -1,6 +1,9 @@
 package com.example.lyriccaptioner
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -43,7 +46,10 @@ import com.example.lyriccaptioner.processing.WhisperRuntimeStatus
 import com.example.lyriccaptioner.processing.WhisperModelStore
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatusResolver
 import com.example.lyriccaptioner.processing.UnavailableAsrModule
-import com.example.lyriccaptioner.processing.ExportDestinationPolicy
+import com.example.lyriccaptioner.processing.AndroidMediaStoreDestinationStore
+import com.example.lyriccaptioner.processing.MediaStoreExportGateway
+import com.example.lyriccaptioner.processing.MediaStoreExportSession
+import com.example.lyriccaptioner.processing.MediaStoreWritePolicy
 import com.example.lyriccaptioner.processing.enhancement.byok.AndroidKeystoreDeepSeekKeyStore
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManagerImpl
@@ -95,8 +101,14 @@ class MainViewModel(
         AppPipelineFactory.createTranslationDefault(context),
     ),
     private val deepSeekManager: DeepSeekByokManager = createDefaultDeepSeekManager(context),
+    private val mediaStoreGateway: MediaStoreExportGateway? = null,
 ) : ViewModel() {
     private val appContext = context.applicationContext
+    private val galleryGateway: MediaStoreExportGateway
+        get() = mediaStoreGateway ?: MediaStoreExportGateway(
+            store = AndroidMediaStoreDestinationStore(appContext.contentResolver),
+            policy = MediaStoreWritePolicy.current(hasLegacyWritePermission()),
+        )
     private val whisperModelStore = WhisperModelStore(appContext)
     private val mutableState = MutableStateFlow(EditorState())
     val state: StateFlow<EditorState> = mutableState.asStateFlow()
@@ -553,7 +565,7 @@ class MainViewModel(
         }
     }
 
-    fun exportVideo(destinationUri: Uri) {
+    fun exportVideo() {
         val current = state.value
         val rejection = when {
             current.videoUri == null -> "no_video" to "No video selected. Import a video before exporting."
@@ -569,16 +581,21 @@ class MainViewModel(
             return
         }
 
-        val uri = checkNotNull(current.videoUri)
-        if (ExportDestinationPolicy.isSameDocument(uri, destinationUri, appContext.contentResolver)) {
-            mutableState.update {
-                it.copy(status = "Could not export: output destination is the source video.")
-            }
+        if (exportJob?.isActive == true) {
+            mutableState.update { it.copy(status = "An export is already running.") }
             return
         }
+        val uri = checkNotNull(current.videoUri)
+        val taskId = "export-${System.nanoTime()}"
         Log.i(LOG_TAG, "event=export_started captionCount=${current.captions.size}")
         exportJob = viewModelScope.launch {
+            var session: MediaStoreExportSession? = null
             try {
+                val exportSession = withContext(Dispatchers.IO) {
+                    galleryGateway.begin(taskId, sourceUri = uri)
+                }
+                session = exportSession
+                exportSession.beginExternalWrite()
                 mutableState.update {
                     it.copy(
                         isWorking = true,
@@ -591,23 +608,24 @@ class MainViewModel(
                 delay(PREVIEW_RELEASE_DELAY_MS)
                 pipeline.export(
                     uri,
-                    destinationUri,
+                    exportSession.destination.uri,
                     current.captions,
                     current.exportProfile,
                     current.captionLayout,
                     current.defaultCaptionStyle,
                 ) { status ->
                     mutableState.update { it.copy(status = status) }
-                }.also { exportUri ->
-                    mutableState.update {
-                        it.copy(
-                            isWorking = false,
-                            exportUri = exportUri,
-                            status = "Export complete: $exportUri",
-                        )
-                    }
+                }
+                val published = withContext(Dispatchers.IO) { exportSession.publish() }
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        exportUri = published.uri,
+                        status = "Export saved to system gallery.",
+                    )
                 }
             } catch (error: CancellationException) {
+                withContext(Dispatchers.IO) { session?.cancel() }
                 mutableState.update {
                     it.copy(
                         isWorking = false,
@@ -617,11 +635,12 @@ class MainViewModel(
                 }
                 throw error
             } catch (error: Throwable) {
-                Log.e(LOG_TAG, "event=export_failed destinationUntouched=true", error)
+                withContext(Dispatchers.IO) { session?.rollback() }
+                Log.e(LOG_TAG, "event=export_failed destinationUntouched=true")
                 mutableState.update {
                     it.copy(
                         isWorking = false,
-                        status = "Video export failed: ${error.message ?: "unknown error"}",
+                        status = "Video export failed.",
                         exportUri = null,
                     )
                 }
@@ -927,7 +946,7 @@ class MainViewModel(
             when (val result = withContext(Dispatchers.IO) { projectRepository.save(snapshot, destinationUri) }) {
                 is ProjectSaveResult.Success -> mutableState.update {
                     Log.i(LOG_TAG, "event=project_save_completed captionCount=${snapshot.captions.size}")
-                    it.copy(isWorking = false, status = "Project archive saved: ${result.destinationUri}")
+                    it.copy(isWorking = false, status = "Project archive saved.")
                 }
                 is ProjectSaveResult.Failure -> mutableState.update {
                     Log.w(LOG_TAG, "event=project_save_failed kind=${result.error.kind}")
@@ -1152,6 +1171,11 @@ class MainViewModel(
     }
 
     private fun elapsedRealtimeMs(): Long = System.nanoTime() / 1_000_000L
+
+    private fun hasLegacyWritePermission(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+            appContext.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+            PackageManager.PERMISSION_GRANTED
 
     class Factory(
         private val context: Context,

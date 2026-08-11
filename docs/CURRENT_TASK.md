@@ -3,7 +3,7 @@
 ## Current status
 
 - Stage: `V3-MEDIA-001`
-- Status: `V3-MEDIA-001 / MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED`
+- Status: `V3-MEDIA-001 / PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`
 - Previous stage: `V3-EDITOR-002 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受 Developer 回交并直接关闭；不做二次验收）
 - Scope: 将产品视频入口统一为 AndroidX `PickVisualMedia(VideoOnly)`，将成品视频直接、原子地写入 `MediaStore.Video` 的 `Movies/LyricCaptioner`；保持项目/模型/支持文件的既有 SAF 能力和源媒体安全
 - V2 functional baseline: `8a48d88`
@@ -12,7 +12,7 @@
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证，Developer 不得自拟 production Prompt
 - Process rule: 一个阶段只冻结一份完整矩阵；普通缺陷在 `V3-MEDIA-001` 内直接修到矩阵通过，不创建 R1/R2/R3/R4，不等待 Brain 二次验收
-- Next action: 直接实施并完成下方 `V3-MEDIA-001`；不得启动 `V3-AI-001`、UI 重设计、清理阶段或真实设备验证
+- Next action: `V3-MEDIA-001` 组件与构建证据已完成；阶段关闭。不得启动 `V3-AI-001`、UI 重设计、清理阶段或真实设备验证。
 
 ## V3-MEDIA-001 acceptance matrix
 
@@ -53,6 +53,27 @@
 | 主 Agent（协调与集成） | `EditorScreen.kt`、`MainViewModel.kt`、`FfmpegKitSubtitleExporter.kt`、必要的 pipeline/interface、Manifest/Gradle、三份活动文档、完整回归、secret scan 和 Git | 先提交文档 checkpoint；第一波并行内部 Agent A/B/C，接口冻结后串行接入共享热点；内部 Agent 不提交、不 push、不修改三份活动文档 |
 
 - 不便并行的 UI launcher、ViewModel export Job、exporter ownership 接线和 Manifest 权限由主 Agent 串行完成；不得为了并行让多个内部 Agent 同时修改共享热点。
+
+## V3-MEDIA-001 completion evidence (2026-08-11)
+
+- Final component state: `V3-MEDIA-001 / PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`. No real-device, real-album, private-media, network, or Key verification was performed; this is not a physical-device or formal product PASS.
+- M01: `EditorScreen.kt` uses `PickVisualMediaRequest(PickVisualMedia.VideoOnly)` for the product video entry and no longer uses video `OpenDocument`.
+- M02: a `null` Photo Picker result is a direct no-op; focused policy coverage preserves the current state object.
+- M03: existing repository validation remains responsible for readability, video track, duration, and the five-minute limit; picker policy covers empty, unreadable, non-video, unknown, invalid, and over-limit media rejection.
+- M04: existing retain/read-access, persisted/session-only/provider-unsupported/unavailable states and restore/relink behavior remain; picker policy covers all four access states.
+- M05: `NEW_VIDEO` invalidates derived output while `RELINK` preserves captions, timeline, styles, and editing state; focused policy/lifecycle tests pass.
+- M06: product video export no longer launches `CreateDocument("video/mp4")`; it creates a task-owned MediaStore session. Project archive, Whisper model, and SRT SAF entries were not changed.
+- M07: API 29+ uses a unique `.mp4`, `video/mp4`, `Movies/LyricCaptioner`, and `IS_PENDING=1`, publishing only after complete validation; API 26–28 use the restricted legacy DATA policy.
+- M08: the manifest adds only `WRITE_EXTERNAL_STORAGE maxSdkVersion=28`; runtime request is limited to API 26–28 before export, API 29+ requests no storage permission, and denial occurs before insert/FFmpeg.
+- M09: `MediaStoreExportGateway` models a task-owned destination/session and passes the source URI for same-source rejection; existing exporter source and output-integrity checks remain.
+- M10: production path is insert row → FFmpeg temporary render/validation → copy to target URI → byte validation → publish → `exportUri` update; sharing still uses the final content URI.
+- M11: insert/open/validate/copy/publish failures roll back only this task's unpublished row; source and existing media are not deleted. Focused tests cover empty output, failure, and existing-row preservation.
+- M12: cancel, failure, and publish terminal transitions are idempotent; cancellation rolls back pending rows, and a late cancellation cannot delete a published row. Gateway/lifecycle tests pass.
+- M13: `exportJob` prevents concurrent exports; export state updates remain serialized in one job and existing project/caption invalidation rules are preserved.
+- M14: UI distinguishes exporting, cancelled, failed, and `Export saved to system gallery.`; logs omit URI/path/media content, and `exportUri` remains internal for playback/sharing.
+- M15: focused JVM `VideoPickerImportPolicyTest` 6/6, `MediaStoreExportGatewayTest` 7/7, and `ExportLifecycleTest` 8/8 (21/21 total) use fake picker/policy/store/lifecycle boundaries with no real media, album write, or network.
+- M16: full `testDebugUnitTest` 262/262 (0 failures/errors/skipped); ASR Python 6/6; `lintDebug` 0 errors/33 warnings; ordinary Debug, native-enabled Debug, and AndroidTest builds pass. APKs: `app/build/outputs/apk/debug/app-debug.apk` 417,446,841 bytes (2026-08-11 17:14:18 +08:00), `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` 119,116 bytes (2026-08-11 16:59:49 +08:00). Source/test-output/APK secret scan: 0 hits.
+- Scope boundary: DeepSeek, BYOK, Prompt, online lyrics, Whisper behavior, subtitle timing/style/rendering, and project/model SAF were not changed. `AGENTS.md`, `docs/V3_PRODUCT_ARCHITECTURE.md`, dirty `third_party/ffmpeg-kit`, and all existing untracked content remain; no push.
 
 ## V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
 

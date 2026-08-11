@@ -4,14 +4,14 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-MEDIA-001 / MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED`
+- Current task: `V3-MEDIA-001 / PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_MEDIA_001_MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED`
+- Current gate: `V3_MEDIA_001 / COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`
 - Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
-- Implementation authorization: granted for the bounded Photo Picker video-import and MediaStore gallery-export stage defined in `CURRENT_TASK.md`
+- Implementation result: bounded Photo Picker video-import and MediaStore gallery-export stage defined in `CURRENT_TASK.md` is implemented and component/build verified
 - Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
-- Next permitted action: implement and complete `V3-MEDIA-001`; do not start DeepSeek subtitle enhancement, Provider, Prompt, UI redesign, cleanup work or physical-device verification.
+- Next permitted action: await the next explicitly authorized stage; do not start DeepSeek subtitle enhancement, Provider, Prompt, UI redesign, cleanup work or physical-device verification.
 
 ## Closed V3-EDITOR-002 state (2026-08-11)
 
@@ -21,12 +21,13 @@
 - Checkpoint `cf1c403`; feature/HEAD `b5298f55c419dcf7bfb9fb102e76a3e6bcdb9e86`; ahead/behind 31/0; staged empty; no push.
 - Physical UI remains unmeasured and waived; this is not a claim of device-verified product PASS.
 
-## Active V3-MEDIA-001 dispatch
+## Completed V3-MEDIA-001 evidence (2026-08-11)
 
-- Replace the direct video `OpenDocument` launcher with AndroidX `PickVisualMedia(VideoOnly)` while preserving read validation, access persistence, project restore and relink behavior.
-- Replace the product video `CreateDocument` destination with a task-owned `MediaStore.Video` session saved to `Movies/LyricCaptioner`; API 29+ uses `IS_PENDING`, and failure/cancel removes only the unpublished task-owned row.
-- Full M01–M16 matrix and the internal-Agent plan are authoritative in `CURRENT_TASK.md`.
-- Component/build completion ceiling: `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`.
+- M01–M16 are complete at component/build level: Photo Picker `VideoOnly`, validation/access persistence and relink, task-owned MediaStore destination, API 26–28 permission policy, API 29+ pending publish, cancellation/failure cleanup, concurrency guards, privacy logging, full regression and artifacts. Per-item evidence remains in `CURRENT_TASK.md`.
+- Focused JVM: 21/21; full JVM: 262/262 with 0 failures/errors/skipped; ASR Python: 6/6; lint: 0 errors/33 warnings; ordinary Debug, native-enabled Debug and AndroidTest builds pass.
+- APKs: `app/build/outputs/apk/debug/app-debug.apk` 417,446,841 bytes (2026-08-11 17:14:18 +08:00); `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` 119,116 bytes (2026-08-11 16:59:49 +08:00). Source/test-output/APK secret scan: 0 hits.
+- Boundary: no real-device, real-album, private-media, network or Key verification; completion ceiling is `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`, not formal product PASS.
+- Existing dirty state is preserved: `AGENTS.md`, `docs/V3_PRODUCT_ARCHITECTURE.md`, dirty `third_party/ffmpeg-kit`, and 41 logical untracked files (31 `.emulator-test-assets`, 9 `tools/opus-mt-en-zh`, 1 `._cache_adb.exe`). No push.
 
 ## Current V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
 
@@ -236,7 +237,7 @@
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
 | V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（user accepted; closed without secondary acceptance） |
-| V3-MEDIA-001 | `MATRIX_DEFINED / IMPLEMENTATION_AUTHORIZED` |
+| V3-MEDIA-001 | `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |
 | V3-CLEAN-001 | `PLANNED` |

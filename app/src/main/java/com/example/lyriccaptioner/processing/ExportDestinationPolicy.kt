@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.system.Os
 
 enum class ExportDestinationState {
@@ -61,7 +62,8 @@ object ExportDestinationPolicy {
                         ExportDestinationState.NEW
                     } else {
                         val sizeColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
-                        val sizeBytes = sizeColumn.takeIf { it >= 0 && !cursor.isNull(it) }
+                        if (sizeColumn < 0) return@use inspectMediaStoreSize(resolver, destination)
+                        val sizeBytes = sizeColumn.takeIf { !cursor.isNull(it) }
                             ?.let { index -> cursor.getLong(index) }
                         classifyDocumentQuery(true, sizeBytes)
                     }
@@ -71,8 +73,32 @@ object ExportDestinationPolicy {
             ExportDestinationState.UNKNOWN
         } catch (_: UnsupportedOperationException) {
             ExportDestinationState.UNKNOWN
+        } catch (_: IllegalArgumentException) {
+            inspectMediaStoreSize(resolver, destination)
         }
     }
+
+    private fun inspectMediaStoreSize(
+        resolver: ContentResolver,
+        destination: Uri,
+    ): ExportDestinationState = runCatching {
+        resolver.query(
+            destination,
+            arrayOf(MediaStore.Video.Media.SIZE),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) {
+                ExportDestinationState.NEW
+            } else {
+                val sizeColumn = cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
+                val sizeBytes = sizeColumn.takeIf { it >= 0 && !cursor.isNull(it) }
+                    ?.let { index -> cursor.getLong(index) }
+                classifyDocumentQuery(true, sizeBytes)
+            }
+        } ?: ExportDestinationState.UNKNOWN
+    }.getOrDefault(ExportDestinationState.UNKNOWN)
 
     internal fun classifyDocumentQuery(hasDocumentRow: Boolean?): ExportDestinationState = when (hasDocumentRow) {
         true -> ExportDestinationState.EXISTING
