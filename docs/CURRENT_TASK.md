@@ -3,16 +3,46 @@
 ## Current status
 
 - Stage: `V3-EDITOR-002`
-- Status: `V3-EDITOR-002 / R1 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Status: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED / HUMAN_DECISION`
 - Previous stage: `V3-EDITOR-001 / PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED`
 - Scope: 删除独立“项目默认样式”和“当前字幕覆盖”面板，把每段字幕的字号、字体、英中颜色、描边、粗斜体、对齐、上下位置和恢复基础样式入口收进对应字幕卡片；保持 Compose/ASS 共用解析和旧项目安全迁移
 - V2 functional baseline: `8a48d88`
 - Documentation baseline: `3117eb1`
-- Implementation authorization: `APPROVED_BY_USER`
+- Implementation authorization: `R2_PENDING_USER_DISPATCH`
 - Physical-device gate: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`；保留已有失败/缺失记录，但不再阻断当前开发，也不得伪造 PASS
 - AI audit: `V3-AI-001 / NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`；现有 DeepSeek 仅覆盖 BYOK 与 `GET /models` 认证
-- Review workflow: Brain 已复核功能提交 `21a5d43d72dbc522aac9bf2a73bc80acb88f0c44`；R1 修复已完成，现回交 Developer 候选，不能自验收
-- Next action: 等待 Brain 重新验收 `V3-EDITOR-002 / R1`；不得启动 `V3-AI-001`
+- Review workflow: Brain 已复核 R1 功能提交 `c0dafb44da5d6d3bf6f6bc5841d8d585123046fb`；R1 候选未获正式接受，下一轮必须由用户明确派发 R2
+- Next action: 用户明确派发后只执行 `V3-EDITOR-002 / R2`；关闭 R2 前不得启动 `V3-AI-001`
+
+## Brain R1 re-adjudication (2026-08-11)
+
+- Verdict: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`。
+- R1-01/R1-02/R1-03 通过代码复核：纯位置覆盖可清除，清除按 cueId 同时移除目标 cue 的 style/layout override；ASS 中文显式颜色不污染英文或下一 Dialogue。
+- R1-04 未通过：Compose overlay 仍覆盖整个 PlayerView 容器，没有根据源视频宽高计算 Media3 `FIT` 后的有效视频矩形；有 letterbox/pillarbox 时，Compose 坐标基于黑边容器，而 ASS 坐标基于源视频帧。
+- R1-04 未通过：Compose 在 `widthRatio` 得到的宽度内再次添加 8dp 左右 padding，真实文本宽度被额外缩窄并产生水平偏移。
+- R1-04 未通过：Compose 中文字号额外乘以 `0.82`，中文不继承 cue 的 bold/italic，英文在 `bold=false` 时仍使用 `SemiBold`；ASS 对中英文使用同一解析字号、bold/italic，最终样式并不一致。
+- R1-05 未通过：新增测试只验证 anchor helper 数值与 ASS 字符串，没有覆盖 Compose 有效视频矩形、黑边、不同纵横比、普通/全屏映射和最终样式一致性，因此无法证明 R1-04。
+- R1-06/R1-07 的产物和回归主张与磁盘实物一致，但测试/构建通过不能覆盖上述生产渲染差异。
+
+## V3-EDITOR-002 / R2 acceptance matrix
+
+| ID | 必须证明 |
+|---|---|
+| R2-01 | 根据源视频宽高与 Compose 预览容器宽高计算 Media3 `FIT` 的唯一有效视频矩形；横向黑边、纵向黑边及无黑边三种情况都必须排除容器空白区域。 |
+| R2-02 | 普通预览与全屏预览都只在有效视频矩形内映射归一化 x/y/width；top/middle/bottom anchor 和 left/center/right 对齐与 ASS 的源视频坐标语义相同。 |
+| R2-03 | `widthRatio` 表示可排版字幕文本框的规范宽度；Compose 不得用未建模的固定 padding 再次缩窄或平移文字区域。装饰背景或内边距若保留，必须在共享几何模型中显式建模并由 ASS 等价消费。 |
+| R2-04 | Compose 与 ASS 使用同一解析后的字体、字号、bold、italic、英文颜色、中文颜色、描边和对齐规则；不得在任一端额外乘字号、替换字重或漏用样式字段。 |
+| R2-05 | 把有效视频矩形、归一化坐标映射和最终文本样式提取为可独立验证的共享纯模型；生产 Compose 与 ASS 都消费该模型，不接受只复制相同常量或只比较 resolver DTO。 |
+| R2-06 | focused 回归至少覆盖：16:9、9:16、1:1 源视频；宽屏、窄屏与等比例容器；letterbox/pillarbox；普通/全屏；左中右、上中下；中英最终字号/粗斜体/颜色；至少两条 cue 隔离。 |
+| R2-07 | 保持 R1-01/R1-02/R1-03 已修复行为及 v5 迁移不回归；focused/full JVM、ASR Python、lint、普通 Debug、native Debug、AndroidTest 构建通过并报告当前 APK 实物。 |
+
+| Category | V3-EDITOR-002 / R2 requirement |
+|---|---|
+| Main path | 源视频按 FIT 显示 -> 字幕只在有效视频画面内按同一规范坐标和最终样式预览 -> 普通/全屏/ASS 导出使用同一几何与样式结果。 |
+| Mandatory evidence | R2-01–R2-07；共享纯模型与生产消费路径；覆盖黑边、纵横比、两种预览及中英最终样式的 focused tests；完整回归和产物证据。 |
+| Prohibited | 不降低 S01-S14 或 R1；不以播放器容器代替有效视频矩形；不写仅验证 ASS 字符串的伪一致性测试；不启动 `V3-AI-001`；不触碰 BYOK、Whisper、在线歌词、媒体入口或无关 UI；不执行真机验证；不清理既有脏状态；不 push。 |
+| Exit | R2 全部通过后只允许再次回交 `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`，由 Brain 重新裁决。 |
+| Incomplete | 任一有效画面、几何或最终样式差异仍存在：`PARTIAL_PASS / RENDER_INTEGRATION_REQUIRED`；无法获得源视频尺寸或共享模型不能安全落地：`HUMAN_DECISION / SOURCE_VIDEO_GEOMETRY_REQUIRED`。 |
 
 ## Brain adjudication (2026-08-11)
 

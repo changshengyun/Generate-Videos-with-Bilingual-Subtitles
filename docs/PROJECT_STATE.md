@@ -4,14 +4,24 @@
 
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-EDITOR-002 / R1 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`
+- Current task: `V3-EDITOR-002 / R2 / PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED / HUMAN_DECISION`
 - V2 functional code baseline: `8a48d88`
 - V2 archive: `docs-v2/`
-- Current gate: `V3_EDITOR_002_R1_CANDIDATE`
-- Process gate: `V3_EDITOR_002_R1_READY_FOR_BRAIN`
+- Current gate: `V3_EDITOR_002_R2_MATRIX_DEFINED / HUMAN_DECISION`
+- Process gate: `V3_EDITOR_002_RENDER_INTEGRATION_REQUIRED`
 - Implementation authorization: granted for the bounded per-cue style-card UI, cue layout override, v5 archive migration, shared Compose/ASS resolver and tests
 - Review workflow: Brain owns formal adjudication; Developer may return only a candidate result
-- Next permitted action: Brain re-adjudication of the V3-EDITOR-002/R1 candidate; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+- Next permitted action: after explicit user dispatch, execute only the `V3-EDITOR-002 / R2` matrix in `CURRENT_TASK.md`; do not start DeepSeek subtitle enhancement, Provider or Prompt work.
+
+## Brain R1 re-adjudication (2026-08-11)
+
+- Formal verdict remains `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`.
+- Accepted R1 evidence: position-only clear, cueId-scoped style/layout clear, sibling isolation and scoped ASS Chinese colour are fixed.
+- P1: Compose maps the overlay across the complete PlayerView container instead of the Media3 FIT effective video rectangle, so black bars change x/y/width relative to ASS.
+- P1: Compose adds unmodelled horizontal padding inside the normalized width and therefore narrows/shifts the text area.
+- P1: Compose and ASS still disagree on Chinese font size, bold/italic application and the non-bold English weight.
+- P1: current tests cover helper values and ASS strings but do not exercise Compose effective-video geometry, black bars, aspect-ratio changes, normal/fullscreen parity or final bilingual style parity.
+- R2 matrix is defined in `CURRENT_TASK.md`. Per the failed-review boundary, implementation remains `HUMAN_DECISION` until the user explicitly dispatches R2.
 
 ## Current V3-EDITOR-002 / R1 implementation evidence
 
@@ -166,7 +176,7 @@
 | V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
 | V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
 | V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（R1 candidate; Brain re-adjudication required） |
+| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`（R2 matrix defined / HUMAN_DECISION） |
 | V3-MEDIA-001 | `PLANNED` |
 | V3-UI-001 | `PLANNED` |
 | V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |
