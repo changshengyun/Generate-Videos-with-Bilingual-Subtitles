@@ -1,0 +1,31 @@
+1
+00:00:00,000 --> 00:00:03,000
+Amazing grace, how sweet
+
+2
+00:00:03,000 --> 00:00:05,000
+the sound
+
+3
+00:00:05,000 --> 00:00:12,000
+That saved a wretch like me, I once was lost but now am found
+
+4
+00:00:12,000 --> 00:00:16,000
+Was blind but now I see
+
+5
+00:00:16,000 --> 00:00:19,000
+'Twas grace that taught my heart
+
+6
+00:00:19,000 --> 00:00:24,000
+to fear, and grace my fears relieved
+
+7
+00:00:24,000 --> 00:00:28,000
+How precious did that grace appear
+
+8
+00:00:28,000 --> 00:00:32,000
+The hour I first believed

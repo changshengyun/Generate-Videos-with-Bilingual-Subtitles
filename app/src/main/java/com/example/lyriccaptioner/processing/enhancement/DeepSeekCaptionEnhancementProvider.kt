@@ -1,52 +1,159 @@
 package com.example.lyriccaptioner.processing.enhancement
 
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 
-/** Production DeepSeek adapter. The API key is held only for one request construction. */
+/**
+ * Production two-stage DeepSeek adapter: identify candidates, verify searched lyrics locally,
+ * then generate bilingual cues using the complete song as context.
+ */
 class DeepSeekCaptionEnhancementProvider(
     private val byokManager: DeepSeekByokManager,
+    private val searchTool: SongLyricsSearchTool = LrclibSongLyricsSearchTool(),
+    private val verifier: SongLyricsCandidateVerifier = SongLyricsCandidateVerifier(),
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+    private val onDiagnosticStage: (DeepSeekEnhancementStage) -> Unit = {},
 ) : CaptionEnhancementProvider {
-    override suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse =
-        byokManager.withDecryptedKey { apiKey ->
-            withContext(Dispatchers.IO) {
-                executeRequest(apiKey, request)
+    override suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse {
+        currentCoroutineContext().ensureActive()
+        val identities = if (request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES) {
+            onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_REQUEST)
+            val body = byokManager.withDecryptedKey { apiKey ->
+                executeRequest(
+                    apiKey = apiKey,
+                    requestBody = DeepSeekCaptionEnhancementJson.songIdentificationRequestBody(request),
+                )
+            }
+            onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_PARSE)
+            parseProviderJson { DeepSeekCaptionEnhancementJson.parseSongCandidates(body) }
+        } else {
+            emptyList()
+        }
+        currentCoroutineContext().ensureActive()
+
+        onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_SEARCH)
+        val lookup = findVerifiedLyrics(request, identities)
+        currentCoroutineContext().ensureActive()
+        onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_REQUEST)
+        val finalBody = byokManager.withDecryptedKey { apiKey ->
+            executeRequest(
+                apiKey = apiKey,
+                requestBody = DeepSeekCaptionEnhancementJson.contextualEnhancementRequestBody(
+                    request = request,
+                    verified = lookup.verified,
+                    unconfirmedIdentity = lookup.unconfirmedIdentity,
+                ),
+            )
+        }
+        onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_PARSE)
+        return parseProviderJson { DeepSeekCaptionEnhancementJson.parseEnhancementResponse(finalBody) }.copy(
+            processingVersion = PROCESSING_VERSION,
+            songMatch = lookup.songMatch,
+        )
+    }
+
+    private suspend fun findVerifiedLyrics(
+        request: CaptionEnhancementRequest,
+        identities: List<SongIdentityCandidate>,
+    ): LyricsLookupOutcome {
+        if (identities.isEmpty()) {
+            return LyricsLookupOutcome(songMatch = SongMatch(status = SongMatchStatus.NOT_FOUND))
+        }
+
+        var best: VerifiedSongLyrics? = null
+        var foundLyrics = false
+        var searchUnavailable = false
+        identities.forEachIndexed { index, identity ->
+            currentCoroutineContext().ensureActive()
+            if (index > 0) delay(LRCLIB_BATCH_DELAY_MS)
+            val candidates = try {
+                searchTool.search(identity)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: SongLyricsSearchException) {
+                searchUnavailable = true
+                return@forEachIndexed
+            } catch (_: Exception) {
+                searchUnavailable = true
+                return@forEachIndexed
+            }
+            if (candidates.isNotEmpty()) foundLyrics = true
+            onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_VERIFY)
+            candidates.forEach { candidate ->
+                val verified = verifier.verify(request.cues, candidate) ?: return@forEach
+                if (best == null || verified.metrics.confidence > requireNotNull(best).metrics.confidence) {
+                    best = verified
+                }
             }
         }
 
-    private fun executeRequest(
+        best?.let { verified ->
+            onDiagnosticStage(DeepSeekEnhancementStage.VERIFIED_LYRICS_SELECTED)
+            return LyricsLookupOutcome(
+                verified = verified,
+                songMatch = SongMatch(
+                    status = SongMatchStatus.CONFIRMED,
+                    title = verified.candidate.title,
+                    artist = verified.candidate.artist,
+                    confidence = verified.metrics.confidence.toFloat(),
+                    source = verified.candidate.sourceId,
+                ),
+            )
+        }
+
+        val firstIdentity = identities.first()
+        return if (foundLyrics || searchUnavailable) {
+            LyricsLookupOutcome(
+                unconfirmedIdentity = firstIdentity,
+                songMatch = SongMatch(
+                    status = SongMatchStatus.UNCONFIRMED,
+                    title = firstIdentity.title,
+                    artist = firstIdentity.artist,
+                    confidence = null,
+                    source = if (searchUnavailable) "lyrics-search-unavailable" else "lyrics-candidate-unverified",
+                ),
+            )
+        } else {
+            LyricsLookupOutcome(songMatch = SongMatch(status = SongMatchStatus.NOT_FOUND))
+        }
+    }
+
+    private suspend fun executeRequest(
         apiKey: String,
-        request: CaptionEnhancementRequest,
-    ): CaptionEnhancementResponse {
+        requestBody: String,
+    ): String = withContext(Dispatchers.IO) {
         val connection = try {
             connectionFactory(URL(ENDPOINT))
         } catch (error: IOException) {
             throw providerFailure(CaptionEnhancementErrorKind.CONNECTION, error)
         }
-        return try {
+        try {
             connection.requestMethod = "POST"
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.doOutput = true
+            connection.instanceFollowRedirects = false
             connection.useCaches = false
             connection.setRequestProperty("Authorization", "Bearer $apiKey")
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Accept", "application/json")
-            connection.outputStream.use { output ->
-                output.write(DeepSeekCaptionEnhancementJson.requestBody(request).toByteArray(Charsets.UTF_8))
-            }
+            connection.outputStream.use { output -> output.write(requestBody.toByteArray(Charsets.UTF_8)) }
             val status = connection.responseCode
             if (status !in 200..299) throw httpFailure(status)
-            val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                reader.readText().take(MAX_RESPONSE_BYTES)
-            }
-            DeepSeekCaptionEnhancementJson.parseResponse(body)
+            decodeUtf8(readBounded(connection.inputStream, MAX_RESPONSE_BYTES))
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: CaptionEnhancementProviderException) {
             throw error
         } catch (error: SocketTimeoutException) {
@@ -60,6 +167,30 @@ class DeepSeekCaptionEnhancementProvider(
         }
     }
 
+    private fun readBounded(input: InputStream, maximum: Int): ByteArray = input.use { source ->
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val count = source.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > maximum) throw JsonParseException("Provider response is too large")
+            output.write(buffer, 0, count)
+        }
+        output.toByteArray()
+    }
+
+    private fun decodeUtf8(bytes: ByteArray): String = try {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+            .decode(java.nio.ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (error: java.nio.charset.CharacterCodingException) {
+        throw JsonParseException("Provider response is not valid UTF-8")
+    }
+
     private fun httpFailure(status: Int): CaptionEnhancementProviderException {
         val kind = when {
             status == 401 || status == 403 -> CaptionEnhancementErrorKind.AUTHENTICATION
@@ -70,199 +201,208 @@ class DeepSeekCaptionEnhancementProvider(
         return providerFailure(kind, null)
     }
 
-    private fun providerFailure(kind: CaptionEnhancementErrorKind, cause: Throwable?): CaptionEnhancementProviderException =
+    private fun providerFailure(
+        kind: CaptionEnhancementErrorKind,
+        cause: Throwable?,
+    ): CaptionEnhancementProviderException =
         CaptionEnhancementProviderException(kind, "DeepSeek request failed.", cause)
+
+    private inline fun <T> parseProviderJson(block: () -> T): T = try {
+        block()
+    } catch (error: JsonParseException) {
+        throw providerFailure(CaptionEnhancementErrorKind.INVALID_RESPONSE, error)
+    } catch (error: IllegalArgumentException) {
+        throw providerFailure(CaptionEnhancementErrorKind.INVALID_RESPONSE, error)
+    }
+
+    private data class LyricsLookupOutcome(
+        val verified: VerifiedSongLyrics? = null,
+        val unconfirmedIdentity: SongIdentityCandidate? = null,
+        val songMatch: SongMatch,
+    )
 
     companion object {
         const val ENDPOINT = "https://api.deepseek.com/chat/completions"
-        const val MODEL = "deepseek-chat"
-        const val PROCESSING_VERSION = "deepseek-chat-caption-enhancement.v1"
+        const val MODEL = "deepseek-v4-pro"
+        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v2"
         const val CONNECT_TIMEOUT_MS = 15_000
-        const val READ_TIMEOUT_MS = 60_000
+        const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
-        val SYSTEM_PROMPT = """
-You enhance an existing Whisper subtitle batch. Return JSON only, with no Markdown.
+        const val MAX_SONG_CANDIDATES = 3
+        const val LRCLIB_BATCH_DELAY_MS = 250L
+
+        val IDENTIFICATION_SYSTEM_PROMPT = """
+Identify a song only from the complete Whisper English cue batch. Return JSON only.
+Use evidence across multiple cues. Never claim that a candidate is confirmed.
+Return at most $MAX_SONG_CANDIDATES candidates ordered by likelihood, each with non-empty title and artist.
+If the batch is insufficient or not recognizably lyrics, return an empty candidates array.
+The response shape is exactly: {"candidates":[{"title":"...","artist":"..."}]}.
+""".trimIndent()
+
+        val VERIFIED_LYRICS_SYSTEM_PROMPT = """
+Create a bilingual subtitle batch for a song using the supplied verified complete English lyrics as the authority.
+Read the entire song before writing any Chinese. The Chinese must be a coherent song-lyric rendering that preserves recurring imagery, pronouns, cross-line meaning, tone, and repeated chorus wording; it must not be isolated cue-by-cue literal translation.
+Use supplied canonical cue alignments when present. Correct unmatched English conservatively from the complete lyrics.
+For repeated identical canonical English lines, return identical Chinese wording.
 Never add, remove, split, merge, reorder, or retime cues. Keep every cue id and timestamp exact.
-Correct the English conservatively from the supplied transcript and provide one Simplified Chinese translation per cue.
-Song matching is optional: mark it CONFIRMED only when title, artist, source and confidence are reliable; otherwise use UNCONFIRMED or NOT_FOUND.
-The response must contain schema_version, job_id, processing_version, cues, and optional song_match.
+Return JSON only. The exact response shape is:
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
+Every cue object must contain all six shown fields. Do not return song_match.
+""".trimIndent()
+
+        val UNCONFIRMED_SYSTEM_PROMPT = """
+Create a bilingual subtitle batch from the complete Whisper cue batch as one song context.
+No searched lyrics were verified. Do not claim a song identity or invent canonical lyrics.
+Read the entire batch before writing Chinese. Keep recurring imagery, pronouns, cross-line meaning, tone, and repeated wording consistent; do not translate each cue in isolation.
+Correct English conservatively. Never add, remove, split, merge, reorder, or retime cues.
+Keep every cue id and timestamp exact. Return JSON only. The exact response shape is:
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
+Every cue object must contain all six shown fields. Do not return song_match.
 """.trimIndent()
     }
 }
 
+/** Non-sensitive lifecycle markers for diagnostics; no request or response data is exposed. */
+enum class DeepSeekEnhancementStage {
+    CANDIDATE_REQUEST,
+    CANDIDATE_PARSE,
+    LYRICS_SEARCH,
+    LYRICS_VERIFY,
+    VERIFIED_LYRICS_SELECTED,
+    WHOLE_SONG_REQUEST,
+    WHOLE_SONG_PARSE,
+}
+
 internal object DeepSeekCaptionEnhancementJson {
-    fun requestBody(request: CaptionEnhancementRequest): String {
-        val input = mapOf(
-            "schema_version" to request.schemaVersion,
-            "job_id" to request.jobId,
-            "cues" to request.cues.map { cue -> mapOf(
+    fun songIdentificationRequestBody(request: CaptionEnhancementRequest): String = completionRequest(
+        systemPrompt = DeepSeekCaptionEnhancementProvider.IDENTIFICATION_SYSTEM_PROMPT,
+        userPayload = requestPayload(request),
+        maxTokens = 512,
+    )
+
+    fun contextualEnhancementRequestBody(
+        request: CaptionEnhancementRequest,
+        verified: VerifiedSongLyrics?,
+        unconfirmedIdentity: SongIdentityCandidate?,
+    ): String {
+        val context = if (verified != null) {
+            mapOf(
+                "mode" to "verified_complete_lyrics",
+                "song" to mapOf(
+                    "title" to verified.candidate.title,
+                    "artist" to verified.candidate.artist,
+                    "source_id" to verified.candidate.sourceId,
+                ),
+                "complete_english_lyrics" to verified.candidate.completeEnglishLyrics,
+                "cue_canonical_alignments" to verified.cueCanonicalEnglish.map { (id, english) ->
+                    mapOf("id" to id, "canonical_english" to english)
+                },
+                "request" to requestPayload(request),
+            )
+        } else {
+            mapOf(
+                "mode" to "unconfirmed_full_batch",
+                "unconfirmed_candidate" to unconfirmedIdentity?.let {
+                    mapOf("title" to it.title, "artist" to it.artist)
+                },
+                "request" to requestPayload(request),
+            )
+        }
+        return completionRequest(
+            systemPrompt = if (verified != null) {
+                DeepSeekCaptionEnhancementProvider.VERIFIED_LYRICS_SYSTEM_PROMPT
+            } else {
+                DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT
+            },
+            userPayload = context,
+            maxTokens = (request.cues.size * 192).coerceIn(768, 16_384),
+        )
+    }
+
+    /** Kept as a compatibility shim for focused tests and probe tooling. */
+    fun requestBody(request: CaptionEnhancementRequest): String =
+        contextualEnhancementRequestBody(request, verified = null, unconfirmedIdentity = null)
+
+    fun parseSongCandidates(body: String): List<SongIdentityCandidate> {
+        val root = parseAssistantJson(body)
+        val candidates = root.requiredArray("candidates").values
+        if (candidates.size > DeepSeekCaptionEnhancementProvider.MAX_SONG_CANDIDATES) {
+            throw JsonParseException("Too many song candidates")
+        }
+        return candidates.map { value ->
+            val item = value.asObject()
+            val title = item.requiredString("title").trim()
+            val artist = item.requiredString("artist").trim()
+            if (title.isBlank() || artist.isBlank() ||
+                title.length > LrclibSongLyricsSearchTool.MAX_METADATA_LENGTH ||
+                artist.length > LrclibSongLyricsSearchTool.MAX_METADATA_LENGTH
+            ) {
+                throw JsonParseException("Invalid song candidate")
+            }
+            SongIdentityCandidate(title, artist)
+        }.distinctBy { it.title.lowercase() to it.artist.lowercase() }
+    }
+
+    fun parseEnhancementResponse(body: String): CaptionEnhancementResponse {
+        val root = parseAssistantJson(body)
+        val cues = root.requiredArray("cues").values.map { value ->
+            val item = value.asObject()
+            CaptionEnhancementResponseCue(
+                id = item.requiredString("id"),
+                startMs = item.requiredLong("start_ms"),
+                endMs = item.requiredLong("end_ms"),
+                correctedEnglish = item.requiredString("corrected_english"),
+                chinese = item.requiredString("chinese"),
+            )
+        }
+        return CaptionEnhancementResponse(
+            schemaVersion = root.requiredString("schema_version"),
+            jobId = root.requiredString("job_id"),
+            processingVersion = root.requiredString("processing_version"),
+            cues = cues,
+            songMatch = null,
+        )
+    }
+
+    fun parseResponse(body: String): CaptionEnhancementResponse = parseEnhancementResponse(body)
+
+    private fun parseAssistantJson(body: String): JsonObject {
+        val envelope = StrictJsonParser(body).parseObjectDocument()
+        val choice = envelope.requiredArray("choices").firstOrThrow().asObject()
+        val content = choice.requiredObject("message").requiredString("content")
+        return StrictJsonParser(content).parseObjectDocument()
+    }
+
+    private fun completionRequest(
+        systemPrompt: String,
+        userPayload: Any,
+        maxTokens: Int,
+    ): String = encodeJson(
+        mapOf(
+            "model" to DeepSeekCaptionEnhancementProvider.MODEL,
+            "temperature" to 0,
+            "max_tokens" to maxTokens,
+            "stream" to false,
+            "thinking" to mapOf("type" to "disabled"),
+            "response_format" to mapOf("type" to "json_object"),
+            "messages" to listOf(
+                mapOf("role" to "system", "content" to systemPrompt),
+                mapOf("role" to "user", "content" to encodeJson(userPayload)),
+            ),
+        ),
+    )
+
+    private fun requestPayload(request: CaptionEnhancementRequest): Map<String, Any> = mapOf(
+        "schema_version" to request.schemaVersion,
+        "job_id" to request.jobId,
+        "processing_version" to DeepSeekCaptionEnhancementProvider.PROCESSING_VERSION,
+        "cues" to request.cues.map { cue ->
+            mapOf(
                 "id" to cue.id,
                 "start_ms" to cue.startMs,
                 "end_ms" to cue.endMs,
                 "raw_english" to cue.rawEnglish,
-            ) },
-        )
-        return json(mapOf(
-            "model" to DeepSeekCaptionEnhancementProvider.MODEL,
-            "temperature" to 0,
-            "max_tokens" to (request.cues.size * 96).coerceIn(128, 4_096),
-            "stream" to false,
-            "response_format" to mapOf("type" to "json_object"),
-            "messages" to listOf(
-                mapOf("role" to "system", "content" to DeepSeekCaptionEnhancementProvider.SYSTEM_PROMPT),
-                mapOf("role" to "user", "content" to json(input)),
-            ),
-        ))
-    }
-
-    fun parseResponse(body: String): CaptionEnhancementResponse {
-        val envelope = JsonParser(body).parseObject()
-        val content = envelope.array("choices").first().obj("message").string("content")
-        val json = content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-        val root = JsonParser(json).parseObject()
-        val cues = root.array("cues").map { cue ->
-            cue.obj().let {
-                CaptionEnhancementResponseCue(
-                    id = it.string("id"),
-                    startMs = it.long("start_ms"),
-                    endMs = it.long("end_ms"),
-                    correctedEnglish = it.string("corrected_english"),
-                    chinese = it.string("chinese"),
-                )
-            }
-        }
-        return CaptionEnhancementResponse(
-            schemaVersion = root.string("schema_version"),
-            jobId = root.string("job_id"),
-            processingVersion = root.string("processing_version"),
-            cues = cues,
-            songMatch = root.optionalObject("song_match")?.let(::parseSongMatch),
-        )
-    }
-
-    private fun parseSongMatch(json: JsonObject): SongMatch {
-        val status = runCatching { SongMatchStatus.valueOf(json.string("status")) }
-            .getOrElse { throw JsonParseException("Invalid song match status") }
-        return SongMatch(
-            status = status,
-            title = json.optionalString("title"),
-            artist = json.optionalString("artist"),
-            confidence = json.optionalDouble("confidence")?.toFloat(),
-            source = json.optionalString("source"),
-        )
-    }
-
-    private fun json(value: Any?): String = when (value) {
-        null -> "null"
-        is String -> "\"${value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")}\""
-        is Boolean, is Number -> value.toString()
-        is Map<*, *> -> value.entries.joinToString(prefix = "{", postfix = "}") { (key, item) -> json(key.toString()) + ":" + json(item) }
-        is Iterable<*> -> value.joinToString(prefix = "[", postfix = "]", transform = ::json)
-        else -> throw IllegalArgumentException("Unsupported JSON value")
-    }
+            )
+        },
+    )
 }
-
-private class JsonParseException(message: String) : IllegalArgumentException(message)
-
-private class JsonParser(private val source: String) {
-    private var index = 0
-
-    fun parseObject(): JsonObject = parseValue().asObject()
-
-    private fun parseValue(): JsonValue {
-        skipWhitespace()
-        if (index >= source.length) throw JsonParseException("Unexpected end of JSON")
-        return when (source[index]) {
-            '{' -> parseMap()
-            '[' -> parseArray()
-            '"' -> JsonValue.StringValue(parseString())
-            't' -> consume("true", JsonValue.BooleanValue(true))
-            'f' -> consume("false", JsonValue.BooleanValue(false))
-            'n' -> consume("null", JsonValue.NullValue)
-            else -> parseNumber()
-        }
-    }
-
-    private fun parseMap(): JsonValue.ObjectValue {
-        expect('{'); skipWhitespace()
-        val map = linkedMapOf<String, JsonValue>()
-        if (peek('}')) { index++; return JsonValue.ObjectValue(map) }
-        while (true) {
-            skipWhitespace(); val key = parseString(); skipWhitespace(); expect(':')
-            map[key] = parseValue(); skipWhitespace()
-            if (peek('}')) { index++; return JsonValue.ObjectValue(map) }
-            expect(',')
-        }
-    }
-
-    private fun parseArray(): JsonValue.ArrayValue {
-        expect('['); skipWhitespace()
-        val values = mutableListOf<JsonValue>()
-        if (peek(']')) { index++; return JsonValue.ArrayValue(values) }
-        while (true) {
-            values += parseValue(); skipWhitespace()
-            if (peek(']')) { index++; return JsonValue.ArrayValue(values) }
-            expect(',')
-        }
-    }
-
-    private fun parseString(): String {
-        expect('"'); val out = StringBuilder()
-        while (index < source.length) {
-            when (val char = source[index++]) {
-                '"' -> return out.toString()
-                '\\' -> {
-                    if (index >= source.length) throw JsonParseException("Invalid escape")
-                    when (val escaped = source[index++]) {
-                        '"', '\\', '/' -> out.append(escaped)
-                        'b' -> out.append('\b'); 'f' -> out.append('\u000C'); 'n' -> out.append('\n')
-                        'r' -> out.append('\r'); 't' -> out.append('\t')
-                        'u' -> { val hex = source.substring(index, index + 4); out.append(hex.toInt(16).toChar()); index += 4 }
-                        else -> throw JsonParseException("Invalid escape")
-                    }
-                }
-                else -> out.append(char)
-            }
-        }
-        throw JsonParseException("Unterminated string")
-    }
-
-    private fun parseNumber(): JsonValue {
-        val start = index
-        while (index < source.length && source[index] !in ",]} \t\r\n") index++
-        val raw = source.substring(start, index)
-        return raw.toDoubleOrNull()?.let { JsonValue.NumberValue(raw) } ?: throw JsonParseException("Invalid number")
-    }
-
-    private fun <T : JsonValue> consume(token: String, value: T): T {
-        if (!source.startsWith(token, index)) throw JsonParseException("Invalid JSON token")
-        index += token.length; return value
-    }
-    private fun expect(char: Char) { skipWhitespace(); if (index >= source.length || source[index++] != char) throw JsonParseException("Expected $char") }
-    private fun peek(char: Char): Boolean = index < source.length && source[index] == char
-    private fun skipWhitespace() { while (index < source.length && source[index].isWhitespace()) index++ }
-}
-
-private sealed class JsonValue {
-    class ObjectValue(val values: Map<String, JsonValue>) : JsonValue()
-    class ArrayValue(val values: List<JsonValue>) : JsonValue()
-    class StringValue(val value: String) : JsonValue()
-    class NumberValue(val value: String) : JsonValue()
-    class BooleanValue(val value: Boolean) : JsonValue()
-    data object NullValue : JsonValue()
-    fun asObject() = this as? ObjectValue ?: throw JsonParseException("Expected object")
-    fun obj(key: String? = null) = if (key == null) asObject() else asObject().values[key]?.asObject() ?: throw JsonParseException("Expected object")
-    fun string(key: String? = null): String {
-        val value = if (key == null) this else obj().values[key]
-        return (value as? StringValue)?.value ?: throw JsonParseException("Expected string")
-    }
-    fun long(key: String) = (obj().values[key] as? NumberValue)?.value?.toLongOrNull() ?: throw JsonParseException("Expected integer")
-    fun array(key: String) = (obj().values[key] as? ArrayValue)?.values ?: throw JsonParseException("Expected array")
-}
-
-private typealias JsonObject = JsonValue.ObjectValue
-private fun JsonObject.string(key: String) = values[key]?.let { (it as? JsonValue.StringValue)?.value } ?: throw JsonParseException("Expected string")
-private fun JsonObject.optionalString(key: String) = (values[key] as? JsonValue.StringValue)?.value?.takeIf { it.isNotBlank() }
-private fun JsonObject.optionalDouble(key: String) = (values[key] as? JsonValue.NumberValue)?.value?.toDoubleOrNull()
-private fun JsonObject.optionalObject(key: String) = (values[key] as? JsonValue.ObjectValue)
-private fun JsonValue.ArrayValue.first() = values.firstOrNull() ?: throw JsonParseException("Expected array item")

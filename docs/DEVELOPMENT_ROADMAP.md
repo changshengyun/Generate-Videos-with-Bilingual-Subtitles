@@ -1,136 +1,53 @@
 # LyricCaptioner V3 开发路线
 
+- `ROADMAP_REV: 2026-08-12.003`
+- 当前任务：`V3-AI-001 / COMMITTED`
+- 当前历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
+
 ## 文档职责
 
-本文件维护 V3 的模块顺序、阶段目标和总体验收门槛。当前唯一活动任务见 `CURRENT_TASK.md`，实时状态见 `PROJECT_STATE.md`，详细产品与技术方案见 `V3_PRODUCT_ARCHITECTURE.md`。已完成的 V2 状态保存在 `../docs-v2/`，不再参与当前调度。
+本文件只维护 V3 产品目标、阶段顺序、依赖和总体验收。唯一活动任务见 `CURRENT_TASK.md`，实时门禁见 `PROJECT_STATE.md`。V2 归档位于 `../docs-v2/`，关闭的 V3 证据位于 `archive/v3/`。
 
 ## V3 产品目标
 
-V3 必须从“开发测试工作台”升级为可交付的移动端产品，同时保留 V2 已验证的真实本地媒体链路：
+1. Whisper 单模型进程级缓存，完成后保留 3–5 分钟，并在超时、模型切换、严重内存压力或不安全取消后释放。
+2. 产品主链路统一为：相册导入 → 本地识别 → 云端歌词匹配与双语修正/本地回退 → 用户主动编辑 → 相册导出。
+3. 所有字幕共享视频有效画面内的文本框布局，每段字幕可独立覆盖字体样式。
+4. 普通预览、全屏预览和 FFmpegKit 导出使用同一源视频坐标和样式解析规则。
+5. 导入和导出默认且只使用系统相册能力。
+6. 删除 App 自有顶栏、测试标题和版本标签，保留系统栏与 Insets。
+7. DeepSeek 只接收 cue ID、时间戳和英文文本；失败时保留英文并使用本地 OPUS-MT。
+8. 最终只保留模型识别主链路和网络失败本地翻译回退；其他导出分支经清理矩阵证明后删除。
 
-1. 为当前 `ggml-small.en-q5_1.bin` 增加单模型进程级 Whisper context 缓存；识别结束后保留 3-5 分钟供后续任务复用，并在超时、模型切换、严重内存压力或不安全取消后释放。
-2. 以用户工作流为中心重做交互：导入视频 -> 识别/增强 -> 显示识别成功 -> 用户主动进入字幕编辑 -> 预览 -> 导出。
-3. 在视频有效画面内提供统一字幕文本框范围；所有字幕共享布局范围，但每段字幕可单独覆盖字体样式。
-4. 使用同一套源视频坐标和样式解析规则统一普通预览、横屏/全屏预览与 FFmpegKit 导出效果。
-5. 导入只进入系统相册/Photo Picker；导出只保存到系统相册/MediaStore，不提供自定义位置。
-6. 删除 App 顶栏和测试工具式标题/版本标签，保留系统状态栏、导航栏、Window Insets 及必要状态反馈。
-7. 本地 Whisper 生成原始 cue 后，由云端 AI 根据完整识别文本匹配歌曲/在线歌词，再返回逐 cue 修正英文与中文翻译；云端失败时保留英文并使用本地 OPUS-MT。
-8. 最终产品只保留模型识别主链路与网络失败本地翻译回退链路；SRT 插入及其他替代导出分支必须先经独立清理矩阵证明可安全删除。
+## 阶段顺序
 
-## 模块顺序
-
-| 阶段 | 状态 | 目标 |
+| 阶段 | 当前状态 | 目标/依赖 |
 |---|---|---|
-| `V3-DEC-001` | `PASS` | 交互、样式、媒体入口、缓存生命周期、云端匹配、本地回退、密钥边界和清理范围已由用户确认 |
-| `V3-AI-CONTRACT-001` | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain 正式裁决；R1 已关闭） | Brain 已正式接受唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的 BYOK 安全链路、`GET /models` 最小真实认证、Keystore 密文保存、masked 重启恢复、测试连接、same-key rotation、失败替换保留旧 Key、最终删除、完整回归和 secret scan 证据；在线歌词、歌曲匹配、逐 cue 增强与完整产品链路未验证，不得声明正式产品 PASS |
-| `V3-ASR-SESSION-001` | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain 正式裁决） | A01–A12、A14、A16 组件级通过；A13 真实连续识别/handle 复用与 A15 真机性能数据统一登记到 `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`，不得升级为真机已验证 |
-| `V3-EDITOR-001` | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` | 原组件模型和共享 resolver 已完成，但用户确认独立“项目默认样式/当前字幕覆盖”面板不符合产品交互 |
-| `V3-EDITOR-002` | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（用户接受并关闭；无二次验收） | canonical ratio、v6 编辑恢复、Media3 Float FIT/PAR、production Stroke→Fill/ASS Outline 与组件回归完成；物理 UI 仍未测量 |
-| `V3-MEDIA-001` | `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER` | 已完成 Photo Picker 唯一视频导入和 MediaStore 唯一成品视频导出，覆盖持久访问/重绑、API 26–36 权限、pending publish/rollback、取消竞态及源文件安全；未执行真实设备/相册媒体流，不声明正式产品 PASS |
-| `V3-AI-001` | `COMPONENT_IMPLEMENTED / LIVE_DEEPSEEK_RUNTIME_REQUIRED` | DeepSeek 生产 Provider、固定 HTTPS、严格 Prompt/Schema、歌曲匹配与来源元数据、逐 cue 英文修正/中文翻译、原子提交、本地回退、取消/重试与状态 UI 已实现；真机/真实网络证据仍需单独记录 |
-| `V3-UI-001` | `PARTIAL_PASS / PRODUCT_UI_COMPONENT_VERIFIED / FINAL_PHYSICAL_UI_ACCEPTANCE_DEFERRED_BY_USER` | U01-U12 组件证据完成：移除 App 顶栏/开发标签，保留系统栏与 Window Insets、产品导航、主动进入编辑、编辑栏目字幕列表和隐私安全状态反馈；真机、真实相册、人工视觉和完整产品链路延期到最终验收 |
-| `V3-CLEAN-001` | `PLANNED` | 以 KEEP/MERGE/DELETE/DEFER 清单移除 SRT 插入和非主链路/本地回退链路的导出分支 |
-| `V3-E2E-003` | `PLANNED` | 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和播放最终验收 |
+| `V3-DEC-001` | `PASS` | 冻结 V3 产品与技术边界 |
+| `V3-AI-CONTRACT-001` | `PARTIAL_PASS / LIVE_LYRICS_FLOW_DEFERRED` | BYOK 与认证基线；为 AI 主链路提供安全合同 |
+| `V3-ASR-SESSION-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | Whisper 缓存基础；真机性能归入最终积压 |
+| `V3-EDITOR-001` | `PARTIAL_PASS / REWORKED` | 初始编辑模型 |
+| `V3-EDITOR-002` | `PARTIAL_PASS / COMPONENT_VERIFIED` | 每 cue 样式、统一预览/导出解析 |
+| `V3-MEDIA-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | Photo Picker 与 MediaStore 唯一媒体入口 |
+| `V3-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | 产品化交互外壳 |
+| `V3-AI-001` | `ACCEPTED / SRT_DEVICE_VERIFIED` | 单歌曲对齐与错位 SRT 真机样本通过；不包含视频、Whisper 或完整端到端验证 |
+| `V3-CLEAN-001` | `PLANNED` | 依赖 V3-AI-001 验收；删除非主链路分支 |
+| `V3-E2E-003` | `PLANNED` | 依赖前述阶段；ARM64 真机最终验收 |
 
-一次只激活一个实施阶段。`V3-MEDIA-001` 与 `V3-UI-001` 均已完成组件与构建验证，历史矩阵与证据保存在 `CURRENT_TASK.md`；当前活动阶段为 `V3-AI-001`，按 AI01-AI16 一次性实施，不再追加子阶段。真机和真实网络证据必须与组件证据分开记录。
+## 当前和下一阶段
 
-## V3-AI-001 implementation evidence (2026-08-11)
-
-Production DeepSeek `POST /chat/completions`, strict dependency-free JSON parsing, atomic cloud/local fallback, cancellation, persistence and explicit UI trigger are implemented. Full JVM 275/275, ASR 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed; APKs are 417,446,841 and 119,142 bytes. No live key, network, physical-device or online-lyrics evidence was collected, so the stage remains `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`.
-
-`V3-ASR-SESSION-001` 的 A01–A16 完整矩阵以 `CURRENT_TASK.md` 为权威入口。它要求规范路径、文件大小和 SHA-256 模型身份，monotonic 空闲计时，单 context 串行推理，取消后保守重建，模型切换/严重内存压力下活跃安全释放，以及唯一授权真机 `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` 的真实 native 冷/热 handle 复用与性能证据。完成者只能回交 Developer 候选，Brain 负责正式验收。
-
-ASR 组件证据为 focused runtime 14/14、完整 JVM 169/169、ASR Python 6/6、lint 0 errors/33 warnings，以及普通 Debug、arm64-v8a+x86_64 native-enabled Debug、AndroidTest 构建通过。编辑阶段完整 JVM 为 192/192，native-enabled app APK 为 417,446,841 bytes，AndroidTest APK 为 119,027 bytes；A13/A15 与编辑物理 UI 已进入最终真机积压，不得记录或推测冷/热真机数据。
-
-`FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG` 统一保存在 `PROJECT_STATE.md`。用户已停止该批次作为当前开发门禁；已有失败和缺失指标继续保留为 `EVIDENCE_NOT_MEASURED`，不得改写为真机已验证。
-
-## 阶段入口验收矩阵门禁
-
-## Completed V3-MEDIA-001 status (2026-08-11)
-
-`V3-MEDIA-001` is complete at component/build level as `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`. M01–M16 evidence is recorded in `CURRENT_TASK.md`: focused JVM 21/21, full JVM 262/262, ASR 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed, and source/test-output/APK secret scan found 0 hits. APKs are 417,446,841 bytes and 119,116 bytes at the paths recorded in the current task (Debug generated 2026-08-11 17:14:18 +08:00). The product video path now uses Photo Picker `VideoOnly` and task-owned MediaStore export; API 26–28 permission handling and API 29+ pending publish are covered. No real device, real album, private media, network or Key verification was performed, so this is not formal product PASS. Existing dirty files and untracked content remain; no push.
-
-## Closed V3-EDITOR-002 status
-
-`V3-EDITOR-002` is closed as `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`. The user accepted the completed Developer handoff and explicitly waived secondary Brain acceptance; `V3-MEDIA-001` is now closed at component/build level with physical media flow waived.
-
-R4 evidence: canonical ratio writes and v1-v5/v6 edit-save-reload passed; Media3 1.10.1 Float FIT 3:5/1080x1920 truncates to 1799px; production Compose Stroke→Fill paint-plan evidence passed. Full JVM 241/241, ASR 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. APKs are 417,446,841 and 119,048 bytes. No real-device UI, DeepSeek, Key, online lyrics, Provider, Prompt, media or Whisper evidence was collected.
-
-所有 V3 阶段统一执行以下顺序：
-
-```text
-读取活动状态与 Git 实况
-  -> 在 CURRENT_TASK.md 写出阶段验收矩阵
-  -> 确认主链路、必须证据、禁止事项、退出状态和未完成状态
-  -> 标记 MATRIX_DEFINED / IN_PROGRESS
-  -> 建立阶段 checkpoint commit
-  -> 编写代码与测试
-  -> 按矩阵收集证据
-  -> 逐项判定 PASS / PARTIAL_PASS / BLOCKED / HUMAN_DECISION
-  -> 更新三份活动文档并提交阶段结果
-```
-
-阶段验收矩阵必须使用以下固定结构，但内容必须按模块具体化：
-
-| 类别 | 阶段开始前必须冻结的内容 |
-|---|---|
-| 主链路 | 用户真正要完成的一条产品路径，包括真实入口、关键步骤和最终结果 |
-| 必须证据 | 进入 PASS 所需的测试、截图、日志、产物及允许的模拟器/设备证明 |
-| 禁止事项 | 不得修改的模块、不得引入的依赖/架构、不得使用的 Demo 或 fallback |
-| 退出状态 | 所有必要条件满足后允许使用的最终状态和证据等级 |
-| 未完成状态 | 每项关键证据缺失时对应的专项状态、`PARTIAL_PASS`、`BLOCKED` 或 `HUMAN_DECISION` |
-
-- 没有矩阵时阶段固定为 `MATRIX_REQUIRED`，不得开始实现。
-- 编码后不得为了让结果通过而降低矩阵；确需变更时必须先说明新证据或范围变化，并同步活动文档。
-- 如果门禁禁止真机、缺少人工参考数据或等待外部服务决策，矩阵必须预先写明最高可达状态，不能用代码完成越级替代正式证据。
-- Developer Prompt 不再通过后续追加消息逐步补齐验收；新阶段的第一份 Prompt 必须一次给出完整矩阵。
+- 当前：`V3-AI-001.008` 已通过 Reviewer 并提交，歌词检索、整首上下文翻译、span 对齐和 SRT 真机专项证据已冻结。
+- 下一：如继续开发，先为 `V3-CLEAN-001` 建立验收矩阵；不得把本阶段单歌曲 SRT 证据升级为完整产品链路验收。
+- 最终：`V3-E2E-003` 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和回放。
 
 ## 跨阶段不变量
 
-- 保留 Kotlin、Jetpack Compose、Material 3、ViewModel、Media3、FFmpegKit 和 whisper.cpp 主路线，除非用户明确批准架构变更。
-- 不用 Demo、固定字幕、历史输出或降低验收标准取得 PASS；本地 OPUS-MT 只作为明确标记的真实降级链路，不得冒充云端 AI 结果。
-- 字幕时间基准继续使用 `cue_id + start_ms + end_ms`。
-- 原始 ASR 英文、AI 修订、用户最终稿和样式覆盖必须可区分并可恢复。
-- 字幕文本框属于项目级布局；逐段样式属于 cue 级覆盖，不能让单段编辑意外改变其他字幕的文本框范围。
-- 预览和导出不得以播放器窗口或黑边作为字号与位置基准。
-- 模型缓存只能优化加载成本，不能被描述为提高识别准确率；没有固定人工歌词时不宣称 WER/CER 改善。
-- 同一 Whisper 模型上下文默认一次只服务一个识别任务；取消不能释放仍在推理线程使用的 native 内存。
-
-## 字幕坐标与字号统一门槛
-
-- 使用源视频坐标作为唯一规范空间：`PlayResX = sourceVideoWidth`、`PlayResY = sourceVideoHeight`。
-- 字幕文本框以源视频归一化坐标保存，例如 `xRatio / yRatio / widthRatio`；它只能落在视频有效画面内。
-- 字号保存为相对源视频高度的比例，例如 `fontSizeRatio = fontSizePx / sourceVideoHeight`，而不是相对手机屏幕或播放器高度。
-- Compose 预览先计算 Media3 `FIT` 后的有效视频矩形，排除横屏预览产生的黑边，再把源视频坐标映射到该矩形。
-- 全屏预览复用同一映射与样式解析器；FFmpegKit/ASS 使用同一 `PlayRes`、字号比例、边距和对齐规则。
-- 对同一帧的普通预览、全屏预览和导出截图进行像素级或容差内对照，验证字幕相对位置、行宽和视觉字号一致。
-
-## Whisper 缓存验收门槛
-
-- 第一次任务加载并校验模型；识别完成后保留 context 3-5 分钟供后续任务复用。空闲超时、模型切换、严重内存压力或取消后状态不安全时必须释放；模型名称、路径、大小或 SHA-256 改变时必须失效并安全重建。
-- 模型权重/词表上下文与任务音频、取消令牌、临时推理状态、字幕结果分离。
-- 使用 `Mutex` 或单线程队列阻止同一上下文并发推理。
-- 验证 3 分钟内复用、5 分钟边界释放、取消后复用/重建、模型切换、加载失败、进程重建和内存压力路径。
-- 分别记录冷启动与热启动加载耗时、推理耗时、总耗时、峰值 RSS、温度、空结果、崩溃和时间戳有效性。
-- GPU 仅允许作为独立 Spike；当前缓存任务不得顺手启用 GPU 或切换模型。
-
-## 版本文档归档规则
-
-每个大版本由用户验收结束后执行一次版本切换：
-
-1. 在当前 `docs/` 中记录最终状态、用户验收边界和功能代码基线。
-2. 将当前 `docs/` 归档为 `docs-vN/`，归档后不再作为活动调度来源。
-3. 将已准备的 `docs-vN+1/` 提升为新的 `docs/`。
-4. 新 `docs/` 必须至少包含 `DEVELOPMENT_ROADMAP.md`、`CURRENT_TASK.md` 和 `PROJECT_STATE.md`，并明确旧版本归档位置。
-5. 版本迁移提交不得混入业务代码、模型、媒体、测试产物或既有脏状态；默认不 push。
+- 不改变 V2 已验证的本地 Whisper、OPUS-MT、FFmpegKit 和 Media3 基线，除非用户重新授权。
+- API Key 只在 App 内通过 Android Keystore 保护，不能进入源码、聊天、日志、测试夹具或活动文档。
+- 真机、模拟器、组件和构建证据必须分级记录。
+- 每个阶段只有一份验收矩阵；Reviewer 只在整个阶段进入 `READY_FOR_REVIEW` 后自动启动。
+- 阶段提交只在 Reviewer `ACCEPTED` 且活动文档同步后创建，提交信息使用中文。
 
 ## V3 总体验收
 
-- V2 的真实本地导入、Whisper、保存恢复、FFmpegKit 导出和 Media3 播放能力不回退。
-- 连续两次识别能证明模型上下文复用，取消和模型切换无崩溃、无串任务污染。
-- 字幕生成成功后只显示成功状态，用户通过“编辑字幕”入口主动进入；字幕列表自然归属于该栏目，每段样式可独立调整。
-- 竖屏视频在竖屏、横屏和全屏预览中的字幕范围与导出视频保持一致。
-- Photo Picker 唯一导入入口和 MediaStore 唯一导出目的地可用，并保持持久权限、源文件和目标文件安全。
-- UI 删除 App 顶栏和“歌词字幕工作台”“V2”等开发状态元素，同时保留系统栏、Insets、可理解反馈和无障碍。
-- 云端结果必须满足严格 Schema、cue/time 不变量和失败原子性；网络失败时真实本地 OPUS-MT 回退可用且来源清楚。
-- SRT 插入及其他替代导出分支只有在 `V3-CLEAN-001` 的引用、迁移、回滚和回归矩阵通过后才能删除。
+正式 V3 PASS 需要目标 ARM64 真机通过系统相册导入、真实 Whisper、DeepSeek 增强或本地回退、逐 cue 编辑、预览一致性、MediaStore 导出和 Media3 回放，并证明取消、恢复、隐私、源文件安全及视觉可用性。缺少任一真机主链路证据时只能记录对应的部分状态。

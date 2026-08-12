@@ -26,12 +26,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.example.lyriccaptioner.model.ExportProfile
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.ProjectSnapshot
+import com.example.lyriccaptioner.captions.SrtParser
+import com.example.lyriccaptioner.captions.SrtWriter
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
 import com.example.lyriccaptioner.processing.FfmpegKitSubtitleExporter
 import com.example.lyriccaptioner.processing.ExtractedAudio
 import com.example.lyriccaptioner.processing.TranslationBatchResult
 import com.example.lyriccaptioner.processing.TranslationModule
+import com.example.lyriccaptioner.processing.LocalTranslator
 import com.example.lyriccaptioner.processing.WhisperLocalSpeechRecognizer
 import com.example.lyriccaptioner.processing.WhisperModelStore
 import com.example.lyriccaptioner.processing.WhisperProcessSession
@@ -53,6 +56,13 @@ import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStore
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyStoreHealth
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyWriteTransaction
 import com.example.lyriccaptioner.processing.enhancement.byok.EncryptedDeepSeekKeyRecord
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementCoordinator
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementException
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementProvider
+import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
+import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.DeepSeekCaptionEnhancementProvider
+import com.example.lyriccaptioner.processing.enhancement.SongMatchStatus
 import java.io.File
 import java.io.FileInputStream
 import java.io.RandomAccessFile
@@ -87,6 +97,13 @@ class LocalAiInstrumentation : Instrumentation() {
         runCatching {
             if (inputArguments.getString(ARG_BYOK_SECURITY)?.toBoolean() == true) {
                 runBlocking { runByokSecurityAcceptance(results) }
+            } else if (inputArguments.getString(ARG_LYRICS_ACCURACY)?.toBoolean() == true) {
+                runBlocking {
+                    runLyricsAccuracyAcceptance(
+                        results = results,
+                        useMisalignedFixture = inputArguments.getString(ARG_LYRICS_ALIGNMENT)?.toBoolean() == true,
+                    )
+                }
             } else if (inputArguments.getString(ARG_IMPORT_ACCEPTANCE)?.toBoolean() == true) {
                 if (inputArguments.getString(ARG_IMPORT_PHASE) == IMPORT_PHASE_RESTORE) {
                     runImportRestoreAcceptance(results)
@@ -244,6 +261,146 @@ class LocalAiInstrumentation : Instrumentation() {
             runCatching { store.delete() }
             runCatching { recordFile.delete() }
         }
+    }
+
+    /**
+     * Test-only entrypoint for the production cloud lyrics path. It deliberately bypasses media
+     * and Whisper, but does not replace the provider, search client, response validator, or
+     * coordinator. A local translator that always fails ensures fallback cannot pass this test.
+     */
+    private suspend fun runLyricsAccuracyAcceptance(
+        results: Bundle,
+        useMisalignedFixture: Boolean,
+    ) {
+        val appContext = targetContext.applicationContext
+        val inputAsset = if (useMisalignedFixture) LYRICS_ALIGNMENT_ASSET else LYRICS_ACCURACY_ASSET
+        val outputName = if (useMisalignedFixture) LYRICS_ALIGNMENT_OUTPUT else LYRICS_ACCURACY_OUTPUT
+        val inputSrt = context.assets.open(inputAsset)
+            .bufferedReader(Charsets.UTF_8)
+            .use { it.readText() }
+        val inputCues = SrtParser().parse(inputSrt)
+        check(inputCues.size == LYRICS_ACCURACY_CUE_COUNT) {
+            "Lyrics accuracy fixture did not contain the expected cue count."
+        }
+        check(inputCues.map { it.id } == (1..LYRICS_ACCURACY_CUE_COUNT).map { "srt-$it" }) {
+            "Lyrics accuracy fixture cue ids were not deterministic."
+        }
+        val inputIds = inputCues.map { it.id }
+        val inputTimeline = inputCues.map { it.startMs to it.endMs }
+
+        val keyManager = DeepSeekByokManagerImpl(
+            AndroidKeystoreDeepSeekKeyStore(appContext),
+            DeepSeekKeyProbe { },
+        )
+        check(keyManager.status().state == DeepSeekKeyState.CONFIGURED) {
+            "The existing app BYOK configuration is unavailable."
+        }
+        val rejectingFallback = TranslationModule(
+            object : LocalTranslator {
+                override suspend fun translateEnglishToChinese(text: String): String =
+                    error("Local fallback is forbidden in the lyrics accuracy acceptance.")
+            },
+        )
+        val providerStage = AtomicReference<String?>(null)
+        val verifiedLyricsUsed = AtomicReference(false)
+        val productionProvider = DeepSeekCaptionEnhancementProvider(
+            byokManager = keyManager,
+            onDiagnosticStage = { stage ->
+                providerStage.set(stage.name)
+                if (stage.name == "VERIFIED_LYRICS_SELECTED") verifiedLyricsUsed.set(true)
+            },
+        )
+        val providerErrorKind = AtomicReference<String?>(null)
+        val diagnosticProvider = CaptionEnhancementProvider { request ->
+            try {
+                productionProvider.enhance(request)
+            } catch (error: CaptionEnhancementException) {
+                providerErrorKind.set(error.kind.name)
+                throw error
+            }
+        }
+        val service = CaptionEnhancementCoordinator(
+            provider = diagnosticProvider,
+            localTranslation = rejectingFallback,
+        )
+        val states = mutableListOf<CaptionEnhancementState>()
+        val outcome = try {
+            service.enhance(
+                jobId = "lyrics-accuracy-device",
+                captions = inputCues,
+                onStateChanged = { state ->
+                    states.add(state)
+                    if (state == CaptionEnhancementState.CLOUD_VALIDATING) {
+                        providerStage.set("FINAL_VALIDATE")
+                    }
+                },
+            )
+        } catch (error: CaptionEnhancementException) {
+            results.putString("lyricsAccuracyProviderErrorKind", providerErrorKind.get() ?: error.kind.name)
+            results.putString("lyricsAccuracyProviderStage", providerStage.get() ?: "FINAL_VALIDATE")
+            throw error
+        }
+
+        check(outcome.source == CaptionResultSource.CLOUD_AI) {
+            "Lyrics accuracy acceptance did not use the cloud AI result."
+        }
+        check(outcome.state == CaptionEnhancementState.CLOUD_APPLIED) {
+            "Lyrics accuracy cloud batch was not atomically applied."
+        }
+        check(outcome.songMatch?.status == SongMatchStatus.CONFIRMED) {
+            "Lyrics search did not produce a locally verified confirmed song."
+        }
+        check(outcome.songMatch?.source?.startsWith("lrclib:") == true) {
+            "Confirmed lyrics did not carry an LRCLIB stable source id."
+        }
+        if (useMisalignedFixture) {
+            check(verifiedLyricsUsed.get()) {
+                "Misaligned lyrics acceptance did not use verified complete lyrics for stage two."
+            }
+        }
+        check(outcome.captions.map { it.id } == inputIds) { "Cloud enhancement changed cue ids or order." }
+        check(outcome.captions.map { it.startMs to it.endMs } == inputTimeline) {
+            "Cloud enhancement changed cue timestamps."
+        }
+        check(outcome.captions.all { it.english.isNotBlank() && it.chinese.isNotBlank() }) {
+            "Cloud enhancement returned an incomplete bilingual cue."
+        }
+
+        val outputSrt = SrtWriter().write(outcome.captions)
+        val reparsed = SrtParser().parse(outputSrt)
+        check(reparsed.size == inputCues.size) { "Generated bilingual SRT could not be fully reparsed." }
+        check(reparsed.map { it.startMs to it.endMs } == inputTimeline) {
+            "Reparsed bilingual SRT changed cue timestamps."
+        }
+        check(reparsed.all { it.english.isNotBlank() && it.chinese.isNotBlank() }) {
+            "Reparsed output SRT did not remain bilingual."
+        }
+
+        val outputDirectory = requireNotNull(appContext.getExternalFilesDir("lyrics-accuracy"))
+        check(outputDirectory.exists() || outputDirectory.mkdirs()) {
+            "Unable to prepare lyrics-accuracy output directory."
+        }
+        val outputFile = File(outputDirectory, outputName).apply { delete() }
+        outputFile.writeText(outputSrt, Charsets.UTF_8)
+        check(outputFile.isFile && outputFile.length() > 0L) { "Lyrics accuracy output SRT was not saved." }
+
+        results.putString("lyricsAccuracyStatus", "PASS")
+        results.putString("lyricsAccuracySource", outcome.source.name)
+        results.putString("lyricsAccuracyState", outcome.state.name)
+        results.putInt("lyricsAccuracyCueCount", outcome.captions.size)
+        results.putString("lyricsAccuracySongStatus", outcome.songMatch?.status?.name)
+        results.putString("lyricsAccuracySongTitle", outcome.songMatch?.title)
+        results.putString("lyricsAccuracySongArtist", outcome.songMatch?.artist)
+        results.putString("lyricsAccuracySongSource", outcome.songMatch?.source)
+        results.putString("lyricsAccuracyProcessingVersion", outcome.processingVersion)
+        results.putString("lyricsAccuracyIds", "preserved")
+        results.putString("lyricsAccuracyOrder", "preserved")
+        results.putString("lyricsAccuracyTimeline", "preserved")
+        results.putString("lyricsAccuracyBilingual", "all-non-empty")
+        results.putString("lyricsAccuracyReparse", "pass")
+        results.putString("lyricsAccuracyVerifiedLyrics", verifiedLyricsUsed.get().toString())
+        results.putString("lyricsAccuracyFixture", if (useMisalignedFixture) "misaligned" else "aligned")
+        results.putString("lyricsAccuracyOutput", outputName)
     }
 
     private suspend fun runViewModelCancellationProbe(results: Bundle) {
@@ -1978,6 +2135,13 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_ILLEGAL_UNREADABLE = "illegalUnreadable"
         const val ARG_ILLEGAL_OVER_LIMIT = "illegalOverLimit"
         const val ARG_BYOK_SECURITY = "byokSecurity"
+        const val ARG_LYRICS_ACCURACY = "lyricsAccuracy"
+        const val ARG_LYRICS_ALIGNMENT = "lyricsAlignment"
+        const val LYRICS_ACCURACY_ASSET = "lyrics_accuracy_input.srt"
+        const val LYRICS_ACCURACY_OUTPUT = "lyrics_accuracy_output.srt"
+        const val LYRICS_ALIGNMENT_ASSET = "lyrics_alignment_input.srt"
+        const val LYRICS_ALIGNMENT_OUTPUT = "lyrics_alignment_output.srt"
+        const val LYRICS_ACCURACY_CUE_COUNT = 8
         const val BYOK_TEST_ALIAS = "lyriccaptioner.deepseek.byok.r1test"
         const val BYOK_TEST_RECORD = "deepseek_byok_r1_test.bin"
         const val BYOK_SENTINEL_ONE = "sk-test-r1-sentinel-one-123456"

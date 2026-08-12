@@ -1,272 +1,41 @@
-# LyricCaptioner V3 project state
+# LyricCaptioner V3 Project State
 
-## Authoritative current state
-
+- `STATE_REV: 2026-08-12.008`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
-- Current task: `V3-AI-001 / COMPONENT_IMPLEMENTED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
-- V2 functional code baseline: `8a48d88`
-- V2 archive: `docs-v2/`
-- Current gate: `V3_AI_001 / COMPONENT_IMPLEMENTED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`
-- Process gate: `SINGLE_STAGE_MATRIX / DIRECT_COMPLETION / NO_SECONDARY_ACCEPTANCE`
-- Implementation result: V3-UI-001 remains closed at component/build level; V3-AI-001 production component path is implemented and awaits live DeepSeek runtime evidence.
-- Review workflow: one complete matrix per stage; Developer fixes ordinary defects inside the same stage and records the final stage result directly, without R-number revisions or Brain re-adjudication
-- Next permitted action: perform authorized in-app live DeepSeek verification for AI15; do not start V3-CLEAN-001 or unrelated media/Whisper/archive work.
+- Stage baseline HEAD: `421dc9cd3a158c0c9894e398df070c96a691dd12`
+- Upstream: `origin/migration/lyric-captioner-history`, snapshot ahead 37
+- Current task: `V3-AI-001`
+- Stage state: `COMMITTED`
+- Product status: `ACCEPTED / LYRICS_ACCURACY_SRT_DEVICE_VERIFIED`
+- Current gate: `NEXT_STAGE_MATRIX_REQUIRED`
+- Evidence ceiling: `SRT_DEVICE_VERIFIED / SINGLE_SONG_ALIGNED_AND_MISALIGNED_SAMPLES`
+- Last state sync: 2026-08-12
 
-## V3-AI-001 dispatch
+## 当前决定
 
-The user explicitly authorized the complete AI enhancement stage in one pass. The fixed route is DeepSeek over HTTPS at https://api.deepseek.com with DEVICE_DIRECT_BYOK; no key may be requested in chat, terminal arguments, source, logs or test fixtures. Component implementation is complete; until authorized live evidence is collected, the maximum status is `PARTIAL_PASS / AI_COMPONENT_VERIFIED / LIVE_DEEPSEEK_RUNTIME_REQUIRED`.
+- 用户停止旧 AI15 真机验收；旧逐 cue 修正/翻译准确率不被接受。
+- 用户批准立即实现路线 B：AI 识别候选歌曲，SearchTool 检索完整英文歌词，多 cue 验证候选，再由 AI 基于整首歌词生成中文歌词并对齐回字幕。
+- 路线 A（逐 cue 直译）淘汰；路线 C（无检索直接生成整首歌词）只允许作为未确认降级，不能声称歌曲匹配成功。
+- 当前不考虑速度、费用、UI 或其他产品优化；现有安全硬边界继续有效。
 
-## V3-AI-001 component implementation evidence (2026-08-11)
+## 架构门禁
 
-- Production `DeepSeekCaptionEnhancementProvider` is wired to the existing coordinator and local OPUS-MT fallback. It sends only cue IDs, timestamps and raw English; it does not send audio, video, media paths or user URIs.
-- Full JVM 275/275, ASR Python 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. Provider focused tests 2/2 passed.
-- APKs: `app/build/outputs/apk/debug/app-debug.apk` 417,446,841 bytes; `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` 119,142 bytes (generated 2026-08-11 19:40-19:45 +08:00).
-- Secret scan found no real key or captured network material; synthetic `sk-test-*` values are pre-existing test sentinels. No live API, physical device, online lyrics or complete product validation was run.
-- AI15 remains required; this stage is component-verified only and is not formal product PASS.
+- 权威需求：`docs/REQUIREMENTS.md`
+- 路线比较：`docs/TECH_OPTIONS.md`
+- 环境：`docs/ENVIRONMENT_REPORT.md`
+- Spike：`docs/SPIKE_PLAN.md`
+- 用户的“现在开始开发”视为对路线 B 和所列最小 Spike 的明确批准。
+- 只有 SP-A 通过后才接入该歌词源；SP-B/SP-C 作为实现测试门禁。
 
-## V3-UI-001 completion evidence (2026-08-11)
+## 受保护工作树
 
-- U01-U12 component matrix completed. The app-owned Header call and V2 badge rendering were removed; runtime diagnostic chips were removed; system insets, product navigation, explicit edit entry, editor-only CaptionList, operation gating and privacy-safe export semantics remain.
-- Focused UI contracts: 11/11. Full JVM: 273/273. ASR Python: 6/6. lint: 0 errors/33 warnings. Ordinary Debug, native-enabled Debug and AndroidTest builds passed. Source/test/APK secret scan: 0 hits.
-- APKs: app/build/outputs/apk/debug/app-debug.apk = 417,446,841 bytes (2026-08-11 18:37:49 +08:00); app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk = 119,116 bytes (2026-08-11 16:59:49 +08:00).
-- Boundary: no real-device, real-album/private-media, network, DeepSeek/Key, online-lyrics, manual-visual or complete product E2E evidence; this is not formal product PASS.
+保留既有 `.gitignore`、`AGENTS.md`、三份活动文档、产品架构文档、`third_party/ffmpeg-kit` 脏状态、`.emulator-test-assets/`、`tools/opus-mt-en-zh/`、DeepSeek 工具和所有未知内容。不得 reset、clean、覆盖、批量暂存或 push。
 
-## Closed V3-EDITOR-002 state (2026-08-11)
+## 下一允许动作
 
-- User accepted the R4 Developer handoff and explicitly directed the workflow to proceed without secondary Brain acceptance.
-- Final recorded state: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
-- Final evidence: canonical ratio writes 3/3; edit-save-reload/boundary/isolation 5/5; Media3 FIT/PAR 15/15; production Stroke→Fill plan 4/4; JVM 241/241; ASR 6/6; lint 0 errors/33 warnings; ordinary/native Debug and AndroidTest builds passed; 12-file secret scan 0 hits.
-- Checkpoint `cf1c403`; feature/HEAD `b5298f55c419dcf7bfb9fb102e76a3e6bcdb9e86`; ahead/behind 31/0; staged empty; no push.
-- Physical UI remains unmeasured and waived; this is not a claim of device-verified product PASS.
+候选验证已改为有界单调 token-span 对齐，支持 split、merge 和跨两行边界；未匹配 cue 以 0 计入全量分数。正例、错位、轻微 ASR、5/8 矛盾、重复副歌错误版和无关歌回归通过。对齐与错位两份 8-cue SRT 已在 ARM64/API36 真机通过生产增强链路，输出 SRT 可回读。Reviewer 已裁决 `ACCEPTED`。当前阶段已关闭；下一阶段必须先建立新矩阵。
 
-## Completed V3-MEDIA-001 evidence (2026-08-11)
+## 上下文与轮换
 
-- M01–M16 are complete at component/build level: Photo Picker `VideoOnly`, validation/access persistence and relink, task-owned MediaStore destination, API 26–28 permission policy, API 29+ pending publish, cancellation/failure cleanup, concurrency guards, privacy logging, full regression and artifacts. Per-item evidence remains in `CURRENT_TASK.md`.
-- Focused JVM: 21/21; full JVM: 262/262 with 0 failures/errors/skipped; ASR Python: 6/6; lint: 0 errors/33 warnings; ordinary Debug, native-enabled Debug and AndroidTest builds pass.
-- APKs: `app/build/outputs/apk/debug/app-debug.apk` 417,446,841 bytes (2026-08-11 17:14:18 +08:00); `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` 119,116 bytes (2026-08-11 16:59:49 +08:00). Source/test-output/APK secret scan: 0 hits.
-- Boundary: no real-device, real-album, private-media, network or Key verification; completion ceiling is `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER`, not formal product PASS.
-- Existing dirty state is preserved: `AGENTS.md`, `docs/V3_PRODUCT_ARCHITECTURE.md`, dirty `third_party/ffmpeg-kit`, and 41 logical untracked files (31 `.emulator-test-assets`, 9 `tools/opus-mt-en-zh`, 1 `._cache_adb.exe`). No push.
-
-## Current V3-EDITOR-002 / R4 implementation evidence (2026-08-11)
-
-- Historical R4 evidence retained below; the user accepted the completed Developer handoff and closed the editor stage without secondary Brain acceptance.
-- Final recorded state: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
-- Canonical ratio writes are used by default, selected-cue and cueId A+/A- paths; v1-v5 edit/save/reload, v6 cue edit/reload, 14/48 clamp and sibling isolation pass (archive focused 5/5; write-path contract 3/3).
-- Media3 1.10.1 Float FIT parity is covered: 3:5 in 1080x1920 truncates to 1799px; 1% tolerance, odd centering, square and anamorphic PAR geometry pass (15/15).
-- Production Compose consumes the shared render spec through a two-layer `CaptionPaintPlan` (real Stroke then Fill); paint-plan focused tests pass 4/4. ASS remains shared-spec Outline with `Shadow=0`.
-- Full JVM 241/241, ASR Python 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed. APKs: app `417,446,841` bytes at `app/build/outputs/apk/debug/app-debug.apk` (2026-08-11 16:06:41 +08:00); AndroidTest `119,048` bytes at `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` (2026-08-10 21:46:37 +08:00). Secret scan across 12 source/test/APK files: 0 pattern hits.
-- Boundary: no real-device UI, DeepSeek, Key, online lyrics, Provider, Prompt, media or Whisper work was performed; do not call this formal product PASS.
-
-## Brain R3 adjudication (2026-08-11)
-
-- Formal verdict: `PARTIAL_PASS / SOURCE_RELATIVE_RENDERING_REQUIRED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`.
-- Retained evidence: source-relative render spec, PAR propagation and shared FIT architecture, Compose stroke/fill production code, ASS Outline, v6 base migration, 222/222 JVM and build/artifact evidence remain valid at component/build level; exact Media3 float parity is not accepted.
-- P1: default and cue font-size controls still write only legacy `fontSizeSp`. Once a restored style already contains canonical `fontSizeRatio`, validation and resolution prefer the stale ratio, so A+/A- may not affect preview, ASS or the next v6 archive.
-- P1 evidence path: `MainViewModel.kt` default write at 762-765 and cue writes at 798-808 conflict with ratio precedence in `CaptionStyleModel.kt` at 168-170, 186-202 and 210-215.
-- P1 FIT parity: current `Double + floor` geometry differs from Media3 1.10.1 `Float` arithmetic plus integer truncation. The concrete 3:5 in 1080x1920 case resolves to 1800 instead of Media3's 1799, and current tests do not cover this precision boundary.
-- Evidence gap: no focused test references the Compose `CaptionOutlinedText` / `DrawStyle.Stroke` / fill production bridge, despite the R3-07 claim. Numeric resolver tests do not close that paint-path requirement.
-- R4 is authorized and its full acceptance matrix plus internal-Agent plan are authoritative in `CURRENT_TASK.md`. R3 is not formally closed.
-
-## Brain R2 adjudication (2026-08-11)
-
-- Formal verdict: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`.
-- Accepted R2 evidence: shared FIT geometry covers the primary square-pixel path; normal/fullscreen and ASS consume the geometry resolver; normalized x/y/width and anchors are shared; hidden Compose padding is removed; R1 and v5 behavior remain intact.
-- P1: Compose treats `fontSizeSp` as device sp while ASS treats it as 1080-PlayRes pixels, so relative visual size differs across normal preview, fullscreen and export.
-- P1: Compose uses a blurred offset Shadow for outline colour while ASS uses real glyph Outline plus Shadow; final outline semantics are different.
-- P1: `VideoSize.pixelWidthHeightRatio` is discarded, so anamorphic media can produce a different PlayerView FIT rectangle than the overlay.
-- P2: shared FIT rounds adjusted dimensions while Media3 truncates them, creating a known 1px difference; focused tests do not exercise production Compose sizing, outline, pixel ratio or Media3 rounding.
-- Full JVM XML confirms 212/212 with no failures/errors/skips; APK sizes match the returned evidence. Build success does not close the render differences above.
-- R3 matrix and bounded internal-Agent plan are frozen in `CURRENT_TASK.md`; implementation and regression are complete under the user dispatch, with Brain review pending.
-
-## Current V3-EDITOR-002 / R3 implementation evidence (2026-08-11)
-
-- R3 source-relative rendering is implemented with archive v6 ratio fields, safe v1-v5 migration, shared `CaptionRenderSpec`, Compose stroke+fill, ASS Outline parity, `pixelWidthHeightRatio`, and Media3 FIT truncation/centering.
-- Verification: full JVM `222/222`, ASR Python `6/6`, lint `0 errors / 33 warnings`, ordinary Debug, native-enabled Debug and AndroidTest builds passed. APKs are `app/build/outputs/apk/debug/app-debug.apk` (`417,446,841` bytes, 2026-08-11 15:21:48 +08:00) and `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` (`119,048` bytes, 2026-08-10 21:46:37 +08:00).
-- Boundary: no device UI, DeepSeek, Key, online lyrics or Provider/Prompt work. Candidate only: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain formal adjudication remains required.
-
-## Current V3-EDITOR-002 / R2 implementation evidence
-
-- Effective-video geometry is runtime-derived from Media3 `VideoSize` and the Compose container through shared `CaptionGeometryResolver`; normal/fullscreen Compose and ASS use the same normalized mapping and final resolved style.
-- Focused geometry: 8/8. Focused ASS: 8/8. Full JVM: 212/212. ASR Python: 6/6. Lint: 0 errors/33 warnings. Ordinary Debug, native-enabled Debug and AndroidTest builds passed.
-- APK artifacts: `app/build/outputs/apk/debug/app-debug.apk` = `417,446,841` bytes; `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk` = `119,048` bytes.
-- Boundary and candidate: no device, DeepSeek, Key, online lyrics, Provider or Prompt evidence; physical UI is waived. Candidate is `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns acceptance.
-
-## Brain R1 re-adjudication (2026-08-11)
-
-- Formal verdict remains `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`.
-- Accepted R1 evidence: position-only clear, cueId-scoped style/layout clear, sibling isolation and scoped ASS Chinese colour are fixed.
-- P1: Compose maps the overlay across the complete PlayerView container instead of the Media3 FIT effective video rectangle, so black bars change x/y/width relative to ASS.
-- P1: Compose adds unmodelled horizontal padding inside the normalized width and therefore narrows/shifts the text area.
-- P1: Compose and ASS still disagree on Chinese font size, bold/italic application and the non-bold English weight.
-- P1: current tests cover helper values and ASS strings but do not exercise Compose effective-video geometry, black bars, aspect-ratio changes, normal/fullscreen parity or final bilingual style parity.
-- R2 matrix and bounded internal-Agent parallel plan were defined in `CURRENT_TASK.md`; implementation is complete and the Developer candidate is recorded above for Brain re-adjudication.
-
-## Current V3-EDITOR-002 / R1 implementation evidence
-
-- R1-01/R1-02/R1-05 pass: position-only overrides are clearable; clear by stable cueId removes both style and layout overrides from only the target cue and restores default layout.
-- R1-03/R1-04 pass: ASS applies an explicit scoped Chinese `secondaryColorHex` override; Compose and ASS share normalized coordinate and vertical-anchor semantics.
-- R1-06 artifacts: app APK `417446841` bytes at `app/build/outputs/apk/debug/app-debug.apk`; AndroidTest APK `119048` bytes at `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`.
-- R1-07 verification: focused JVM 39/39, full JVM 203/203, ASR Python 6/6, lint 0 errors/33 warnings, ordinary/native Debug and AndroidTest builds passed.
-- No physical UI, DeepSeek, Key, online lyrics, Provider or Prompt work was performed. Developer candidate: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`; Brain owns acceptance.
-
-## Brain adjudication of V3-EDITOR-002 (2026-08-11)
-
-- Formal verdict: `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / RENDER_INTEGRATION_REQUIRED`.
-- P1: pure `layoutOverride` does not enable the clear action because UI override state checks only `styleOverride`; S08 is not satisfied.
-- P1: ASS emits English and Chinese in one Dialogue without a Chinese text-color override, while Compose uses `secondaryColorHex`; S10 color parity is not satisfied.
-- P1: Compose and ASS use different y/anchor and x/width geometry semantics; sharing a resolver value object does not prove render parity, so S10 geometry parity is not satisfied.
-- Accepted partial evidence: cueId-scoped writes, v5 migration/round-trip and cue isolation show no additional blocker. Developer regression/build claims remain evidence, not formal acceptance.
-- Artifact correction: current App APK is `417,446,841 bytes`; current AndroidTest APK is `119,048 bytes`. The returned `119,027 bytes` value was stale.
-- Physical UI remains waived by user for this stage. R1 must not perform device work or touch DeepSeek, real Key, online lyrics, Provider or Prompt.
-
-## Current product findings (2026-08-10)
-
-- DeepSeek caption enhancement is not implemented in the product path. Production currently has secure BYOK storage and a body-free `GET /models` authentication probe only.
-- There is no production `CaptionEnhancementProvider`, `/chat/completions` call, model selection, system prompt, user prompt, messages payload or response parser. Whisper results are committed directly; the Chinese action uses local OPUS-MT.
-- `V3-AI-001` therefore remains `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED`; a successful Key connection test must not be described as AI caption processing.
-- The screenshot-confirmed editor mismatch is the active task: two detached style panels must be removed and all per-cue controls moved into the corresponding caption card.
-
-## FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG
-
-- Policy: `WAIVED_BY_USER_FOR_CURRENT_DEVELOPMENT / EVIDENCE_NOT_MEASURED`. Existing failure and missing-data evidence stays recorded, but the backlog no longer blocks later component work. It must not be rewritten as measured PASS.
-- ASR A13: real native consecutive recognition, cold/hot execution and handle reuse remain unverified.
-- ASR A15: real cold/hot context load, inference, total, peak RSS, temperature, empty-result and crash data remain unverified.
-- Editor UI: physical-device editor navigation, cue editing, preview and export UI evidence remain unverified; simulator/JVM/build/static evidence does not upgrade this boundary.
-- Editor physical UI verification is recorded in this backlog; simulator/JVM/build/static evidence remains allowed now but cannot upgrade the physical boundary.
-
-## Current V3-EDITOR-001 matrix summary
-
-- E01–E18 are frozen in `docs/CURRENT_TASK.md`: manual editor entry, success/failure gating, navigation stability, editor-only cue list, normalized project layout, default/override style inheritance, V2 migration, V3 archive round-trip, shared Compose/ASS resolution, invalid-data safety and regression coverage.
-- Highest result with complete component and simulator evidence is `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`.
-- Missing shared Compose/ASS integration is `PARTIAL_PASS / EDITOR_MODEL_VERIFIED / RENDER_INTEGRATION_REQUIRED`; unsafe V2 migration is `BLOCKED / PROJECT_MIGRATION_SAFETY_REQUIRED`.
-
-## Current V3-ASR-SESSION-001 matrix summary
-
-- A01–A16 are frozen in `docs/CURRENT_TASK.md`; they cover cold creation, 3-minute reuse, 5-minute expiry, strict serialization, task isolation, path/size/SHA-256 invalidation, active-safe model switching, cancellation ordering, memory-pressure release, failure recovery, idempotent close, process isolation, real-native handle reuse, cue validity, performance diagnostics and regression coverage.
-- The runtime is process-level and single-model. Idle time starts only after a task fully ends and uses an injectable monotonic clock/scheduler. The same context may run only one inference at a time.
-- Cancellation is conservative: abort is requested, native inference must fully return and its thread must end before cleanup/free, and the cancelled context is never reused.
-- Only `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36` is authorized for physical-device evidence, using repository/test-owned non-private audio only.
-- Highest Developer candidate with complete evidence is `PASS / WHISPER_SESSION_CACHE_VERIFIED / PHYSICAL_DEVICE_RUNTIME_VERIFIED`; missing physical native evidence caps the result at `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_REQUIRED`.
-- Unsafe native lifetime is `BLOCKED / NATIVE_LIFETIME_SAFETY_REQUIRED`; failure to prove second-task reuse is `BLOCKED / CACHE_REUSE_NOT_PROVEN`.
-- Cache evidence may claim only lower repeated context-loading cost. It must not claim accuracy, WER/CER, or core inference-speed improvement.
-
-## Current V3-ASR-SESSION-001 implementation evidence
-
-- Process-level `WhisperProcessSession` owns one `WhisperSessionRuntime`; model identity is canonical path + file size + SHA-256, idle timeout is 5 minutes from full task completion, and a `Mutex` serializes inference.
-- Native uses opaque registry handles and explicit create/transcribe/requestAbort/free. Free is idempotent and waits for the native inference mutex; cancellation/failed transcription marks the handle non-reusable before Kotlin releases it after worker return.
-- Focused runtime: 14 passed. Full JVM: 169 passed, 0 failures/errors/skipped. ASR Python: 6 passed. Lint: 0 errors/33 warnings. Normal Debug, native-enabled Debug for arm64-v8a+x86_64, and AndroidTest builds passed.
-- App APK is 383,030,793 bytes; AndroidTest APK is 118,877 bytes. Secret scan found 0 app Key tokens, 4 existing synthetic AndroidTest tokens, 0 credential-bearing Bearer values and 0 stage-source credential tokens.
-- A01–A12 pass at component level; A14 and A16 pass at component/regression level. A13 and A15 remain required because the authorized device disconnected before install and stayed absent through three checks. No device run or performance numbers are claimed.
-- Checkpoint is `3aec389`. Brain formally accepted `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`; A13/A15 are in the final physical-device backlog and no physical runtime claim is made.
-
-## Current R1 live-key evidence
-
-- Physical device: `fcf4b0cb / 25098PN5AC / arm64-v8a / API 36 / qcom`. The real Key was manually entered only inside the App and was never supplied through chat, terminal, environment variables, ADB input, clipboard automation, source, test files or screenshots.
-- The production probe uses only `GET https://api.deepseek.com/models`, follows no redirects, sends no body/user content and reads or records no response body. Initial save, restart-time saved-key connection testing and same-key rotation each returned sanitized `HTTP 2xx`; a synthetic invalid replacement returned sanitized `HTTP 401`.
-- The first encrypted record was 147 bytes and contained no plaintext `sk-` prefix. Same-key rotation changed both record SHA-256 and the 12-byte GCM IV. The failed synthetic-invalid replacement preserved the rotated record and IV exactly, after which the old real Key still authenticated with `HTTP 2xx`.
-- Delete removed the production record; restart returned `UNCONFIGURED` with no masked Key. Because production health returns `NEEDS_REENTRY` when an alias remains without a record, this proves both production record and alias absence. The App was force-stopped afterward.
-- R1 focused JVM: 31 passed; full JVM: 155 passed with 0 failures/0 errors/0 skipped; ASR baseline: 6 passed; lint: 0 errors/33 warnings; normal Debug, native-enabled Debug and AndroidTest builds passed. Physical-device synthetic Keystore/UI instrumentation passed.
-- Final stripped app APK: 382,081,973 bytes; AndroidTest APK: 91,700 bytes. Secret scan found 0 app-APK Key tokens, 0 disallowed AndroidTest/source/test-output/log tokens, 0 credential-bearing Bearer values, 0 DeepSeek query URLs and no new screenshot artifact. The production record is absent.
-- Checkpoint `1567402` froze the matrix. Brain formally accepted `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`; the verdict covers the physical-device BYOK security path and minimal DeepSeek authentication, but not online lyrics, song matching, cue enhancement, the complete product flow or formal product PASS.
-
-## Current R1 security rework evidence
-
-- Brain previously rejected the old implementation because production health materialized the complete Key, cancellation did not cover encryption/commit, alias-deletion partial success could collapse to `UNCONFIGURED`, and active Provider routing text conflicted with the frozen DeepSeek route.
-- The current delta uses a separate AES-GCM empty-plaintext authentication tag whose AAD binds the Key ciphertext, IV and mask; a rollback-capable prepare/commit transaction checks coroutine cancellation before and after durable commit; missing-record/present-alias and delete-failure states remain `NEEDS_REENTRY`.
-- R1 focused JVM: 27 passed; full JVM: 148 passed with 0 failures/0 skipped; ASR baseline: 6 passed. Lint reports 0 errors/33 warnings; normal Debug, native-enabled Debug and AndroidTest builds passed.
-- Production instrumentation passed only with a synthetic Key on the `Pixel_8 / emulator-5554 / sdk_gphone64_x86_64 / API 36` emulator: AES-256-GCM AndroidKeyStore, distinct Key IVs, empty-plaintext AAD health, 142-byte test record, corruption/alias-loss recovery, alias-delete partial failure retained as `NEEDS_REENTRY`, commit cancellation write count 0, UI clears, and final record+alias absence. No physical device was connected.
-- Final APK scan covered the stripped 382,081,953-byte native-enabled app APK and 91,551-byte AndroidTest APK: 0 disallowed Key tokens, 0 credential-bearing Authorization headers and 0 private runtime paths; only four synthetic test sentinels were present in AndroidTest.
-- Checkpoint `bbb9761` froze the delta matrix and captured three expected old-implementation failures: delete-after-validation write-back, swallowed delete failure and plaintext decrypt during status/cancel.
-- Security/BYOK fix commit `935ff92` contains the accepted delta implementation and evidence baseline.
-- Brain formally accepted `PARTIAL_PASS / SECURE_BYOK_COMPONENT_VERIFIED / LIVE_KEY_TEST_REQUIRED`. This is a component-level security verdict, not a formal product PASS, and it does not prove a real DeepSeek Key, live authentication, DeepSeek network behavior, lyrics matching, a physical device run or the complete device product flow.
-
-## Historical test-first evidence
-
-- Brain added four new JVM test files containing 20 tests for T01-T14 and did not modify production Kotlin.
-- Focused Gradle execution reached `:app:compileDebugUnitTestKotlin` and failed on the intentionally absent V3 contract symbols, establishing the expected-red baseline.
-- The Kotlin daemon encountered a user-local `AccessDeniedException`, but Gradle fallback compilation completed far enough to emit the expected `unresolved reference` contract errors.
-- No live Provider, API key, network lyrics retrieval, UI change, Whisper cache, media change, cleanup, device test, Git commit or push was performed.
-
-## Version transition
-
-- The user explicitly accepted V2 after manual verification on `fcf4b0cb / 25098PN5AC / ARM64 / 1220x2656 / 520 dpi` and waived further V2 operations.
-- The prior active `docs/` was archived to `docs-v2/`.
-- The former `docs-v3/` architecture draft was promoted into the new active `docs/` and supplemented with the required three-document state surface.
-- V2 code was not changed during this transition. `third_party/ffmpeg-kit`, models, media, test assets, and existing untracked content remain outside the documentation commit.
-
-## Historical V3-AI-CONTRACT-001-R1 implementation evidence before security rework (2026-08-10)
-
-- Checkpoint: `bfc7751`; feature commit: `69b991e`; neither was pushed.
-- Focused four Brain contract tests, full `testDebugUnitTest`, `lintDebug`, normal Debug, native-enabled Debug (`-PenableWhisperNative=true`) and `assembleDebugAndroidTest` all completed successfully.
-- `:app:assembleNativeDebug` is not a task in this checkout; the native-enabled Debug command ran the configured CMake path instead.
-- Contract implementation is limited to provider-neutral DTO/service/state/error types, mapper/validator, coordinator fallback orchestration, atomic commit policy, processing metadata and V3 archive compatibility.
-- Live Provider/API key/network lyrics/device/UI/media/model-cache/V2-cleanup work remains deferred or prohibited by this stage.
-- R1 focused security/BYOK/UI tests (16), full JVM tests, lint, normal Debug, native-enabled Debug and AndroidTest builds passed. No real key or live DeepSeek probe was used.
-
-## Confirmed V3 direction (2026-08-09)
-
-- Add a single-model process-level Whisper cache; retain context for 3-5 minutes after recognition, serialize one task per context, and release on idle timeout, model switch, severe memory pressure, or unsafe cancellation state.
-- Redesign interaction before visual styling.
-- After successful subtitle generation, stay on the current section and show only the success state; the user enters subtitle editing through the existing explicit action.
-- Use one project-level caption text box within the active video image and cue-level style overrides.
-- Resolve subtitle position and font size in source-video coordinates so preview, fullscreen, aspect-ratio changes, and export agree.
-- Use Photo Picker as the only video import entry and MediaStore/system gallery as the only export destination; do not offer an alternate location picker.
-- Remove the entire app top bar and visible development/version labels while preserving system status/navigation bars and Window Insets.
-- Send complete local Whisper cue batches to an AI API for song/online-lyrics matching, per-cue English correction, and Chinese translation without re-running audio ASR or changing timestamps.
-- Keep the current OPUS-MT/ONNX local translator as the real offline/network-failure fallback and label its output separately from cloud AI.
-- Current key route is `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED`: a user-entered Provider key may only be stored as Android Keystore-wrapped AES-256-GCM ciphertext and must stay outside APK/Git/logs/ordinary preferences/project archives; live authentication remains deferred.
-- The final product keeps only the model-recognition main path and the local-translation fallback path. SRT import and other export branches are removed only in a later audit-first `V3-CLEAN-001` stage.
-- The detailed `V3_PRODUCT_ARCHITECTURE.md` remains secondary reference; where its earlier draft conflicts with these three active documents, the active documents and latest user decisions control until the reference is synchronized.
-
-## Development process rule
-
-- Every new stage must define its acceptance matrix in `docs/CURRENT_TASK.md` before checkpoint creation or implementation.
-- The required rows are: main user path, mandatory evidence, prohibited changes/fallbacks, exact PASS exit conditions, and deterministic incomplete states.
-- A missing matrix forces `MATRIX_REQUIRED`. Missing device, fixture, screenshot, log, artifact, or runtime evidence must resolve to the state declared before implementation; code or build completion cannot silently raise the stage above that evidence ceiling.
-- The matrix may only change before further implementation and with a recorded reason. It cannot be weakened retroactively to convert a failed result into PASS.
-- Completion reports must map every claimed status to the corresponding matrix evidence.
-
-## Evidence and claim boundaries
-
-- Whisper caching may improve repeated-task startup time but does not itself improve core inference speed or recognition accuracy.
-- User-observed V2 recognition usability is accepted as product feedback, not fixture-backed WER/CER evidence.
-- OPUS-MT works locally but its Chinese naturalness is not accepted as final product quality.
-- Cloud song/lyrics matching is not yet live-verified; the current stage can verify only contracts, validation, atomicity and deterministic fallback behavior.
-- DeepSeek with `DEVICE_DIRECT_BYOK / ANDROID_KEYSTORE_REQUIRED` is frozen. Brain has formally accepted the physical-device BYOK and minimal-authentication evidence; remaining later decisions/evidence are online-lyrics provenance/licensing, song matching, lyrics/cue integration and distribution strategy. Tests must not scrape or bundle real copyrighted lyrics.
-- GPU availability on the phone does not authorize a GPU backend; any GPU work requires an independent Spike and regression evidence.
-- Preview/export visual equivalence must exclude letterbox/pillarbox regions and use the source video as the common coordinate system.
-
-## Preserved state
-
-- Do not clean, reset, stage, or commit the existing dirty `third_party/ffmpeg-kit` state.
-- Preserve all 41 untracked files: 31 under `.emulator-test-assets/`, 9 under `tools/opus-mt-en-zh/`, and 1 `._cache_adb.exe`; do not commit them or other unrelated content.
-- Do not push unless the user explicitly requests it.
-- Preserve the user-approved but uncommitted `AGENTS.md` acceptance-matrix rule and three-document updates when creating the stage checkpoint.
-- Do not stage unrelated dirty/untracked content in the checkpoint or feature commit.
-- Do not implement live Provider calls, non-Keystore API-key storage, model caching, unrelated UI/media changes or V2 cleanup inside `V3-AI-CONTRACT-001`; the bounded R1 Android Keystore storage and minimal settings UI are explicitly authorized.
-
-## Stage routing
-
-| Stage | State |
-|---|---|
-| V2 | `USER_ACCEPTED / ARCHIVED_IN_DOCS_V2` |
-| V3-DEC-001 | `PASS` |
-| V3-AI-CONTRACT-001 | `PARTIAL_PASS / SECURE_BYOK_VERIFIED / DEEPSEEK_AUTH_VERIFIED / LIVE_LYRICS_FLOW_DEFERRED`（Brain formal verdict; R1 closed） |
-| V3-ASR-SESSION-001 | `PARTIAL_PASS / WHISPER_SESSION_COMPONENT_VERIFIED / PHYSICAL_DEVICE_RUNTIME_DEFERRED_BY_USER`（Brain formal verdict） |
-| V3-EDITOR-001 | `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PRODUCT_UI_REWORK_REQUIRED` |
-| V3-EDITOR-002 | `PARTIAL_PASS / PER_CUE_STYLE_EDITOR_VERIFIED / PHYSICAL_DEVICE_UI_WAIVED_BY_USER`（user accepted; closed without secondary acceptance） |
-| V3-MEDIA-001 | `PARTIAL_PASS / MEDIA_COMPONENT_VERIFIED / PHYSICAL_DEVICE_MEDIA_FLOW_WAIVED_BY_USER` |
-| V3-UI-001 | `PLANNED` |
-| V3-AI-001 | `NOT_IMPLEMENTED / PRODUCTION_PROMPT_ABSENT / SEPARATE_STAGE_REQUIRED` |
-| V3-CLEAN-001 | `PLANNED` |
-| V3-E2E-003 | `PLANNED` |
-
-## V3-EDITOR-001 component evidence (2026-08-10)
-
-- Candidate: `PARTIAL_PASS / EDITOR_COMPONENT_VERIFIED / PHYSICAL_DEVICE_UI_DEFERRED_BY_USER`.
-- E01–E18 component evidence passed: focused editor JVM 25/25, full `testDebugUnitTest` 192/192, ASR Python 6/6, `lintDebug` 0 errors/33 warnings, ordinary Debug, native-enabled Debug and AndroidTest APK builds all passed.
-- Native-enabled app APK: 417,446,841 bytes. AndroidTest APK: 119,027 bytes.
-- Model/archive uses v4 with safe v1/v2/v3 migration, one normalized project layout, one default style, nullable per-cue overrides, and cue-preserving text/timeline/confirmation edits. Compose preview and ASS export consume the same `CaptionRenderResolver`.
-- No physical device was connected, installed, polled or instrumented. Editor physical UI, ASR A13/A15 and performance evidence remain in `FINAL_PHYSICAL_DEVICE_VERIFICATION_BACKLOG`; no formal product PASS is claimed.
-- Historical next action for `V3-EDITOR-001` is superseded by the closed `V3-EDITOR-002` result and active `V3-MEDIA-001` dispatch above.
+准确上下文不可用时记录 `Unavailable`，不估算；在阶段 `ACCEPTED` 边界轮换。
