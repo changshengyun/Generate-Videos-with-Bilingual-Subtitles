@@ -1,0 +1,7 @@
+interface:
+  display_name: "Begin"
+  short_description: "创建或复用内部 Brain 并恢复 LyricCaptioner 项目流程"
+  default_prompt: "使用 $begin 从 root 协调壳创建或复用唯一内部 Brain，并恢复 LyricCaptioner 当前阶段。"
+
+policy:
+  allow_implicit_invocation: false

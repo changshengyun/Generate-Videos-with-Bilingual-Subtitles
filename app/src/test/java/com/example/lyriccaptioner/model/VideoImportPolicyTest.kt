@@ -25,7 +25,7 @@ class VideoImportPolicyTest {
         selectedCaptionId = existingCue.id,
         exportProfile = ExportProfile(subtitleStyle = SubtitleStyle(fontSizeSp = 30)),
         exportUri = TestUri("old-export"),
-        pendingSidecarSrt = "old-sidecar",
+        exportState = ExportState.SUCCEEDED,
     )
 
     @Test
@@ -51,7 +51,7 @@ class VideoImportPolicyTest {
         assertTrue(result.captions.isEmpty())
         assertNull(result.selectedCaptionId)
         assertNull(result.exportUri)
-        assertNull(result.pendingSidecarSrt)
+        assertEquals(ExportState.IDLE, result.exportState)
     }
 
     @Test
@@ -70,7 +70,7 @@ class VideoImportPolicyTest {
         assertEquals(30, result.exportProfile.subtitleStyle.fontSizeSp)
         assertTrue(result.captions.single().confirmed)
         assertNull(result.exportUri)
-        assertNull(result.pendingSidecarSrt)
+        assertEquals(ExportState.IDLE, result.exportState)
         assertTrue(!result.requiresVideoAssociation)
     }
 

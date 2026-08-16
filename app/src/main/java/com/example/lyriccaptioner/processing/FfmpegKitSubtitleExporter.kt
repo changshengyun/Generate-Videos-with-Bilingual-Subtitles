@@ -53,23 +53,37 @@ class FfmpegKitSubtitleExporter(
         destinationUri: Uri,
     ): ExportResult = withContext(Dispatchers.IO) {
         Log.i(LOG_TAG, "event=ffmpegkit_export_started captionCount=${project.captions.size}")
-        require(project.captions.isNotEmpty()) { "At least one subtitle cue is required." }
-        require(project.exportProfile.burnInSubtitles) { "Burn-in subtitles are disabled." }
-        check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri, appContext.contentResolver)) {
-            "The export destination must not be the source video."
-        }
-        val destinationState = ExportDestinationPolicy.inspectDestination(
-            appContext.contentResolver,
-            destinationUri,
-        )
-        ExportDestinationPolicy.requireNewDestination(destinationState)
-
-        val workDirectory = createWorkDirectory()
-        val inputFile = File(workDirectory, "input.mp4")
-        val assFile = File(workDirectory, "captions.ass")
-        val outputFile = File(workDirectory, "output.mp4")
+        var stage = "validation"
+        var workDirectory: File? = null
+        val destinationState: ExportDestinationState
         try {
+            require(project.captions.isNotEmpty()) { "At least one subtitle cue is required." }
+            require(project.exportProfile.burnInSubtitles) { "Burn-in subtitles are disabled." }
+            stage = "ownership"
+            check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri, appContext.contentResolver)) {
+                "The export destination must not be the source video."
+            }
+            destinationState = ExportDestinationPolicy.inspectDestination(
+                appContext.contentResolver,
+                destinationUri,
+            )
+            ExportDestinationPolicy.requireNewDestination(destinationState)
+            stage = "work_directory"
+            workDirectory = createWorkDirectory()
+        } catch (error: Throwable) {
+            workDirectory?.deleteRecursively()
+            logPreSessionFailure(stage, error)
+            throw error
+        }
+
+        val activeWorkDirectory = checkNotNull(workDirectory)
+        val inputFile = File(activeWorkDirectory, "input.mp4")
+        val assFile = File(activeWorkDirectory, "captions.ass")
+        val outputFile = File(activeWorkDirectory, "output.mp4")
+        try {
+            stage = "source_copy"
             copyUriToFile(project.videoUri, inputFile)
+            stage = "ass_write"
             assFile.writeText(
                 AssSubtitleWriter.write(
                     captions = project.captions,
@@ -78,15 +92,26 @@ class FfmpegKitSubtitleExporter(
                 ),
                 Charsets.UTF_8,
             )
+            stage = "font_config"
             FFmpegKitConfig.setFontDirectory(appContext, "/system/fonts", emptyMap())
-            runFfmpeg(inputFile, assFile, outputFile, destinationUri, destinationState)
+            Log.i(LOG_TAG, "event=ffmpegkit_pre_session_completed stage=font_config")
         } catch (error: Throwable) {
-            // The destination may already refer to a user-owned document. Only the
-            // private work directory is owned by this exporter and is cleaned below.
+            logPreSessionFailure(stage, error)
             throw error
-        } finally {
-            workDirectory.deleteRecursively()
         }
+        try {
+            runFfmpeg(inputFile, assFile, outputFile, destinationUri, destinationState)
+        } finally {
+            activeWorkDirectory.deleteRecursively()
+        }
+    }
+
+    private fun logPreSessionFailure(stage: String, error: Throwable) {
+        Log.e(
+            LOG_TAG,
+            "event=ffmpegkit_pre_session_failed stage=$stage " +
+                "errorType=${error.javaClass.simpleName} reasonCode=PRE_SESSION_EXCEPTION",
+        )
     }
 
     private suspend fun runFfmpeg(
@@ -211,8 +236,16 @@ class FfmpegKitSubtitleExporter(
                 },
                 null,
             )
+            Log.i(LOG_TAG, "event=ffmpegkit_session_submitted")
             if (cancelled.get()) session?.let { FFmpegKit.cancel(it.sessionId) }
-        }.onFailure(::fail)
+        }.onFailure { error ->
+            Log.e(
+                LOG_TAG,
+                "event=ffmpegkit_session_submit_failed " +
+                    "errorType=${error.javaClass.simpleName} reasonCode=SESSION_SUBMIT_EXCEPTION",
+            )
+            fail(error)
+        }
     }
 
     private fun createWorkDirectory(): File {
@@ -451,10 +484,17 @@ internal object AssSubtitleWriter {
         val primary = assColor(style.primaryColorHex, "FFFFFF")
         val secondary = assColor(style.secondaryColorHex, "F4E7A1")
         val outline = assColor(style.outlineColorHex, "000000")
+        val back = if (style.backgroundEnabled) {
+            assColor(style.backgroundColorHex, "000000")
+        } else {
+            LEGACY_ASS_BACK_COLOR
+        }
+        val borderStyle = if (style.backgroundEnabled) ASS_OPAQUE_BOX_BORDER_STYLE else ASS_OUTLINE_BORDER_STYLE
         val bold = if (style.bold) -1 else 0
         val italic = if (style.italic) -1 else 0
         return "Style: ${cue.styleName},${assFontName(style.fontFamily)},${spec.fontSizePx}," +
-            "$primary,$secondary,$outline,&H80000000,$bold,$italic,0,0,100,100,0,0,1,${spec.outlineWidthPx},0," +
+            "$primary,$secondary,$outline,$back,$bold,$italic,0,0,100,100,0,0,$borderStyle," +
+            "${spec.outlineWidthPx},0," +
             "${geometry.alignment},${geometry.marginLeft},${geometry.marginRight}," +
             "${geometry.marginVertical},1"
     }
@@ -561,4 +601,7 @@ internal object AssSubtitleWriter {
 
     private const val PLAY_RES_X = 1_920
     private const val PLAY_RES_Y = 1_080
+    private const val ASS_OUTLINE_BORDER_STYLE = 1
+    private const val ASS_OPAQUE_BOX_BORDER_STYLE = 3
+    private const val LEGACY_ASS_BACK_COLOR = "&H80000000"
 }

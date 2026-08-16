@@ -1,0 +1,11 @@
+# Primary thread: coordinator shell; the registered Brain is an internal child Agent.
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"
+
+[agents.brain]
+description = "内部分析、决策、编排、活动文档与阶段验收 Agent；由 Primary/root 创建或复用。"
+config_file = "./agents/brain.toml"
+
+[agents.limbs]
+description = "由活动 Brain 创建，执行边界明确、文件所有权隔离的实现、测试与验证任务。"
+config_file = "./agents/limbs.toml"

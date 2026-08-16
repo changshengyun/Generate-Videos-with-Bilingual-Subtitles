@@ -61,7 +61,7 @@ class ProjectArchiveV4EditorTest {
         val encoded = archive.write(snapshot)
         val restored = archive.read(encoded)
 
-        assertTrue(encoded.startsWith("# LyricCaptionerProject v6\n"))
+        assertTrue(encoded.startsWith("# LyricCaptionerProject v7\n"))
         assertEquals(snapshot, restored)
         assertNull(restored.captions[1].styleOverride)
         assertNull(restored.captions[1].layoutOverride)

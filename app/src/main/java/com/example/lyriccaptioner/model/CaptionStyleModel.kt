@@ -118,6 +118,10 @@ data class DefaultCaptionStyle(
     val fontSizeRatio: Float = DEFAULT_CAPTION_FONT_SIZE_RATIO,
     /** Glyph outline width as a fraction of the source video's height. */
     val outlineWidthRatio: Float = DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO,
+    /** Whether a solid subtitle background is painted behind the text box. */
+    val backgroundEnabled: Boolean = false,
+    /** Solid background color shared by Compose preview and ASS export. */
+    val backgroundColorHex: String = DEFAULT_CAPTION_BACKGROUND_COLOR_HEX,
 )
 
 data class CaptionStyleOverride(
@@ -131,6 +135,8 @@ data class CaptionStyleOverride(
     val alignment: CaptionAlignment? = null,
     val fontSizeRatio: Float? = null,
     val outlineWidthRatio: Float? = null,
+    val backgroundEnabled: Boolean? = null,
+    val backgroundColorHex: String? = null,
 ) {
     val isEmpty: Boolean
         get() = fontSizeSp == null &&
@@ -142,7 +148,9 @@ data class CaptionStyleOverride(
             italic == null &&
             alignment == null &&
             fontSizeRatio == null &&
-            outlineWidthRatio == null
+            outlineWidthRatio == null &&
+            backgroundEnabled == null &&
+            backgroundColorHex == null
 }
 
 data class ResolvedCaptionStyle(
@@ -157,6 +165,8 @@ data class ResolvedCaptionStyle(
     val alignment: CaptionAlignment,
     val fontSizeRatio: Float,
     val outlineWidthRatio: Float,
+    val backgroundEnabled: Boolean,
+    val backgroundColorHex: String,
 )
 
 fun resolveCaptionStyle(
@@ -180,6 +190,8 @@ fun resolveCaptionStyle(
         alignment = safeOverride?.alignment ?: safeDefault.alignment,
         fontSizeRatio = ratio,
         outlineWidthRatio = outlineRatio,
+        backgroundEnabled = safeOverride?.backgroundEnabled ?: safeDefault.backgroundEnabled,
+        backgroundColorHex = safeOverride?.backgroundColorHex ?: safeDefault.backgroundColorHex,
     )
 }
 
@@ -203,6 +215,10 @@ fun DefaultCaptionStyle.validated(): DefaultCaptionStyle {
         primaryColorHex = normalizeSubtitleColor(primaryColorHex, "#FFFFFF"),
         secondaryColorHex = normalizeSubtitleColor(secondaryColorHex, "#F4E7A1"),
         outlineColorHex = normalizeSubtitleColor(outlineColorHex, "#000000"),
+        backgroundColorHex = normalizeSubtitleColor(
+            backgroundColorHex,
+            DEFAULT_CAPTION_BACKGROUND_COLOR_HEX,
+        ),
         fontFamily = fontFamily.validatedCaptionFontFamily(),
     )
 }
@@ -220,6 +236,9 @@ fun CaptionStyleOverride.validated(): CaptionStyleOverride {
         primaryColorHex = primaryColorHex?.let { normalizeSubtitleColor(it, "#FFFFFF") },
         secondaryColorHex = secondaryColorHex?.let { normalizeSubtitleColor(it, "#F4E7A1") },
         outlineColorHex = outlineColorHex?.let { normalizeSubtitleColor(it, "#000000") },
+        backgroundColorHex = backgroundColorHex?.let {
+            normalizeSubtitleColor(it, DEFAULT_CAPTION_BACKGROUND_COLOR_HEX)
+        },
         fontFamily = fontFamily?.validatedCaptionFontFamily(),
     )
 }
@@ -322,3 +341,4 @@ const val DEFAULT_CAPTION_FONT_SIZE_RATIO = 0.022222223f
 const val MIN_CAPTION_OUTLINE_WIDTH_RATIO = 0f
 const val MAX_CAPTION_OUTLINE_WIDTH_RATIO = 0.011111112f
 const val DEFAULT_CAPTION_OUTLINE_WIDTH_RATIO = 0.0018518519f
+const val DEFAULT_CAPTION_BACKGROUND_COLOR_HEX = "#000000"

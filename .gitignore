@@ -41,3 +41,13 @@ __pycache__/
 
 # Local documentation backups
 docs-BK/
+# Local API credentials
+.env
+!.env.example
+
+# Local test artifacts and adb cache
+._cache_adb.exe
+.emulator-test-assets/
+
+# Local translation model (restore separately)
+tools/opus-mt-en-zh/

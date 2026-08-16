@@ -228,36 +228,36 @@ class DeepSeekCaptionEnhancementProvider(
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
-        const val MAX_SONG_CANDIDATES = 3
+        const val MAX_SONG_CANDIDATES = 2
         const val LRCLIB_BATCH_DELAY_MS = 250L
 
         val IDENTIFICATION_SYSTEM_PROMPT = """
-Identify a song only from the complete Whisper English cue batch. Return JSON only.
-Use evidence across multiple cues. Never claim that a candidate is confirmed.
-Return at most $MAX_SONG_CANDIDATES candidates ordered by likelihood, each with non-empty title and artist.
-If the batch is insufficient or not recognizably lyrics, return an empty candidates array.
-The response shape is exactly: {"candidates":[{"title":"...","artist":"..."}]}.
+1.我给你一部分英文歌词，你根据歌词找对应的英文歌曲。
+必须综合整批 Whisper 英文字幕中的多条歌词判断，不能只依赖单句，也不能声称候选歌曲已经确认。
+按可能性从高到低返回最多 $MAX_SONG_CANDIDATES 个候选，每个候选必须包含非空的英文歌名和歌手。
+如果信息不足或内容无法识别为歌词，返回空 candidates 数组。
+只返回 JSON，格式必须严格为：{"candidates":[{"title":"...","artist":"..."}]}。
 """.trimIndent()
 
         val VERIFIED_LYRICS_SYSTEM_PROMPT = """
-Create a bilingual subtitle batch for a song using the supplied verified complete English lyrics as the authority.
-Read the entire song before writing any Chinese. The Chinese must be a coherent song-lyric rendering that preserves recurring imagery, pronouns, cross-line meaning, tone, and repeated chorus wording; it must not be isolated cue-by-cue literal translation.
-Use supplied canonical cue alignments when present. Correct unmatched English conservatively from the complete lyrics.
-For repeated identical canonical English lines, return identical Chinese wording.
-Never add, remove, split, merge, reorder, or retime cues. Keep every cue id and timestamp exact.
-Return JSON only. The exact response shape is:
+2.根据已经确认的歌曲和提供的完整英文歌词，对每条英文歌词进行纠错。
+3.对应英文歌词逐句给出网易云音乐版本的中文翻译，采用该歌曲准确的网易云译法。如果无法可靠确定现成译文，不得伪造来源，应根据整首歌词上下文给出自然、准确的中文歌词译文（符合歌曲原意而不是直接翻译）。
+先通读整首歌曲再写中文，保持意象、代词、跨行语义、语气和重复副歌译法一致，不能把每条字幕孤立直译。
+存在 canonical cue 对齐时必须使用；没有对齐的英文只能依据完整歌词保守纠错。相同 canonical 英文歌词必须返回完全相同的中文。
+不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+只返回 JSON，格式必须严格为：
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
-Every cue object must contain all six shown fields. Do not return song_match.
+每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent()
 
         val UNCONFIRMED_SYSTEM_PROMPT = """
-Create a bilingual subtitle batch from the complete Whisper cue batch as one song context.
-No searched lyrics were verified. Do not claim a song identity or invent canonical lyrics.
-Read the entire batch before writing Chinese. Keep recurring imagery, pronouns, cross-line meaning, tone, and repeated wording consistent; do not translate each cue in isolation.
-Correct English conservatively. Never add, remove, split, merge, reorder, or retime cues.
-Keep every cue id and timestamp exact. Return JSON only. The exact response shape is:
+根据整批 Whisper 英文歌词进行保守纠错，并逐句给出中文歌词翻译。
+当前没有经过验证的搜索歌词，因此不得声称歌曲已经确认，不得编造 canonical 歌词，也不得把中文声称为网易云音乐版本。
+先通读整批歌词再写中文，保持意象、代词、跨行语义、语气和重复内容一致，不能把每条字幕孤立直译。
+不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+只返回 JSON，格式必须严格为：
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
-Every cue object must contain all six shown fields. Do not return song_match.
+每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent()
     }
 }

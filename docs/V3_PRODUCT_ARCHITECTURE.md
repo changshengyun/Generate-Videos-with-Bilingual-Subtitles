@@ -115,10 +115,10 @@ nativeClose(handle)
 
 ### 数据职责
 
-- 项目保存一个统一 `CaptionLayout`，描述视频有效画面内的文本框位置与宽度。
-- 项目保存一个 `DefaultCaptionStyle`；每个 `CaptionCue` 只保存相对默认值的 `CaptionStyleOverride`。
-- 逐段样式不能改变统一文本框范围。旧 V2 全局样式迁移为 V3 项目默认样式，旧 cue 默认没有覆盖项。
-- 具体允许覆盖的字体属性由 `V3-DEC-001` 冻结。
+- 项目继续保存兼容性 `CaptionLayout` 与 `DefaultCaptionStyle`，仅作为新 cue、旧项目迁移和未覆盖字段的内部回退；产品 UI 不再提供独立的项目默认样式面板。
+- 每个 `CaptionCue` 保存自己的 `CaptionStyleOverride` 和可选 `CaptionLayoutOverride`。字号、字体、英中颜色、描边、粗斜体、对齐与上下位置都从对应字幕卡片进入，写操作必须显式绑定 cue ID。
+- 未编辑 cue 继承兼容性基础值；“恢复基础样式/位置”只清除当前 cue 的覆盖。旧 V2-v4 项目迁移后默认没有 cue 覆盖，视觉结果必须保持。
+- Compose 预览与 ASS 导出共用同一 resolver 解析 cue 样式和位置，禁止单条字幕调整污染其他 cue。
 
 ### 规范坐标系统
 

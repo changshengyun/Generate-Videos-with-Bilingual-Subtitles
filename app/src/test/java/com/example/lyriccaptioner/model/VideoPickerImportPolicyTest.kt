@@ -26,7 +26,6 @@ class VideoPickerImportPolicyTest {
         captions = listOf(cue),
         selectedCaptionId = cue.id,
         exportUri = TestUri("content://media/export"),
-        pendingSidecarSrt = "old-sidecar",
     )
 
     @Test

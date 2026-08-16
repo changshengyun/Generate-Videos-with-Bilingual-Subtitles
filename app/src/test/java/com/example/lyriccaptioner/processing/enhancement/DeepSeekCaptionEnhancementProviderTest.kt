@@ -13,6 +13,7 @@ import java.util.ArrayDeque
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,6 +26,8 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertTrue(body.contains("\"thinking\":{\"type\":\"disabled\"}"))
         assertTrue(body.contains("raw_english"))
         assertTrue(body.contains("Hello from the quiet street"))
+        assertTrue(body.contains("我给你一部分英文歌词，你根据歌词找对应的英文歌曲"))
+        assertTrue(body.contains("最多 2 个候选"))
         assertTrue(body.contains("\"response_format\":{\"type\":\"json_object\"}"))
         assertFalse(body.contains("complete_english_lyrics"))
         assertFalse(body.contains("content://"))
@@ -50,11 +53,47 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertTrue(body.contains("verified_complete_lyrics"))
         assertTrue(body.contains("complete_english_lyrics"))
         assertTrue(body.contains("Hello from the quiet street"))
-        assertTrue(body.contains("must not be isolated cue-by-cue literal translation"))
-        assertTrue(body.contains("repeated identical canonical English lines"))
+        assertTrue(body.contains("根据已经确认的歌曲和提供的完整英文歌词"))
+        assertTrue(body.contains("网易云音乐版本的中文翻译"))
+        assertTrue(body.contains("准确的网易云译法"))
+        assertTrue(body.contains("符合歌曲原意而不是直接翻译"))
+        assertTrue(body.contains("不得伪造来源"))
+        assertTrue(body.contains("不能把每条字幕孤立直译"))
+        assertTrue(body.contains("相同 canonical 英文歌词必须返回完全相同的中文"))
         assertTrue(body.contains("corrected_english"))
         assertTrue(body.contains("coherent Chinese lyric line"))
         assertTrue(body.contains("\"max_tokens\":960"))
+    }
+
+    @Test
+    fun songCandidateContractAcceptsAtMostTwoAndRejectsThirdCandidate() {
+        val twoCandidates = envelope(
+            """{"candidates":[{"title":"First Song","artist":"First Artist"},{"title":"Second Song","artist":"Second Artist"}]}""",
+        )
+        val threeCandidates = envelope(
+            """{"candidates":[{"title":"First Song","artist":"First Artist"},{"title":"Second Song","artist":"Second Artist"},{"title":"Third Song","artist":"Third Artist"}]}""",
+        )
+
+        assertEquals(2, DeepSeekCaptionEnhancementJson.parseSongCandidates(twoCandidates).size)
+        assertThrows(JsonParseException::class.java) {
+            DeepSeekCaptionEnhancementJson.parseSongCandidates(threeCandidates)
+        }
+    }
+
+    @Test
+    fun unconfirmedPromptRemainsConservativeAndDoesNotClaimNeteaseVersion() {
+        assertEquals(
+            """
+根据整批 Whisper 英文歌词进行保守纠错，并逐句给出中文歌词翻译。
+当前没有经过验证的搜索歌词，因此不得声称歌曲已经确认，不得编造 canonical 歌词，也不得把中文声称为网易云音乐版本。
+先通读整批歌词再写中文，保持意象、代词、跨行语义、语气和重复内容一致，不能把每条字幕孤立直译。
+不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+只返回 JSON，格式必须严格为：
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v2","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
+每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
+""".trimIndent(),
+            DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT,
+        )
     }
 
     @Test
@@ -66,7 +105,13 @@ class DeepSeekCaptionEnhancementProviderTest {
         val response = DeepSeekCaptionEnhancementJson.parseResponse(body)
 
         assertEquals("job-1", response.jobId)
+        assertEquals("caption-enhancement.v3", response.schemaVersion)
+        assertEquals("ignored-model-version", response.processingVersion)
+        assertEquals("cue-1", response.cues.single().id)
+        assertEquals(0L, response.cues.single().startMs)
+        assertEquals(1000L, response.cues.single().endMs)
         assertEquals("Hello", response.cues.single().correctedEnglish)
+        assertEquals("你好", response.cues.single().chinese)
         assertEquals(null, response.songMatch)
     }
 
@@ -136,7 +181,8 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertEquals("lyrics-search-unavailable", response.songMatch?.source)
         val finalRequest = usedConnections.last().writtenBody()
         assertTrue(finalRequest.contains("unconfirmed_full_batch"))
-        assertTrue(finalRequest.contains("complete Whisper cue batch as one song context"))
+        assertTrue(finalRequest.contains("根据整批 Whisper 英文歌词进行保守纠错"))
+        assertTrue(finalRequest.contains("不得把中文声称为网易云音乐版本"))
         assertFalse(finalRequest.contains("complete_english_lyrics"))
     }
 

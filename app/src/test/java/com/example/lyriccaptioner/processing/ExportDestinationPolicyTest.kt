@@ -78,4 +78,52 @@ class ExportDestinationPolicyTest {
             ExportDestinationPolicy.classifyDocumentQuery(true, 17L),
         )
     }
+
+    @Test
+    fun pendingEmptyMediaStoreRowIsTaskOwned() {
+        assertEquals(
+            ExportDestinationState.NEW,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, null, 1),
+        )
+        assertEquals(
+            ExportDestinationState.NEW,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, 0L, 1),
+        )
+    }
+
+    @Test
+    fun pendingPopulatedOrPublishedMediaStoreRowIsExisting() {
+        assertEquals(
+            ExportDestinationState.EXISTING,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, 17L, 1),
+        )
+        assertEquals(
+            ExportDestinationState.EXISTING,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, null, 0),
+        )
+        assertEquals(
+            ExportDestinationState.EXISTING,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, 17L, 0),
+        )
+    }
+
+    @Test
+    fun missingOrUnknownMediaStoreRowStaysDistinct() {
+        assertEquals(
+            ExportDestinationState.NEW,
+            ExportDestinationPolicy.classifyMediaStoreQuery(false, null, null),
+        )
+        assertEquals(
+            ExportDestinationState.UNKNOWN,
+            ExportDestinationPolicy.classifyMediaStoreQuery(null, null, null),
+        )
+    }
+
+    @Test
+    fun ordinaryDocumentWithNullSizeRemainsFailClosed() {
+        assertEquals(
+            ExportDestinationState.EXISTING,
+            ExportDestinationPolicy.classifyDocumentQuery(true, null),
+        )
+    }
 }

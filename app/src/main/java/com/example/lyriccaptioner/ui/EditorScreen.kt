@@ -13,6 +13,8 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,7 +43,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,17 +66,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -90,13 +98,20 @@ import androidx.media3.ui.PlayerView
 import com.example.lyriccaptioner.MainViewModel
 import com.example.lyriccaptioner.captions.CaptionTimeline
 import com.example.lyriccaptioner.model.CaptionAlignment
+import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionGeometryResolver
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.EditorState
+import com.example.lyriccaptioner.model.ExportState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ResolvedCaptionStyle
+import com.example.lyriccaptioner.model.canonicalCaptionFontSizeRatio
+import com.example.lyriccaptioner.model.movedToDirectEditPosition
+import com.example.lyriccaptioner.model.resolveCaptionStyle
+import com.example.lyriccaptioner.model.withDirectEditWidth
 import com.example.lyriccaptioner.model.verticalAnchor
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
@@ -109,11 +124,13 @@ import com.example.lyriccaptioner.model.resolveCaptionLayout
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.CaptionRenderResolver
 import com.example.lyriccaptioner.processing.CaptionPaintPlan
+import com.example.lyriccaptioner.processing.CaptionRenderSpec
 import com.example.lyriccaptioner.processing.ResolvedCaptionRender
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlin.math.roundToInt
 
 private fun uniqueDocumentName(requestedName: String): String {
     val extensionStart = requestedName.lastIndexOf('.')
@@ -129,8 +146,6 @@ fun EditorScreen(viewModel: MainViewModel) {
     val deepSeekKeyUi by viewModel.deepSeekKeyUi.collectAsState()
     val context = LocalContext.current
     val editorSnapshot = buildEditorSnapshot(state)
-    var showPasteLyrics by remember { mutableStateOf(false) }
-    var pastedLyrics by remember { mutableStateOf("") }
     var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
     var activeSection by remember { mutableStateOf(EditorSection.IMPORT.index) }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
@@ -161,53 +176,11 @@ fun EditorScreen(viewModel: MainViewModel) {
             viewModel.importWhisperModel(uri)
         }
     }
-    val srtCreator = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/x-subrip"),
-    ) { uri: Uri? ->
-        val srt = state.pendingSidecarSrt
-        if (uri != null && srt != null) {
-            viewModel.saveSidecarSrt(uri, srt)
-        }
-    }
     val projectCreator = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri: Uri? ->
         if (uri != null) viewModel.saveProjectArchive(uri)
     }
-    LaunchedEffect(state.pendingSidecarSrt) {
-        if (state.pendingSidecarSrt != null) {
-            srtCreator.launch("lyric-captioner.srt")
-        }
-    }
-
-    if (showPasteLyrics) {
-        AlertDialog(
-            onDismissRequest = { showPasteLyrics = false },
-            title = { Text("粘贴英文歌词") },
-            text = {
-                OutlinedTextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = pastedLyrics,
-                    onValueChange = { pastedLyrics = it },
-                    label = { Text("每行对应一条字幕") },
-                    minLines = 8,
-                    maxLines = 12,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.createCaptionsFromLyrics(pastedLyrics)
-                        showPasteLyrics = false
-                    },
-                ) { Text("生成字幕") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasteLyrics = false }) { Text("取消") }
-            },
-        )
-    }
-
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color(0xFF0D0F12),
@@ -228,14 +201,16 @@ fun EditorScreen(viewModel: MainViewModel) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                DeepSeekKeySettingsPanel(
-                    model = deepSeekKeyUi,
-                    onSave = viewModel::saveDeepSeekKey,
-                    onReplace = viewModel::replaceDeepSeekKey,
-                    onTestConnection = viewModel::testDeepSeekConnection,
-                    onDelete = viewModel::deleteDeepSeekKey,
-                    onCancelInput = viewModel::cancelDeepSeekKeyInput,
-                )
+                if (activeSection != EditorSection.CAPTIONS.index) {
+                    DeepSeekKeySettingsPanel(
+                        model = deepSeekKeyUi,
+                        onSave = viewModel::saveDeepSeekKey,
+                        onReplace = viewModel::replaceDeepSeekKey,
+                        onTestConnection = viewModel::testDeepSeekConnection,
+                        onDelete = viewModel::deleteDeepSeekKey,
+                        onCancelInput = viewModel::cancelDeepSeekKeyInput,
+                    )
+                }
                 VideoPreview(
                     videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
                     captions = state.captions,
@@ -244,6 +219,14 @@ fun EditorScreen(viewModel: MainViewModel) {
                     defaultCaptionStyle = state.defaultCaptionStyle,
                     status = state.status,
                     isWorking = state.isWorking,
+                    exportState = state.exportState,
+                    mediaRevision = state.mediaRevision,
+                    directEditMode = activeSection == EditorSection.CAPTIONS.index,
+                    onSelectCue = viewModel::selectCue,
+                    onDeleteCue = viewModel::deleteCaption,
+                    onPositionCommitted = viewModel::updateCueDirectPosition,
+                    onWidthCommitted = viewModel::updateCueDirectWidth,
+                    onFontSizeCommitted = viewModel::updateCueDirectFontSize,
                 )
                 WorkbenchTabs(activeSection = activeSection, onSectionSelected = { activeSection = it })
                 when (activeSection) {
@@ -285,13 +268,6 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 accessibilityId = "generate_captions",
                                 onClick = viewModel::generateCaptions,
                             )
-                            ActionButton(
-                                icon = "中",
-                                label = "翻译中文",
-                                enabled = state.captions.any { it.english.isNotBlank() && it.chinese.isBlank() } && !state.isWorking,
-                                accessibilityId = "translate_chinese",
-                                onClick = viewModel::translateMissingChinese,
-                            )
                         }
                         ActionRow {
                             ActionButton(
@@ -304,11 +280,10 @@ fun EditorScreen(viewModel: MainViewModel) {
                                 onClick = viewModel::enhanceCaptions,
                             )
                         }
-                        if (state.asrRunning || state.translationRunning || state.enhancementRunning) {
+                        if (state.asrRunning || state.enhancementRunning) {
                             ActionRow {
                                 SecondaryAction("取消当前任务", true) {
                                     if (state.asrRunning) viewModel.cancelGenerateCaptions()
-                                    if (state.translationRunning) viewModel.cancelTranslation()
                                     if (state.enhancementRunning) viewModel.cancelEnhancement()
                                 }
                             }
@@ -348,14 +323,13 @@ fun EditorScreen(viewModel: MainViewModel) {
                             }
                         }
                     }
-                    2 -> WorkflowPanel(title = "字幕编辑", subtitle = "调整文本、时间和字幕样式") {
+                    2 -> WorkflowPanel(title = "字幕编辑", subtitle = "在视频画面内直接调整字幕") {
                         ActionRow {
                             SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) { viewModel.addCaption() }
                             SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
-                            SecondaryAction("粘贴歌词", state.videoUri != null && !state.isWorking) { showPasteLyrics = true }
                         }
                         Text(
-                            text = "每条字幕的样式和位置都在字幕卡片中单独设置",
+                            text = "点击画面中的字幕可移动、删除、拉伸宽度或缩放字号",
                             color = Color(0xFF9EA5B1),
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -393,8 +367,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                             SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking, accessibilityId = "save_project") {
                                 projectCreator.launch(uniqueDocumentName("lyric-captioner-project.lcp"))
                             }
-                            SecondaryAction("导出 SRT", state.captions.isNotEmpty() && !state.isWorking) { viewModel.exportSidecarSrt() }
-                            if (state.isWorking && !state.translationRunning && !state.asrRunning) {
+                            if (state.exportState == ExportState.RUNNING) {
                                 SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)
                             }
                         }
@@ -402,7 +375,8 @@ fun EditorScreen(viewModel: MainViewModel) {
                 }
             }
             if (showsCaptionList(activeSection)) {
-                CaptionList(
+                if (activeSection != EditorSection.CAPTIONS.index) {
+                    CaptionList(
                     captions = state.captions,
                     selectedId = state.selectedCaptionId,
                     defaultStyle = state.defaultCaptionStyle,
@@ -428,8 +402,21 @@ fun EditorScreen(viewModel: MainViewModel) {
                     onClearOverride = viewModel::clearCueStyleOverride,
                     enabled = !state.isWorking,
                     editorSnapshot = editorSnapshot,
-                    modifier = Modifier.weight(0.28f),
-                )
+                        modifier = Modifier.weight(0.28f),
+                    )
+                } else {
+                    DirectCaptionEditPanel(
+                        cue = state.captions.firstOrNull { it.id == state.selectedCaptionId },
+                        defaultStyle = state.defaultCaptionStyle,
+                        enabled = !state.isWorking,
+                        onEnglishChanged = viewModel::updateEnglishText,
+                        onChineseChanged = viewModel::updateChineseText,
+                        onApplyBasicStyle = viewModel::applyCueBasicStyle,
+                        onUnifiedColorChanged = viewModel::updateCueUnifiedTextColor,
+                        onAlignmentChanged = viewModel::updateCueAlignment,
+                        modifier = Modifier.weight(0.38f),
+                    )
+                }
             }
         }
     }
@@ -1239,7 +1226,7 @@ private fun localizeStatus(status: String): String {
         status.startsWith("Translation") -> "翻译状态：${status.substringAfter(": ", status)}"
         status.startsWith("Created") -> "字幕已生成：${status.substringAfter("Created ").substringBefore(" lyric captions")} 条"
         status.startsWith("Rendering") -> "正在渲染双语字幕…"
-        status.startsWith("Export complete") -> "视频导出完成"
+        status.startsWith("Export saved") -> "视频导出完成"
         status.startsWith("Video export") -> "导出状态：${status.substringAfter(": ", status)}"
         status.startsWith("ASR") -> "识别状态：${status.substringAfter(": ", status)}"
         status.startsWith("Project restored; video access is session-only") -> "项目已恢复：视频仅本次会话可用"
@@ -1262,6 +1249,14 @@ private fun VideoPreview(
     defaultCaptionStyle: DefaultCaptionStyle,
     status: String,
     isWorking: Boolean,
+    exportState: ExportState,
+    mediaRevision: Long,
+    directEditMode: Boolean,
+    onSelectCue: (String) -> Unit,
+    onDeleteCue: (String) -> Unit,
+    onPositionCommitted: (String, Float, Float) -> Unit,
+    onWidthCommitted: (String, Float) -> Unit,
+    onFontSizeCommitted: (String, Float) -> Unit,
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
@@ -1288,7 +1283,7 @@ private fun VideoPreview(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
+                    .height(if (directEditMode) 360.dp else 220.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF171A1F)),
                 contentAlignment = Alignment.Center,
@@ -1308,6 +1303,19 @@ private fun VideoPreview(
                         selectedCaptionId = selectedCaptionId,
                         captionLayout = captionLayout,
                         defaultCaptionStyle = defaultCaptionStyle,
+                        directEditMode = directEditMode,
+                        onSelectCue = onSelectCue,
+                        onDeleteCue = onDeleteCue,
+                        onPositionCommitted = onPositionCommitted,
+                        onWidthCommitted = onWidthCommitted,
+                        onFontSizeCommitted = onFontSizeCommitted,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(1.dp)
+                            .clearAndSetSemantics {
+                                contentDescription = "video_media_revision_$mediaRevision"
+                            },
                     )
                 }
             }
@@ -1319,7 +1327,7 @@ private fun VideoPreview(
                 Text(
                     text = localizeStatus(status),
                     modifier = Modifier.semantics {
-                        if (status.startsWith("Export complete")) {
+                        if (exportState == ExportState.SUCCEEDED) {
                             contentDescription = status
                         }
                     },
@@ -1328,7 +1336,7 @@ private fun VideoPreview(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (status.startsWith("Export complete")) {
+                if (exportState == ExportState.SUCCEEDED) {
                     Box(
                         modifier = Modifier
                             .size(1.dp)
@@ -1349,11 +1357,18 @@ private fun VideoPlayer(
     selectedCaptionId: String?,
     captionLayout: CaptionLayout,
     defaultCaptionStyle: DefaultCaptionStyle,
+    directEditMode: Boolean,
+    onSelectCue: (String) -> Unit,
+    onDeleteCue: (String) -> Unit,
+    onPositionCommitted: (String, Float, Float) -> Unit,
+    onWidthCommitted: (String, Float) -> Unit,
+    onFontSizeCommitted: (String, Float) -> Unit,
 ) {
     val context = LocalContext.current
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
     var fullscreen by remember(uri) { mutableStateOf(false) }
     var sourceVideoSize by remember(uri) { mutableStateOf<SourceVideoSize?>(null) }
+    var visibleSelectionId by remember(uri) { mutableStateOf(selectedCaptionId) }
     val timeline = remember(captions) { CaptionTimeline(captions) }
     val currentCue = timeline.cueAt(positionMs)
     val currentRender = currentCue?.let { CaptionRenderResolver.resolve(it, captionLayout, defaultCaptionStyle) }
@@ -1388,6 +1403,7 @@ private fun VideoPlayer(
         if (selectedCue != null) {
             player.seekTo(selectedCue.startMs)
         }
+        visibleSelectionId = selectedCaptionId
     }
 
     LaunchedEffect(player) {
@@ -1411,6 +1427,19 @@ private fun VideoPlayer(
                     playerView.player = player
                 },
             )
+            if (directEditMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics { contentDescription = "取消字幕选择" }
+                        .pointerInput(player, currentCue?.id) {
+                            detectTapGestures {
+                                visibleSelectionId = null
+                                if (player.isPlaying) player.pause() else player.play()
+                            }
+                        },
+                )
+            }
             TextButton(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1428,9 +1457,34 @@ private fun VideoPlayer(
             SubtitlePreviewOverlay(
                 render = currentRender,
                 sourceVideoSize = sourceVideoSize,
-                defaultCaptionStyle = defaultCaptionStyle,
+                directEditMode = directEditMode,
+                selected = visibleSelectionId == currentRender.caption.id,
+                onSelect = {
+                    player.pause()
+                    visibleSelectionId = currentRender.caption.id
+                    onSelectCue(currentRender.caption.id)
+                },
+                onDelete = {
+                    visibleSelectionId = null
+                    onDeleteCue(currentRender.caption.id)
+                },
+                onPositionCommitted = onPositionCommitted,
+                onWidthCommitted = onWidthCommitted,
+                onFontSizeCommitted = onFontSizeCommitted,
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+        if (directEditMode && !fullscreen) {
+            TextButton(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .heightIn(min = 48.dp)
+                    .semantics { contentDescription = "预览播放控制" },
+                onClick = { if (player.isPlaying) player.pause() else player.play() },
+            ) {
+                Text(if (player.isPlaying) "暂停" else "播放", color = Color.White)
+            }
         }
     }
     if (fullscreen) {
@@ -1467,7 +1521,13 @@ private fun VideoPlayer(
                         SubtitlePreviewOverlay(
                             render = currentRender,
                             sourceVideoSize = sourceVideoSize,
-                            defaultCaptionStyle = defaultCaptionStyle,
+                            directEditMode = false,
+                            selected = false,
+                            onSelect = {},
+                            onDelete = {},
+                            onPositionCommitted = { _, _, _ -> },
+                            onWidthCommitted = { _, _ -> },
+                            onFontSizeCommitted = { _, _ -> },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -1497,25 +1557,41 @@ private fun VideoPlayer(
 private fun SubtitlePreviewOverlay(
     render: ResolvedCaptionRender,
     sourceVideoSize: SourceVideoSize?,
-    defaultCaptionStyle: DefaultCaptionStyle,
+    directEditMode: Boolean,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onDelete: () -> Unit,
+    onPositionCommitted: (String, Float, Float) -> Unit,
+    onWidthCommitted: (String, Float) -> Unit,
+    onFontSizeCommitted: (String, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cue = render.caption
-    val layout = render.layout
     if (sourceVideoSize == null) return
     val density = LocalDensity.current
+    var transientLayout by remember(cue.id, render.layout) { mutableStateOf(render.layout) }
+    var transientFontSizeRatio by remember(cue.id, render.style.fontSizeRatio) {
+        mutableStateOf(render.style.fontSizeRatio)
+    }
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val containerSize = with(density) {
             PreviewContainerSize(maxWidth.roundToPx(), maxHeight.roundToPx())
         }
-        val spec = CaptionRenderResolver.resolveSpec(
-            caption = cue,
-            layout = layout,
-            defaultStyle = defaultCaptionStyle,
+        val geometry = CaptionGeometryResolver.resolve(
             source = sourceVideoSize,
             container = containerSize,
+            layout = transientLayout,
+            alignment = render.style.alignment,
         )
-        val geometry = spec.geometry
+        val transientStyle = render.style.copy(fontSizeRatio = transientFontSizeRatio)
+        val spec = CaptionRenderSpec(
+            caption = cue,
+            layout = transientLayout,
+            style = transientStyle,
+            geometry = geometry,
+            fontSizePx = (transientFontSizeRatio * geometry.videoRect.height).roundToInt().coerceAtLeast(1),
+            outlineWidthPx = (transientStyle.outlineWidthRatio * geometry.videoRect.height).roundToInt().coerceAtLeast(0),
+        )
         val englishPlan = cue.english.takeIf { it.isNotBlank() }?.let {
             CaptionPaintPlan.from(spec = spec, text = it, fillColorHex = spec.style.primaryColorHex)
         }
@@ -1535,7 +1611,35 @@ private fun SubtitlePreviewOverlay(
             CaptionVerticalAnchor.BOTTOM -> positionPlan.stroke.topPx - containerSize.height
         }
         val xOffsetPx = positionPlan.stroke.leftPx
-        Column(
+        val directModifier = if (directEditMode) {
+            Modifier
+                .semantics {
+                    contentDescription = if (selected) "已选中字幕:${cue.id}" else "选择字幕:${cue.id}"
+                }
+                .clickable(onClick = onSelect)
+                .then(
+                    if (selected) {
+                        Modifier.pointerInput(cue.id, geometry.videoRect) {
+                            detectDragGestures(
+                                onDragEnd = {
+                                    onPositionCommitted(cue.id, transientLayout.xRatio, transientLayout.yRatio)
+                                },
+                            ) { change, dragAmount ->
+                                change.consume()
+                                transientLayout = transientLayout.movedToDirectEditPosition(
+                                    xRatio = transientLayout.xRatio + dragAmount.x / geometry.videoRect.width,
+                                    yRatio = transientLayout.yRatio + dragAmount.y / geometry.videoRect.height,
+                                )
+                            }
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
+        } else {
+            Modifier
+        }
+        Box(
             modifier = Modifier
                 .align(verticalAlignment)
                 .offset(
@@ -1543,20 +1647,129 @@ private fun SubtitlePreviewOverlay(
                     y = with(density) { yOffsetPx.toDp() },
                 )
                 .width(with(density) { positionPlan.stroke.widthPx.toDp() }),
-            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            if (cue.english.isNotBlank()) {
-                CaptionOutlinedText(
-                    modifier = Modifier.fillMaxWidth(),
-                    plan = englishPlan ?: error("English paint plan missing"),
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (selected && directEditMode) Modifier.border(1.dp, Color.White) else Modifier)
+                    .then(directModifier),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (cue.english.isNotBlank()) {
+                    CaptionOutlinedText(
+                        modifier = Modifier.fillMaxWidth(),
+                        plan = englishPlan ?: error("English paint plan missing"),
+                    )
+                }
+                if (cue.chinese.isNotBlank()) {
+                    CaptionOutlinedText(
+                        modifier = Modifier.fillMaxWidth(),
+                        plan = chinesePlan ?: error("Chinese paint plan missing"),
+                    )
+                }
+            }
+            if (selected && directEditMode) {
+                DirectEditDeleteHandle(
+                    modifier = Modifier.align(Alignment.TopStart).offset((-24).dp, (-24).dp),
+                    onDelete = onDelete,
+                )
+                DirectEditWidthHandle(
+                    modifier = Modifier.align(Alignment.CenterEnd).offset(x = 24.dp),
+                    onDrag = { deltaPx ->
+                        transientLayout = transientLayout.withDirectEditWidth(
+                            transientLayout.widthRatio + deltaPx / geometry.videoRect.width,
+                        )
+                    },
+                    onCommit = { onWidthCommitted(cue.id, transientLayout.widthRatio) },
+                )
+                DirectEditFontSizeHandle(
+                    modifier = Modifier.align(Alignment.BottomEnd).offset(24.dp, 24.dp),
+                    onDrag = { deltaPx ->
+                        transientFontSizeRatio = canonicalCaptionFontSizeRatio(
+                            transientFontSizeRatio + deltaPx / geometry.videoRect.height,
+                        )
+                    },
+                    onCommit = { onFontSizeCommitted(cue.id, transientFontSizeRatio) },
                 )
             }
-            if (cue.chinese.isNotBlank()) {
-                CaptionOutlinedText(
-                    modifier = Modifier.fillMaxWidth(),
-                    plan = chinesePlan ?: error("Chinese paint plan missing"),
-                )
-            }
+        }
+    }
+}
+
+private val DirectEditTouchTarget = 48.dp
+
+@Composable
+private fun DirectEditDeleteHandle(
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(DirectEditTouchTarget)
+            .semantics { contentDescription = "删除当前字幕" }
+            .clickable(onClick = onDelete),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(12.dp)).background(Color.White),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("×", color = Color.Black, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun DirectEditWidthHandle(
+    onDrag: (Float) -> Unit,
+    onCommit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(DirectEditTouchTarget)
+            .semantics { contentDescription = "左右拉伸字幕宽度" }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = onCommit,
+                    onDragCancel = {},
+                ) { change, amount ->
+                    change.consume()
+                    onDrag(amount.x)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.width(4.dp).height(24.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+    }
+}
+
+@Composable
+private fun DirectEditFontSizeHandle(
+    onDrag: (Float) -> Unit,
+    onCommit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(DirectEditTouchTarget)
+            .semantics { contentDescription = "缩放字幕字号" }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = onCommit,
+                    onDragCancel = {},
+                ) { change, amount ->
+                    change.consume()
+                    onDrag((amount.x - amount.y) * 0.5f)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(14.dp)).background(Color.White),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("↘", color = Color.Black, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1569,6 +1782,7 @@ private fun CaptionOutlinedText(
     val stroke = plan.stroke
     val fill = plan.fill
     val density = LocalDensity.current
+    var textLayout by remember(plan) { mutableStateOf<TextLayoutResult?>(null) }
     val fontSize = CaptionRenderResolver.physicalPixelsToSp(
         physicalPixels = stroke.fontSizePx,
         density = density.density,
@@ -1581,7 +1795,25 @@ private fun CaptionOutlinedText(
         fontStyle = if (stroke.italic) FontStyle.Italic else FontStyle.Normal,
         textAlign = stroke.alignment.toTextAlign(),
     )
-    Box(modifier = modifier) {
+    val backgroundModifier = plan.background?.let { background ->
+        Modifier.drawBehind {
+            val result = textLayout ?: return@drawBehind
+            val color = parseComposeColor(background.colorHex, Color.Black)
+            val padding = background.boxPaddingPx.toFloat()
+            repeat(result.lineCount) { lineIndex ->
+                val left = result.getLineLeft(lineIndex) - padding
+                val right = result.getLineRight(lineIndex) + padding
+                val top = result.getLineTop(lineIndex) - padding
+                val bottom = result.getLineBottom(lineIndex) + padding
+                drawRect(
+                    color = color,
+                    topLeft = Offset(left, top),
+                    size = Size((right - left).coerceAtLeast(0f), (bottom - top).coerceAtLeast(0f)),
+                )
+            }
+        }
+    } ?: Modifier
+    Box(modifier = modifier.then(backgroundModifier)) {
         if (stroke.outlineWidthPx > 0) {
             Text(
                 modifier = Modifier.fillMaxWidth(),
@@ -1598,6 +1830,7 @@ private fun CaptionOutlinedText(
             color = parseComposeColor(fill.colorHex, Color.White),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            onTextLayout = { textLayout = it },
             style = baseStyle.copy(drawStyle = Fill),
         )
     }
@@ -1619,6 +1852,194 @@ private fun parseComposeColor(value: String, fallback: Color): Color {
     return runCatching { Color(android.graphics.Color.parseColor(value)) }
         .getOrDefault(fallback)
 }
+
+private enum class DirectEditPanelTab(val label: String) {
+    KEYBOARD("键盘"),
+    STYLE("样式"),
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DirectCaptionEditPanel(
+    cue: CaptionCue?,
+    defaultStyle: DefaultCaptionStyle,
+    enabled: Boolean,
+    onEnglishChanged: (String, String) -> Unit,
+    onChineseChanged: (String, String) -> Unit,
+    onApplyBasicStyle: (String, CaptionBasicStylePreset) -> Unit,
+    onUnifiedColorChanged: (String, String) -> Unit,
+    onAlignmentChanged: (String, CaptionAlignment) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var activeTab by remember { mutableStateOf(DirectEditPanelTab.KEYBOARD) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .imePadding()
+            .semantics { contentDescription = "字幕直接编辑面板" },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DirectEditPanelTab.entries.forEach { tab ->
+                    val isSelected = activeTab == tab
+                    if (isSelected) {
+                        Button(
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            onClick = { activeTab = tab },
+                        ) { Text(tab.label) }
+                    } else {
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            onClick = { activeTab = tab },
+                        ) { Text(tab.label) }
+                    }
+                }
+            }
+            if (cue == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("请先点击视频中的字幕", color = Color(0xFF9EA5B1))
+                }
+            } else if (activeTab == DirectEditPanelTab.KEYBOARD) {
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "编辑英文字幕" },
+                        value = cue.english,
+                        onValueChange = { onEnglishChanged(cue.id, it) },
+                        enabled = enabled,
+                        label = { Text("英文字幕") },
+                        minLines = 1,
+                        maxLines = 3,
+                    )
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "编辑中文字幕" },
+                        value = cue.chinese,
+                        onValueChange = { onChineseChanged(cue.id, it) },
+                        enabled = enabled,
+                        label = { Text("中文字幕") },
+                        minLines = 1,
+                        maxLines = 3,
+                    )
+                    Button(
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .semantics { contentDescription = "完成字幕文字编辑" },
+                        enabled = enabled,
+                        onClick = { keyboardController?.hide() },
+                    ) {
+                        Text("完成")
+                    }
+                }
+            } else {
+                val resolvedStyle = resolveCaptionStyle(defaultStyle, cue.styleOverride)
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    DirectStyleGroupTitle("基础样式")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        directBasicStyles.forEach { (preset, label) ->
+                            OutlinedButton(
+                                modifier = Modifier.heightIn(min = 48.dp)
+                                    .semantics { contentDescription = "应用基础样式:$label" },
+                                enabled = enabled,
+                                onClick = { onApplyBasicStyle(cue.id, preset) },
+                            ) { Text(label) }
+                        }
+                    }
+                    DirectStyleGroupTitle("文字颜色")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        directTextColors.forEach { (hex, label) ->
+                            val selectedColor = resolvedStyle.primaryColorHex.equals(hex, ignoreCase = true) &&
+                                resolvedStyle.secondaryColorHex.equals(hex, ignoreCase = true)
+                            Box(
+                                modifier = Modifier
+                                    .size(DirectEditTouchTarget)
+                                    .semantics { contentDescription = "字幕文字颜色:$label" }
+                                    .clickable(enabled = enabled) { onUnifiedColorChanged(cue.id, hex) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(if (selectedColor) 34.dp else 30.dp)
+                                        .clip(RoundedCornerShape(17.dp))
+                                        .background(parseComposeColor(hex, Color.White))
+                                        .then(if (selectedColor) Modifier.border(2.dp, Color(0xFFB7F36B), RoundedCornerShape(17.dp)) else Modifier),
+                                )
+                            }
+                        }
+                    }
+                    DirectStyleGroupTitle("对齐方式")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            CaptionAlignment.LEFT to "左对齐",
+                            CaptionAlignment.CENTER to "居中对齐",
+                            CaptionAlignment.RIGHT to "右对齐",
+                        ).forEach { (alignment, label) ->
+                            val isSelected = resolvedStyle.alignment == alignment
+                            if (isSelected) {
+                                Button(
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                        .semantics { contentDescription = label },
+                                    enabled = enabled,
+                                    onClick = { onAlignmentChanged(cue.id, alignment) },
+                                ) { Text(label.take(1)) }
+                            } else {
+                                OutlinedButton(
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                        .semantics { contentDescription = label },
+                                    enabled = enabled,
+                                    onClick = { onAlignmentChanged(cue.id, alignment) },
+                                ) { Text(label.take(1)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectStyleGroupTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+}
+
+private val directBasicStyles = listOf(
+    CaptionBasicStylePreset.PLAIN_TEXT to "纯文字",
+    CaptionBasicStylePreset.DARK_OUTLINE to "黑描边",
+    CaptionBasicStylePreset.LIGHT_OUTLINE to "白描边",
+    CaptionBasicStylePreset.LIGHT_BACKGROUND to "浅色底",
+    CaptionBasicStylePreset.DARK_BACKGROUND to "深色底",
+    CaptionBasicStylePreset.GRAY_BACKGROUND to "灰色底",
+)
+
+private val directTextColors = listOf(
+    "#FFFFFF" to "白色",
+    "#000000" to "黑色",
+    "#EF4444" to "红色",
+    "#FB923C" to "橙色",
+    "#FACC15" to "黄色",
+    "#6CCB5F" to "绿色",
+    "#5EC9B8" to "青色",
+    "#3B82F6" to "蓝色",
+)
 
 @Composable
 private fun CaptionList(

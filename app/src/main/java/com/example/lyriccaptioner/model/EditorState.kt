@@ -7,6 +7,7 @@ data class EditorState(
     val videoUri: Uri? = null,
     val videoDurationMs: Long? = null,
     val mediaState: MediaState = MediaState.NONE,
+    val mediaRevision: Long = 0L,
     val requiresVideoAssociation: Boolean = false,
     val captions: List<CaptionCue> = emptyList(),
     val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
@@ -17,12 +18,19 @@ data class EditorState(
     val exportProfile: ExportProfile = ExportProfile(),
     val isWorking: Boolean = false,
     val asrRunning: Boolean = false,
-    val translationRunning: Boolean = false,
     val enhancementRunning: Boolean = false,
     val status: String = "Import a video up to 5 minutes to start.",
     val exportUri: Uri? = null,
-    val pendingSidecarSrt: String? = null,
+    val exportState: ExportState = ExportState.IDLE,
 )
+
+enum class ExportState {
+    IDLE,
+    RUNNING,
+    SUCCEEDED,
+    FAILED,
+    CANCELLED,
+}
 
 enum class MediaState {
     NONE,
