@@ -271,10 +271,9 @@ fun EditorScreen(viewModel: MainViewModel) {
                         }
                         ActionRow {
                             ActionButton(
-                                icon = "AI",
+                                icon = "✦",
                                 label = "AI 增强字幕",
-                                enabled = state.captions.isNotEmpty() && !state.isWorking &&
-                                    deepSeekKeyUi.state == DeepSeekKeyState.CONFIGURED,
+                                enabled = state.captions.isNotEmpty() && !state.isWorking,
                                 primary = true,
                                 accessibilityId = "enhance_captions",
                                 onClick = viewModel::enhanceCaptions,

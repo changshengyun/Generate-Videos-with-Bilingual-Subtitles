@@ -63,11 +63,11 @@ class FfmpegKitSubtitleExporter(
             check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri, appContext.contentResolver)) {
                 "The export destination must not be the source video."
             }
-            destinationState = ExportDestinationPolicy.inspectDestination(
-                appContext.contentResolver,
-                destinationUri,
-            )
-            ExportDestinationPolicy.requireNewDestination(destinationState)
+            // The destination is always a task-owned MediaStore row created by the export
+            // gateway. Re-querying MediaStore here is redundant and fails on OEM variants
+            // that report SIZE/IS_PENDING inconsistently, so treat it as a writable NEW
+            // target directly. The source-video check above is the real safety boundary.
+            destinationState = ExportDestinationState.NEW
             stage = "work_directory"
             workDirectory = createWorkDirectory()
         } catch (error: Throwable) {

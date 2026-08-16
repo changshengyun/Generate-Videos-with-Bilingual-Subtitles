@@ -418,6 +418,12 @@ class MainViewModel(
             return
         }
         if (enhancementJob?.isActive == true || snapshot.isWorking) return
+        // Without a configured DeepSeek key, apply local OPUS-MT translation directly so the
+        // enhancement entry point remains usable offline instead of staying disabled.
+        if (deepSeekKeyUi.value.state != DeepSeekKeyState.CONFIGURED) {
+            enhanceWithLocalTranslation(snapshot)
+            return
+        }
         val jobId = "caption-${elapsedRealtimeMs()}"
         enhancementJob = viewModelScope.launch {
             mutableState.update {
@@ -507,6 +513,65 @@ class MainViewModel(
 
     fun cancelEnhancement() {
         if (enhancementJob?.isActive == true) enhancementJob?.cancel()
+    }
+
+    /** Offline enhancement path: translate missing Chinese with the bundled OPUS-MT model. */
+    private fun enhanceWithLocalTranslation(snapshot: EditorState) {
+        enhancementJob = viewModelScope.launch {
+            mutableState.update {
+                it.copy(
+                    isWorking = true,
+                    enhancementRunning = true,
+                    status = "Applying local Chinese translation...",
+                    captionProcessing = it.captionProcessing.copy(
+                        state = CaptionEnhancementState.LOCAL_FALLBACK_APPLIED,
+                        lastErrorKind = null,
+                    ),
+                )
+            }
+            try {
+                val result = translationModule.translateMissingChinese(snapshot.captions)
+                mutableState.update { current ->
+                    if (current.captions != snapshot.captions) {
+                        current.copy(
+                            isWorking = false,
+                            enhancementRunning = false,
+                            status = "Enhancement was not applied because captions changed. Retry.",
+                        )
+                    } else {
+                        DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
+                            isWorking = false,
+                            enhancementRunning = false,
+                            captions = result.captions,
+                            captionProcessing = com.example.lyriccaptioner.model.CaptionProcessingSnapshot(
+                                state = CaptionEnhancementState.LOCAL_FALLBACK_APPLIED,
+                                source = CaptionResultSource.LOCAL_FALLBACK,
+                            ),
+                            status = "Applied local translation to ${result.translatedCount} captions.",
+                        ))
+                    }
+                }
+            } catch (_: CancellationException) {
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        enhancementRunning = false,
+                        status = "Caption enhancement cancelled. No changes were applied.",
+                    )
+                }
+            } catch (error: Throwable) {
+                Log.e(LOG_TAG, "event=local_enhancement_failed errorType=${error.javaClass.simpleName}")
+                mutableState.update {
+                    it.copy(
+                        isWorking = false,
+                        enhancementRunning = false,
+                        status = "Local translation failed. Retry.",
+                    )
+                }
+            } finally {
+                enhancementJob = null
+            }
+        }
     }
 
     fun generateCaptions() {
