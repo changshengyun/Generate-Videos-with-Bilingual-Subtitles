@@ -99,11 +99,14 @@ object ExportDestinationPolicy {
                 ExportDestinationState.NEW
             } else {
                 val sizeColumn = cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
-                val pendingColumn = cursor.getColumnIndex(MediaStore.Video.Media.IS_PENDING)
-                if (sizeColumn < 0 || pendingColumn < 0) return@use ExportDestinationState.UNKNOWN
+                if (sizeColumn < 0) return@use ExportDestinationState.UNKNOWN
                 val sizeBytes = sizeColumn.takeIf { !cursor.isNull(it) }
                     ?.let { index -> cursor.getLong(index) }
-                val isPending = pendingColumn.takeIf { !cursor.isNull(it) }
+                // IS_PENDING is not reliably queryable on every OEM MediaStore. Treat a
+                // missing/null column as "unknown pending" and fall back to the size signal,
+                // which is the only field that proves pre-existing user content.
+                val pendingColumn = cursor.getColumnIndex(MediaStore.Video.Media.IS_PENDING)
+                val isPending = pendingColumn.takeIf { it >= 0 && !cursor.isNull(it) }
                     ?.let { index -> cursor.getInt(index) }
                 classifyMediaStoreQuery(true, sizeBytes, isPending)
             }
@@ -132,7 +135,8 @@ object ExportDestinationPolicy {
     ): ExportDestinationState = when {
         hasRow == null -> ExportDestinationState.UNKNOWN
         !hasRow -> ExportDestinationState.NEW
-        isPending == 1 && (sizeBytes == null || sizeBytes == 0L) -> ExportDestinationState.NEW
+        isPending == 1 -> ExportDestinationState.NEW
+        sizeBytes == null || sizeBytes == 0L -> ExportDestinationState.NEW
         else -> ExportDestinationState.EXISTING
     }
 

@@ -80,7 +80,7 @@ class ExportDestinationPolicyTest {
     }
 
     @Test
-    fun pendingEmptyMediaStoreRowIsTaskOwned() {
+    fun pendingMediaStoreRowIsAlwaysTaskOwned() {
         assertEquals(
             ExportDestinationState.NEW,
             ExportDestinationPolicy.classifyMediaStoreQuery(true, null, 1),
@@ -89,17 +89,21 @@ class ExportDestinationPolicyTest {
             ExportDestinationState.NEW,
             ExportDestinationPolicy.classifyMediaStoreQuery(true, 0L, 1),
         )
+        assertEquals(
+            ExportDestinationState.NEW,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, 17L, 1),
+        )
     }
 
     @Test
-    fun pendingPopulatedOrPublishedMediaStoreRowIsExisting() {
+    fun publishedEmptyOrUnknownSizeRowIsWritableButPopulatedRowIsExisting() {
         assertEquals(
-            ExportDestinationState.EXISTING,
-            ExportDestinationPolicy.classifyMediaStoreQuery(true, 17L, 1),
+            ExportDestinationState.NEW,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, null, 0),
         )
         assertEquals(
-            ExportDestinationState.EXISTING,
-            ExportDestinationPolicy.classifyMediaStoreQuery(true, null, 0),
+            ExportDestinationState.NEW,
+            ExportDestinationPolicy.classifyMediaStoreQuery(true, 0L, 0),
         )
         assertEquals(
             ExportDestinationState.EXISTING,
