@@ -51,3 +51,6 @@ docs-BK/
 
 # Local translation model (restore separately)
 tools/opus-mt-en-zh/
+
+# Local APK distribution folder
+dist/
