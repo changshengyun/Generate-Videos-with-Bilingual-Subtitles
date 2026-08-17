@@ -1,0 +1,14 @@
+[
+  {
+    "cue_id": "cue-001",
+    "start": "00:00:01,000",
+    "end": "00:00:04,000",
+    "english": "I walk alone beneath the city lights"
+  },
+  {
+    "cue_id": "cue-002",
+    "start": "00:00:04,000",
+    "end": "00:00:07,000",
+    "english": "And carry all the dreams I left behind"
+  }
+]

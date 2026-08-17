@@ -3,6 +3,6 @@ package com.example.lyriccaptioner.model
 object DerivedOutputPolicy {
     fun invalidateDerivedOutputs(state: EditorState): EditorState = state.copy(
         exportUri = null,
-        pendingSidecarSrt = null,
+        exportState = ExportState.IDLE,
     )
 }

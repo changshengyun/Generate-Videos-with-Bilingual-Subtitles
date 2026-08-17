@@ -1,23 +1,16 @@
 package com.example.lyriccaptioner.processing
 
 import com.example.lyriccaptioner.model.CaptionCue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 class WhisperLocalSpeechRecognizer(
     private val modelPath: String,
-    private val bridge: WhisperNativeClient = WhisperNativeBridge,
+    private val sessionRuntime: WhisperSessionRuntime,
 ) : LocalSpeechRecognizer {
-    override suspend fun recognize(audio: ExtractedAudio): List<CaptionCue> = withContext(Dispatchers.Default) {
-        if (!bridge.isAvailable) {
-            throw WhisperJniUnavailableException(
-                "Whisper native library is not available. Build with enableWhisperNative before using local ASR.",
-            )
-        }
+    override suspend fun recognize(audio: ExtractedAudio): List<CaptionCue> {
         val audioPath = requireNotNull(audio.filePath) {
             "Whisper requires extracted audio as a readable local file path, not a content URI."
         }
-        bridge.transcribe(
+        return sessionRuntime.transcribe(
             modelPath = modelPath,
             audioPath = audioPath,
             sampleRate = audio.sampleRate,
@@ -26,15 +19,8 @@ class WhisperLocalSpeechRecognizer(
     }
 }
 
-interface WhisperNativeClient {
-    val isAvailable: Boolean
-
-    fun transcribe(
-        modelPath: String,
-        audioPath: String,
-        sampleRate: Int,
-        channels: Int,
-    ): List<WhisperSegment>
+fun interface WhisperCancellationToken {
+    fun isCancelled(): Boolean
 }
 
 data class WhisperSegment(
@@ -44,31 +30,6 @@ data class WhisperSegment(
     val confidence: Float,
 )
 
-object WhisperNativeBridge : WhisperNativeClient {
-    override val isAvailable: Boolean
-
-    init {
-        isAvailable = runCatching {
-            System.loadLibrary("lyriccaptioner_whisper")
-        }.isSuccess
-    }
-
-    override fun transcribe(
-        modelPath: String,
-        audioPath: String,
-        sampleRate: Int,
-        channels: Int,
-    ): List<WhisperSegment> {
-        return nativeTranscribe(modelPath, audioPath, sampleRate, channels).toList()
-    }
-
-    private external fun nativeTranscribe(
-        modelPath: String,
-        audioPath: String,
-        sampleRate: Int,
-        channels: Int,
-    ): Array<WhisperSegment>
-}
 
 class WhisperJniUnavailableException(message: String) : IllegalStateException(message)
 

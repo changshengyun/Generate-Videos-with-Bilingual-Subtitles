@@ -25,8 +25,16 @@ class VideoImportPolicyTest {
         selectedCaptionId = existingCue.id,
         exportProfile = ExportProfile(subtitleStyle = SubtitleStyle(fontSizeSp = 30)),
         exportUri = TestUri("old-export"),
-        pendingSidecarSrt = "old-sidecar",
+        exportState = ExportState.SUCCEEDED,
     )
+
+    @Test
+    fun durationMustBeKnownPositiveAndWithinFiveMinutes() {
+        assertTrue(VideoImportPolicy.isDurationAllowed(1L, 5 * 60 * 1_000L))
+        assertTrue(!VideoImportPolicy.isDurationAllowed(null, 5 * 60 * 1_000L))
+        assertTrue(!VideoImportPolicy.isDurationAllowed(0L, 5 * 60 * 1_000L))
+        assertTrue(!VideoImportPolicy.isDurationAllowed(5 * 60 * 1_000L + 1L, 5 * 60 * 1_000L))
+    }
 
     @Test
     fun newVideoClearsPreviousCaptionsAndDerivedOutputs() {
@@ -43,7 +51,7 @@ class VideoImportPolicyTest {
         assertTrue(result.captions.isEmpty())
         assertNull(result.selectedCaptionId)
         assertNull(result.exportUri)
-        assertNull(result.pendingSidecarSrt)
+        assertEquals(ExportState.IDLE, result.exportState)
     }
 
     @Test
@@ -62,6 +70,28 @@ class VideoImportPolicyTest {
         assertEquals(30, result.exportProfile.subtitleStyle.fontSizeSp)
         assertTrue(result.captions.single().confirmed)
         assertNull(result.exportUri)
-        assertNull(result.pendingSidecarSrt)
+        assertEquals(ExportState.IDLE, result.exportState)
+        assertTrue(!result.requiresVideoAssociation)
+    }
+
+    @Test
+    fun successfulAssociationClearsExplicitPendingVideoAssociation() {
+        val pending = existingState().copy(
+            videoUri = null,
+            mediaState = MediaState.NONE,
+            requiresVideoAssociation = true,
+        )
+
+        val result = VideoImportPolicy.apply(
+            current = pending,
+            uri = TestUri("associated-video"),
+            durationMs = 2_000L,
+            mediaState = MediaState.PERSISTED,
+            mode = VideoImportMode.RELINK,
+            status = "relinked",
+        )
+
+        assertTrue(!result.requiresVideoAssociation)
+        assertEquals(listOf(existingCue), result.captions)
     }
 }

@@ -7,17 +7,30 @@ data class EditorState(
     val videoUri: Uri? = null,
     val videoDurationMs: Long? = null,
     val mediaState: MediaState = MediaState.NONE,
+    val mediaRevision: Long = 0L,
+    val requiresVideoAssociation: Boolean = false,
     val captions: List<CaptionCue> = emptyList(),
+    val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
     val selectedCaptionId: String? = null,
+    val captionLayout: CaptionLayout = CaptionLayout(),
+    val defaultCaptionStyle: DefaultCaptionStyle = DefaultCaptionStyle(),
     val modelState: ModelState = ModelState(),
     val exportProfile: ExportProfile = ExportProfile(),
     val isWorking: Boolean = false,
     val asrRunning: Boolean = false,
-    val translationRunning: Boolean = false,
+    val enhancementRunning: Boolean = false,
     val status: String = "Import a video up to 5 minutes to start.",
     val exportUri: Uri? = null,
-    val pendingSidecarSrt: String? = null,
+    val exportState: ExportState = ExportState.IDLE,
 )
+
+enum class ExportState {
+    IDLE,
+    RUNNING,
+    SUCCEEDED,
+    FAILED,
+    CANCELLED,
+}
 
 enum class MediaState {
     NONE,
@@ -33,6 +46,6 @@ data class ModelState(
     val speechNativeLibraryReady: Boolean = false,
     val speechRuntimeDetail: String = "Checking local speech runtime...",
     val speechMode: SpeechMode = SpeechMode.UNAVAILABLE,
-    val translationModelState: TranslationModelState = TranslationModelState.NEEDS_DOWNLOAD,
+    val translationModelState: TranslationModelState = TranslationModelState.NEEDS_INSTALL,
     val maxVideoDurationMs: Long = 5 * 60 * 1_000L,
 )

@@ -71,6 +71,31 @@ captions=
     }
 
     @Test
+    fun legacyV2ArchiveDefaultsFontFamilyAndSanitizesStyleBounds() {
+        val raw = archive.write(
+            ProjectSnapshot(
+                videoUri = null,
+                videoDurationMs = null,
+                captions = emptyList(),
+                exportProfile = ExportProfile(
+                    subtitleStyle = SubtitleStyle(
+                        fontSizeSp = 100,
+                        bottomMarginPercent = 0,
+                        primaryColorHex = "not-a-color",
+                        fontFamily = "unknown",
+                    ),
+                ),
+            ),
+        )
+        val restored = archive.read(raw)
+
+        assertEquals(48, restored.exportProfile.subtitleStyle.fontSizeSp)
+        assertEquals(4, restored.exportProfile.subtitleStyle.bottomMarginPercent)
+        assertEquals("sans", restored.exportProfile.subtitleStyle.fontFamily)
+        assertEquals("#FFFFFF", restored.exportProfile.subtitleStyle.primaryColorHex)
+    }
+
+    @Test
     fun emptySubtitleProjectRoundTripsWithoutInventingCues() {
         val snapshot = ProjectSnapshot(null, null, emptyList(), ExportProfile())
 
@@ -130,6 +155,7 @@ captions=
                 primaryColorHex = "#12ABEF",
                 secondaryColorHex = "#F4E7A1",
                 outlineColorHex = "#010203",
+                fontFamily = "serif",
             ),
             burnInSubtitles = true,
         ),

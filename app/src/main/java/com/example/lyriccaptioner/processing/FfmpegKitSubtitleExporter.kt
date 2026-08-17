@@ -5,7 +5,6 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegKitConfig
@@ -14,15 +13,31 @@ import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.Level
 import com.arthenica.ffmpegkit.LogCallback
 import com.arthenica.ffmpegkit.ReturnCode
+import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionGeometry
+import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionVerticalAnchor
+import com.example.lyriccaptioner.model.DefaultCaptionStyle
+import com.example.lyriccaptioner.model.PreviewContainerSize
+import com.example.lyriccaptioner.model.SourceVideoSize
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.toCaptionLayout
+import com.example.lyriccaptioner.model.toDefaultCaptionStyle
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 /**
  * Dual-ABI product exporter backed by the checked-in FFmpegKit AAR.
@@ -38,29 +53,65 @@ class FfmpegKitSubtitleExporter(
         destinationUri: Uri,
     ): ExportResult = withContext(Dispatchers.IO) {
         Log.i(LOG_TAG, "event=ffmpegkit_export_started captionCount=${project.captions.size}")
-        require(project.captions.isNotEmpty()) { "At least one subtitle cue is required." }
-        require(project.exportProfile.burnInSubtitles) { "Burn-in subtitles are disabled." }
-
-        val workDirectory = createWorkDirectory()
-        val inputFile = File(workDirectory, "input.mp4")
-        val assFile = File(workDirectory, "captions.ass")
-        val outputFile = File(workDirectory, "output.mp4")
+        var stage = "validation"
+        var workDirectory: File? = null
+        val destinationState: ExportDestinationState
         try {
+            require(project.captions.isNotEmpty()) { "At least one subtitle cue is required." }
+            require(project.exportProfile.burnInSubtitles) { "Burn-in subtitles are disabled." }
+            stage = "ownership"
+            check(!ExportDestinationPolicy.isSameDocument(project.videoUri, destinationUri, appContext.contentResolver)) {
+                "The export destination must not be the source video."
+            }
+            // The destination is always a task-owned MediaStore row created by the export
+            // gateway. Re-querying MediaStore here is redundant and fails on OEM variants
+            // that report SIZE/IS_PENDING inconsistently, so treat it as a writable NEW
+            // target directly. The source-video check above is the real safety boundary.
+            destinationState = ExportDestinationState.NEW
+            stage = "work_directory"
+            workDirectory = createWorkDirectory()
+        } catch (error: Throwable) {
+            workDirectory?.deleteRecursively()
+            logPreSessionFailure(stage, error)
+            throw error
+        }
+
+        val activeWorkDirectory = checkNotNull(workDirectory)
+        val inputFile = File(activeWorkDirectory, "input.mp4")
+        val assFile = File(activeWorkDirectory, "captions.ass")
+        val outputFile = File(activeWorkDirectory, "output.mp4")
+        try {
+            stage = "source_copy"
             copyUriToFile(project.videoUri, inputFile)
+            stage = "ass_write"
             assFile.writeText(
-                AssSubtitleWriter.write(project.captions, project.exportProfile.subtitleStyle),
+                AssSubtitleWriter.write(
+                    captions = project.captions,
+                    layout = project.captionLayout,
+                    defaultStyle = project.defaultCaptionStyle,
+                ),
                 Charsets.UTF_8,
             )
+            stage = "font_config"
             FFmpegKitConfig.setFontDirectory(appContext, "/system/fonts", emptyMap())
-            runFfmpeg(inputFile, assFile, outputFile, destinationUri)
+            Log.i(LOG_TAG, "event=ffmpegkit_pre_session_completed stage=font_config")
         } catch (error: Throwable) {
-            // Failures before FFmpegKit owns the session (for example an empty input URI)
-            // must also remove the SAF destination created by the save picker.
-            deleteDestination(destinationUri)
+            logPreSessionFailure(stage, error)
             throw error
-        } finally {
-            workDirectory.deleteRecursively()
         }
+        try {
+            runFfmpeg(inputFile, assFile, outputFile, destinationUri, destinationState)
+        } finally {
+            activeWorkDirectory.deleteRecursively()
+        }
+    }
+
+    private fun logPreSessionFailure(stage: String, error: Throwable) {
+        Log.e(
+            LOG_TAG,
+            "event=ffmpegkit_pre_session_failed stage=$stage " +
+                "errorType=${error.javaClass.simpleName} reasonCode=PRE_SESSION_EXCEPTION",
+        )
     }
 
     private suspend fun runFfmpeg(
@@ -68,47 +119,59 @@ class FfmpegKitSubtitleExporter(
         assFile: File,
         outputFile: File,
         destinationUri: Uri,
+        destinationState: ExportDestinationState,
     ): ExportResult = suspendCancellableCoroutine { continuation ->
-        val completed = AtomicBoolean(false)
+        val terminal = AtomicBoolean(false)
         val cancelled = AtomicBoolean(false)
         var session: FFmpegSession? = null
-
-        fun cleanup(deleteDestination: Boolean) {
-            outputFile.delete()
-            assFile.delete()
-            inputFile.delete()
-            if (deleteDestination) {
-                deleteDestination(destinationUri)
-            }
-        }
+        var copyJob: Job? = null
 
         fun fail(error: Throwable) {
-            if (completed.compareAndSet(false, true)) {
-                cleanup(deleteDestination = true)
+            if (terminal.compareAndSet(false, true)) {
+                if (destinationState == ExportDestinationState.NEW) {
+                    deleteOwnedDestination(destinationUri)
+                }
                 if (continuation.isActive) continuation.resumeWithException(error)
             }
         }
 
         val callback = FFmpegSessionCompleteCallback { finishedSession ->
-            if (!completed.compareAndSet(false, true)) return@FFmpegSessionCompleteCallback
+            if (terminal.get() || cancelled.get()) return@FFmpegSessionCompleteCallback
             if (ReturnCode.isSuccess(finishedSession.returnCode)) {
                 Log.i(
                     LOG_TAG,
-                    "event=ffmpegkit_export_completed returnCode=${finishedSession.returnCode?.getValue()}",
+                    "event=ffmpegkit_render_completed returnCode=${finishedSession.returnCode?.getValue()}",
                 )
-                runCatching {
-                    val inspected = inspectOutput(outputFile)
-                    copyFileToUri(outputFile, destinationUri, inspected.fileSizeBytes)
-                    inspected.copy(outputUri = destinationUri)
-                }.onSuccess { result ->
-                    cleanup(deleteDestination = false)
-                    if (continuation.isActive) continuation.resume(result)
-                }.onFailure { error ->
-                    cleanup(deleteDestination = true)
-                    if (continuation.isActive) continuation.resumeWithException(error)
+                copyJob = CoroutineScope(continuation.context + Dispatchers.IO).launch {
+                    try {
+                        ensureActive()
+                        val inspected = inspectOutput(outputFile)
+                        copyFileToUri(
+                            outputFile,
+                            destinationUri,
+                            inspected.fileSizeBytes,
+                            ownsDestination = destinationState == ExportDestinationState.NEW,
+                        )
+                        ensureActive()
+                        if (terminal.compareAndSet(false, true) && continuation.isActive && !cancelled.get()) {
+                            Log.i(LOG_TAG, "event=ffmpegkit_target_copy_completed bytes=${inspected.fileSizeBytes}")
+                            continuation.resume(inspected.copy(outputUri = destinationUri))
+                        } else if (destinationState == ExportDestinationState.NEW) {
+                            // Cancellation can race with the final resume after the
+                            // destination has been fully copied. It is still owned by
+                            // this task until the result is delivered.
+                            deleteOwnedDestination(destinationUri)
+                        }
+                    } catch (error: Throwable) {
+                        if (destinationState == ExportDestinationState.NEW) {
+                            deleteOwnedDestination(destinationUri)
+                        }
+                        if (terminal.compareAndSet(false, true) && continuation.isActive) {
+                            continuation.resumeWithException(error)
+                        }
+                    }
                 }
             } else {
-                cleanup(deleteDestination = true)
                 val returnCode = finishedSession.returnCode?.getValue()
                 Log.e(LOG_TAG, "event=ffmpegkit_export_failed returnCode=$returnCode")
                 logErrorText("ffmpegkit_all_logs", finishedSession.allLogsAsString)
@@ -118,15 +181,17 @@ class FfmpegKitSubtitleExporter(
                 } else {
                     "FFmpeg export failed (returnCode=$returnCode)."
                 }
-                if (continuation.isActive) continuation.resumeWithException(IllegalStateException(reason))
+                fail(IllegalStateException(reason))
             }
         }
 
         continuation.invokeOnCancellation {
             cancelled.set(true)
-            if (completed.compareAndSet(false, true)) {
-                session?.let { FFmpegKit.cancel(it.sessionId) }
-                cleanup(deleteDestination = true)
+            terminal.set(true)
+            copyJob?.cancel()
+            session?.let { FFmpegKit.cancel(it.sessionId) }
+            if (destinationState == ExportDestinationState.NEW) {
+                deleteOwnedDestination(destinationUri)
             }
         }
 
@@ -171,8 +236,16 @@ class FfmpegKitSubtitleExporter(
                 },
                 null,
             )
+            Log.i(LOG_TAG, "event=ffmpegkit_session_submitted")
             if (cancelled.get()) session?.let { FFmpegKit.cancel(it.sessionId) }
-        }.onFailure(::fail)
+        }.onFailure { error ->
+            Log.e(
+                LOG_TAG,
+                "event=ffmpegkit_session_submit_failed " +
+                    "errorType=${error.javaClass.simpleName} reasonCode=SESSION_SUBMIT_EXCEPTION",
+            )
+            fail(error)
+        }
     }
 
     private fun createWorkDirectory(): File {
@@ -183,32 +256,58 @@ class FfmpegKitSubtitleExporter(
         }
     }
 
-    private fun deleteDestination(destinationUri: Uri) {
-        val deletedByDocumentApi = runCatching {
-            DocumentsContract.deleteDocument(appContext.contentResolver, destinationUri)
-        }.getOrDefault(false)
-        if (!deletedByDocumentApi) {
-            runCatching { appContext.contentResolver.delete(destinationUri, null, null) }
-        }
-    }
-
-    private fun copyUriToFile(sourceUri: Uri, targetFile: File) {
+    private suspend fun copyUriToFile(sourceUri: Uri, targetFile: File) {
+        coroutineContext.ensureActive()
         val input = appContext.contentResolver.openInputStream(sourceUri)
             ?: error("Could not open the selected video.")
         input.use { source ->
-            targetFile.outputStream().use { destination -> source.copyTo(destination) }
+            targetFile.outputStream().use { destination ->
+                val buffer = ByteArray(DEFAULT_COPY_BUFFER_SIZE)
+                while (true) {
+                    coroutineContext.ensureActive()
+                    val count = source.read(buffer)
+                    if (count < 0) break
+                    destination.write(buffer, 0, count)
+                }
+            }
         }
         check(targetFile.length() > 0L) { "The selected video is empty." }
     }
 
-    private fun copyFileToUri(sourceFile: File, destinationUri: Uri, expectedBytes: Long) {
+    private suspend fun copyFileToUri(
+        sourceFile: File,
+        destinationUri: Uri,
+        expectedBytes: Long,
+        ownsDestination: Boolean,
+    ) {
+        coroutineContext.ensureActive()
         val output = appContext.contentResolver.openOutputStream(destinationUri, "w")
             ?: error("Could not open the selected output file.")
-        val copiedBytes = output.use { destination ->
-            sourceFile.inputStream().use { source -> source.copyTo(destination) }
+        try {
+            val copiedBytes = output.use { destination ->
+                sourceFile.inputStream().use { source ->
+                    copyStreamCancellable(source, destination)
+                }
+            }
+            coroutineContext.ensureActive()
+            check(copiedBytes == expectedBytes) {
+                "The exported video was not fully written to the selected destination."
+            }
+        } catch (error: Throwable) {
+            if (ownsDestination) {
+                deleteOwnedDestination(destinationUri)
+            }
+            throw error
         }
-        check(copiedBytes == expectedBytes) {
-            "The exported video was not fully written to the selected destination."
+    }
+
+    private fun deleteOwnedDestination(destinationUri: Uri) {
+        runCatching {
+            if (destinationUri.scheme == "file") {
+                File(destinationUri.path.orEmpty()).delete()
+            } else {
+                appContext.contentResolver.delete(destinationUri, null, null)
+            }
         }
     }
 
@@ -263,6 +362,23 @@ class FfmpegKitSubtitleExporter(
         const val LOG_TAG = "FfmpegKitSubtitleExporter"
         const val MAX_LOG_MESSAGE_CHARS = 3_000
         const val MIN_VALID_OUTPUT_BYTES = 1_024L
+        const val DEFAULT_COPY_BUFFER_SIZE = 64 * 1024
+    }
+}
+
+internal suspend fun copyStreamCancellable(
+    source: InputStream,
+    destination: OutputStream,
+): Long {
+    val buffer = ByteArray(64 * 1024)
+    var total = 0L
+    while (true) {
+        coroutineContext.ensureActive()
+        val count = source.read(buffer)
+        if (count < 0) return total
+        coroutineContext.ensureActive()
+        destination.write(buffer, 0, count)
+        total += count
     }
 }
 
@@ -280,36 +396,156 @@ internal fun buildSubtitleFilter(path: String): String = buildString {
 }
 
 internal object AssSubtitleWriter {
-    fun write(captions: List<CaptionCue>, style: SubtitleStyle): String {
-        val marginV = (1080 * style.bottomMarginPercent.coerceIn(0, 40) / 100f).toInt()
-        val fontSize = style.fontSizeSp.coerceIn(14, 96)
-        val primary = assColor(style.primaryColorHex, "FFFFFF")
-        val secondary = assColor(style.secondaryColorHex, "F4E7A1")
-        val outline = assColor(style.outlineColorHex, "000000")
+    fun write(
+        captions: List<CaptionCue>,
+        layout: CaptionLayout,
+        defaultStyle: DefaultCaptionStyle,
+    ): String {
+        // Compose preview consumes this same resolved render.  Keep all per-cue style and
+        // placement inheritance above the ASS-specific coordinate conversion boundary.
+        val cues = captions.sortedBy { it.startMs }
+            .mapIndexedNotNull { index, caption ->
+                val spec = CaptionRenderResolver.resolveSpec(
+                    caption = caption,
+                    layout = layout,
+                    defaultStyle = defaultStyle,
+                    source = SourceVideoSize(PLAY_RES_X, PLAY_RES_Y),
+                    container = PreviewContainerSize(PLAY_RES_X, PLAY_RES_Y),
+                )
+                val text = dialogueText(spec)
+                if (text.isEmpty() || spec.caption.endMs <= spec.caption.startMs) {
+                    null
+                } else {
+                    AssCue(
+                        spec = spec,
+                        styleName = "Cue${index.toString().padStart(4, '0')}",
+                        geometry = resolveGeometry(spec.geometry),
+                        text = text,
+                    )
+                }
+            }
         return buildString {
             appendLine("[Script Info]")
             appendLine("ScriptType: v4.00+")
-            appendLine("PlayResX: 1920")
-            appendLine("PlayResY: 1080")
+            appendLine("PlayResX: $PLAY_RES_X")
+            appendLine("PlayResY: $PLAY_RES_Y")
+            appendLine("WrapStyle: 0")
             appendLine("ScaledBorderAndShadow: yes")
             appendLine()
             appendLine("[V4+ Styles]")
             appendLine("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding")
-            appendLine("Style: Default,Arial,$fontSize,$primary,$secondary,$outline,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,$marginV,1")
+            cues.forEach { cue -> appendLine(styleLine(cue)) }
             appendLine()
             appendLine("[Events]")
             appendLine("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text")
-            captions.sortedBy { it.startMs }.forEach { cue ->
-                val english = escapeText(cue.english.trim())
-                val chinese = escapeText(cue.chinese.trim())
-                val text = listOf(english, chinese).filter { it.isNotEmpty() }.joinToString("\\N")
-                if (text.isNotEmpty() && cue.endMs > cue.startMs) {
-                    appendLine(
-                        "Dialogue: 0,${formatAssTime(cue.startMs)},${formatAssTime(cue.endMs)},Default,,0,0,0,,$text",
-                    )
-                }
+            cues.forEach { cue ->
+                val source = cue.spec.caption
+                val geometry = cue.geometry
+                val overrides = "{\\an${geometry.alignment}\\pos(${geometry.positionX},${geometry.positionY})\\q0}"
+                appendLine(
+                    "Dialogue: 0,${formatAssTime(source.startMs)},${formatAssTime(source.endMs)}," +
+                        "${cue.styleName},,${geometry.marginLeft},${geometry.marginRight}," +
+                        "${geometry.marginVertical},,$overrides${cue.text}",
+                )
             }
         }
+    }
+
+    /**
+     * ASS does not apply SecondaryColour to the second line of a Dialogue. Keep the
+     * bilingual cue in one Dialogue for timing/position consistency, but explicitly
+     * switch to the resolved Chinese colour immediately before the Chinese text.
+     * Override tags are scoped to this Dialogue by ASS, so they cannot affect the
+     * English text before the line break or a subsequent Dialogue.
+     */
+    private fun dialogueText(spec: CaptionRenderSpec): String {
+        val english = escapeText(spec.caption.english)
+        val chinese = escapeText(spec.caption.chinese)
+        val chineseWithColor = chinese.takeIf { it.isNotEmpty() }?.let {
+            "{\\c${assColor(spec.style.secondaryColorHex, "F4E7A1")}&}$it"
+        }.orEmpty()
+        return when {
+            english.isNotEmpty() && chineseWithColor.isNotEmpty() -> "$english\\N$chineseWithColor"
+            english.isNotEmpty() -> english
+            else -> chineseWithColor
+        }
+    }
+
+    fun write(captions: List<CaptionCue>, style: SubtitleStyle): String = write(
+        captions = captions,
+        layout = style.toCaptionLayout(),
+        defaultStyle = style.toDefaultCaptionStyle(),
+    )
+
+    private fun styleLine(cue: AssCue): String {
+        val spec = cue.spec
+        val style = spec.style
+        val geometry = cue.geometry
+        val primary = assColor(style.primaryColorHex, "FFFFFF")
+        val secondary = assColor(style.secondaryColorHex, "F4E7A1")
+        val outline = assColor(style.outlineColorHex, "000000")
+        val back = if (style.backgroundEnabled) {
+            assColor(style.backgroundColorHex, "000000")
+        } else {
+            LEGACY_ASS_BACK_COLOR
+        }
+        val borderStyle = if (style.backgroundEnabled) ASS_OPAQUE_BOX_BORDER_STYLE else ASS_OUTLINE_BORDER_STYLE
+        val bold = if (style.bold) -1 else 0
+        val italic = if (style.italic) -1 else 0
+        return "Style: ${cue.styleName},${assFontName(style.fontFamily)},${spec.fontSizePx}," +
+            "$primary,$secondary,$outline,$back,$bold,$italic,0,0,100,100,0,0,$borderStyle," +
+            "${spec.outlineWidthPx},0," +
+            "${geometry.alignment},${geometry.marginLeft},${geometry.marginRight}," +
+            "${geometry.marginVertical},1"
+    }
+
+    /**
+     * ASS uses a fixed 1920x1080 PlayRes. Resolve through the same effective
+     * video rectangle model as Compose with an equal virtual source/container;
+     * this keeps normalized cue placement and anchor semantics shared while
+     * leaving ASS-specific alignment/margin encoding at this boundary.
+     */
+    private fun resolveGeometry(resolved: CaptionGeometry): AssGeometry {
+        val left = resolved.textBoxLeftPx
+        val right = (resolved.videoRect.right -
+            (resolved.textBoxLeftPx + resolved.textBoxWidthPx)).coerceIn(0, PLAY_RES_X)
+        val positionX = resolved.anchorXpx.coerceIn(0, PLAY_RES_X)
+        val positionY = resolved.anchorYpx.coerceIn(0, PLAY_RES_Y)
+        val verticalBand = when (resolved.anchor) {
+            CaptionVerticalAnchor.TOP -> VerticalBand.TOP
+            CaptionVerticalAnchor.MIDDLE -> VerticalBand.MIDDLE
+            CaptionVerticalAnchor.BOTTOM -> VerticalBand.BOTTOM
+        }
+        val assAlignment = when (verticalBand) {
+            VerticalBand.TOP -> when (resolved.alignment) {
+                CaptionAlignment.LEFT -> 7
+                CaptionAlignment.CENTER -> 8
+                CaptionAlignment.RIGHT -> 9
+            }
+            VerticalBand.MIDDLE -> when (resolved.alignment) {
+                CaptionAlignment.LEFT -> 4
+                CaptionAlignment.CENTER -> 5
+                CaptionAlignment.RIGHT -> 6
+            }
+            VerticalBand.BOTTOM -> when (resolved.alignment) {
+                CaptionAlignment.LEFT -> 1
+                CaptionAlignment.CENTER -> 2
+                CaptionAlignment.RIGHT -> 3
+            }
+        }
+        val marginVertical = when (verticalBand) {
+            VerticalBand.TOP -> positionY
+            VerticalBand.MIDDLE -> minOf(positionY, PLAY_RES_Y - positionY)
+            VerticalBand.BOTTOM -> PLAY_RES_Y - positionY
+        }.coerceIn(0, PLAY_RES_Y)
+        return AssGeometry(
+            alignment = assAlignment,
+            marginLeft = left,
+            marginRight = right,
+            marginVertical = marginVertical,
+            positionX = positionX,
+            positionY = positionY,
+        )
     }
 
     private fun escapeText(value: String): String = value
@@ -324,6 +560,12 @@ internal object AssSubtitleWriter {
         return "&H00${hex.substring(4, 6)}${hex.substring(2, 4)}${hex.substring(0, 2)}"
     }
 
+    private fun assFontName(fontFamily: String): String = when (fontFamily) {
+        "serif" -> "serif"
+        "mono" -> "monospace"
+        else -> "sans-serif"
+    }
+
     private fun formatAssTime(milliseconds: Long): String {
         val totalCentiseconds = (milliseconds.coerceAtLeast(0L) / 10L)
         val centiseconds = totalCentiseconds % 100
@@ -334,4 +576,32 @@ internal object AssSubtitleWriter {
         val hours = totalMinutes / 60
         return "%d:%02d:%02d.%02d".format(hours, minutes, seconds, centiseconds)
     }
+
+    private data class AssCue(
+        val spec: CaptionRenderSpec,
+        val styleName: String,
+        val geometry: AssGeometry,
+        val text: String,
+    )
+
+    private data class AssGeometry(
+        val alignment: Int,
+        val marginLeft: Int,
+        val marginRight: Int,
+        val marginVertical: Int,
+        val positionX: Int,
+        val positionY: Int,
+    )
+
+    private enum class VerticalBand {
+        TOP,
+        MIDDLE,
+        BOTTOM,
+    }
+
+    private const val PLAY_RES_X = 1_920
+    private const val PLAY_RES_Y = 1_080
+    private const val ASS_OUTLINE_BORDER_STYLE = 1
+    private const val ASS_OPAQUE_BOX_BORDER_STYLE = 3
+    private const val LEGACY_ASS_BACK_COLOR = "&H80000000"
 }

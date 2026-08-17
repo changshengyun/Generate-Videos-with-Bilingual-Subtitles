@@ -2,14 +2,17 @@
 #include <android/log.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "whisper.h"
@@ -23,6 +26,80 @@ struct WavAudio {
     int channels = 0;
     std::vector<float> samples;
 };
+
+struct NativeSession {
+    explicit NativeSession(whisper_context * value) : context(value) {}
+
+    std::mutex inference_mutex;
+    std::mutex state_mutex;
+    whisper_context * context = nullptr;
+    bool active = false;
+    bool closing = false;
+    std::atomic<bool> abort_requested{false};
+};
+
+struct JavaCancellationContext {
+    JavaVM * vm = nullptr;
+    jobject token = nullptr;
+    jmethodID is_cancelled = nullptr;
+    NativeSession * session = nullptr;
+    bool reported = false;
+};
+
+class TranscriptionCancelled final : public std::runtime_error {
+public:
+    TranscriptionCancelled() : std::runtime_error("Whisper transcription cancelled.") {}
+};
+
+std::mutex g_registry_mutex;
+std::unordered_map<jlong, std::shared_ptr<NativeSession>> g_sessions;
+std::atomic<jlong> g_next_handle{1};
+
+bool whisper_abort_callback(void * user_data) {
+    auto * cancellation = static_cast<JavaCancellationContext *>(user_data);
+    if (cancellation == nullptr) {
+        return true;
+    }
+    if (cancellation->session != nullptr &&
+        cancellation->session->abort_requested.load(std::memory_order_acquire)) {
+        if (!cancellation->reported) {
+            cancellation->reported = true;
+            __android_log_print(ANDROID_LOG_INFO, kLogTag, "event=whisper_abort_callback_true source=native");
+        }
+        return true;
+    }
+    if (cancellation->vm == nullptr || cancellation->token == nullptr) {
+        return false;
+    }
+
+    JNIEnv * env = nullptr;
+    bool attached = false;
+    const jint env_result = cancellation->vm->GetEnv(
+        reinterpret_cast<void **>(&env), JNI_VERSION_1_6);
+    if (env_result == JNI_EDETACHED) {
+        if (cancellation->vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+            return true;
+        }
+        attached = true;
+    } else if (env_result != JNI_OK || env == nullptr) {
+        return true;
+    }
+
+    const jboolean cancelled = env->CallBooleanMethod(
+        cancellation->token,
+        cancellation->is_cancelled);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        if (attached) cancellation->vm->DetachCurrentThread();
+        return true;
+    }
+    if (attached) cancellation->vm->DetachCurrentThread();
+    if (cancelled == JNI_TRUE && !cancellation->reported) {
+        cancellation->reported = true;
+        __android_log_print(ANDROID_LOG_INFO, kLogTag, "event=whisper_abort_callback_true source=token");
+    }
+    return cancelled == JNI_TRUE;
+}
 
 uint16_t read_u16(std::istream & input) {
     uint8_t bytes[2]{};
@@ -64,7 +141,7 @@ WavAudio read_pcm16_wav(const std::string & path) {
     WavAudio audio;
     std::vector<int16_t> pcm;
 
-    while (input && (!pcm.size() || audio.sample_rate == 0)) {
+    while (input && (pcm.empty() || audio.sample_rate == 0)) {
         char chunk_id[4]{};
         input.read(chunk_id, sizeof(chunk_id));
         if (!input) {
@@ -116,6 +193,19 @@ void throw_java(JNIEnv * env, const char * class_name, const std::string & messa
         env->ThrowNew(exception_class, message.c_str());
         env->DeleteLocalRef(exception_class);
     }
+}
+
+std::string java_string(JNIEnv * env, jstring value, const char * field_name) {
+    if (value == nullptr) {
+        throw std::invalid_argument(std::string(field_name) + " is required.");
+    }
+    const char * chars = env->GetStringUTFChars(value, nullptr);
+    if (chars == nullptr) {
+        throw std::runtime_error(std::string("Could not read ") + field_name + ".");
+    }
+    const std::string result(chars);
+    env->ReleaseStringUTFChars(value, chars);
+    return result;
 }
 
 float segment_confidence(whisper_context * context, int segment_index) {
@@ -204,130 +294,395 @@ std::string trim_text(const char * raw_text) {
     return text.substr(first, last - first + 1);
 }
 
-}  // namespace
-
-extern "C" JNIEXPORT jobjectArray JNICALL
-Java_com_example_lyriccaptioner_processing_WhisperNativeBridge_nativeTranscribe(
-    JNIEnv * env,
-    jobject,
-    jstring model_path_value,
-    jstring audio_path_value,
-    jint sample_rate,
-    jint channels
-) {
-    if (model_path_value == nullptr || audio_path_value == nullptr) {
-        throw_java(env, "java/lang/IllegalArgumentException", "Model and audio paths are required.");
+std::shared_ptr<NativeSession> find_session(jlong handle) {
+    if (handle <= 0) {
         return nullptr;
     }
-    if (sample_rate != 16000 || channels != 1) {
-        throw_java(env, "java/lang/IllegalArgumentException", "Whisper input must be 16 kHz mono.");
-        return nullptr;
+    std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
+    const auto entry = g_sessions.find(handle);
+    return entry == g_sessions.end() ? nullptr : entry->second;
+}
+
+jlong create_session(const std::string & model_path) {
+    whisper_context_params context_params = whisper_context_default_params();
+    context_params.use_gpu = false;
+    std::unique_ptr<whisper_context, decltype(&whisper_free)> pending_context(
+        whisper_init_from_file_with_params(model_path.c_str(), context_params),
+        &whisper_free);
+    if (!pending_context) {
+        throw std::runtime_error("Could not load the selected Whisper model.");
     }
 
-    const char * model_chars = env->GetStringUTFChars(model_path_value, nullptr);
-    const char * audio_chars = env->GetStringUTFChars(audio_path_value, nullptr);
-    if (model_chars == nullptr || audio_chars == nullptr) {
-        if (model_chars != nullptr) {
-            env->ReleaseStringUTFChars(model_path_value, model_chars);
-        }
-        if (audio_chars != nullptr) {
-            env->ReleaseStringUTFChars(audio_path_value, audio_chars);
-        }
-        return nullptr;
+    const std::shared_ptr<NativeSession> session =
+        std::make_shared<NativeSession>(pending_context.get());
+    const jlong handle = g_next_handle.fetch_add(1, std::memory_order_relaxed);
+    if (handle <= 0) {
+        throw std::runtime_error("Whisper native handle space is exhausted.");
     }
-    const std::string model_path(model_chars);
-    const std::string audio_path(audio_chars);
-    env->ReleaseStringUTFChars(model_path_value, model_chars);
-    env->ReleaseStringUTFChars(audio_path_value, audio_chars);
+    {
+        std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
+        g_sessions.emplace(handle, session);
+    }
+    pending_context.release();
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kLogTag,
+        "event=whisper_context_created handle=%lld",
+        static_cast<long long>(handle));
+    return handle;
+}
 
-    try {
-        __android_log_print(ANDROID_LOG_INFO, kLogTag, "event=whisper_jni_transcribe_started");
-        WavAudio audio = read_pcm16_wav(audio_path);
+void erase_session(jlong handle, const std::shared_ptr<NativeSession> & session) {
+    std::lock_guard<std::mutex> registry_lock(g_registry_mutex);
+    const auto entry = g_sessions.find(handle);
+    if (entry != g_sessions.end() && entry->second == session) {
+        g_sessions.erase(entry);
+    }
+}
 
-        whisper_context_params context_params = whisper_context_default_params();
-        context_params.use_gpu = false;
-        std::unique_ptr<whisper_context, decltype(&whisper_free)> context(
-            whisper_init_from_file_with_params(model_path.c_str(), context_params),
-            &whisper_free);
-        if (!context) {
-            throw std::runtime_error("Could not load the selected Whisper model.");
-        }
-
-        whisper_full_params params =
-            whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-        params.language = "auto";
-        params.translate = false;
-        params.detect_language = false;
-        params.no_context = false;
-        params.single_segment = false;
-        params.print_progress = false;
-        params.print_realtime = false;
-        params.print_timestamps = false;
-        params.print_special = false;
-        const unsigned int hardware_threads = std::thread::hardware_concurrency();
-        params.n_threads = static_cast<int>(
-            std::clamp(hardware_threads == 0 ? 2U : hardware_threads, 1U, 4U));
-
-        if (whisper_full(
-                context.get(),
-                params,
-                audio.samples.data(),
-                static_cast<int>(audio.samples.size())) != 0) {
-            throw std::runtime_error("Whisper transcription failed.");
-        }
-
-        jclass segment_class = env->FindClass(
-            "com/example/lyriccaptioner/processing/WhisperSegment");
-        if (segment_class == nullptr) {
-            throw std::runtime_error("Could not find WhisperSegment class.");
-        }
-        jmethodID constructor = env->GetMethodID(
-            segment_class,
-            "<init>",
-            "(JJLjava/lang/String;F)V");
-        if (constructor == nullptr) {
-            env->DeleteLocalRef(segment_class);
-            throw std::runtime_error("Could not find WhisperSegment constructor.");
-        }
-
-        const int segment_count = whisper_full_n_segments(context.get());
-        jobjectArray result = env->NewObjectArray(
-            segment_count,
-            segment_class,
-            nullptr);
-        if (result == nullptr) {
-            env->DeleteLocalRef(segment_class);
-            throw std::runtime_error("Could not allocate Whisper segment array.");
-        }
-
-        for (int index = 0; index < segment_count; ++index) {
-            const int64_t start_ms = whisper_full_get_segment_t0(context.get(), index) * 10;
-            const int64_t end_ms = whisper_full_get_segment_t1(context.get(), index) * 10;
-            const std::string text = trim_text(
-                whisper_full_get_segment_text(context.get(), index));
-            jstring java_text = new_java_string(env, text);
-            jobject segment = env->NewObject(
-                segment_class,
-                constructor,
-                static_cast<jlong>(start_ms),
-                static_cast<jlong>(std::max(end_ms, start_ms + 10)),
-                java_text,
-                static_cast<jfloat>(segment_confidence(context.get(), index)));
-            env->SetObjectArrayElement(result, index, segment);
-            env->DeleteLocalRef(segment);
-            env->DeleteLocalRef(java_text);
-        }
-
-        env->DeleteLocalRef(segment_class);
+void release_locked_session(jlong handle, const std::shared_ptr<NativeSession> & session) {
+    whisper_context * context = nullptr;
+    {
+        std::lock_guard<std::mutex> state_lock(session->state_mutex);
+        session->closing = true;
+        session->active = false;
+        session->abort_requested.store(false, std::memory_order_release);
+        context = session->context;
+        session->context = nullptr;
+    }
+    erase_session(handle, session);
+    if (context != nullptr) {
+        whisper_free(context);
         __android_log_print(
             ANDROID_LOG_INFO,
             kLogTag,
-            "event=whisper_jni_transcribe_completed segmentCount=%d",
-            segment_count);
-        return result;
-    } catch (const std::exception & error) {
-        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "event=whisper_jni_transcribe_failed");
-        throw_java(env, "java/lang/IllegalStateException", error.what());
-        return nullptr;
+            "event=whisper_context_freed handle=%lld",
+            static_cast<long long>(handle));
     }
+}
+
+void free_session(jlong handle) {
+    const std::shared_ptr<NativeSession> session = find_session(handle);
+    if (!session) {
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_context_free_ignored handle=%lld",
+            static_cast<long long>(handle));
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> state_lock(session->state_mutex);
+        session->closing = true;
+    }
+    std::unique_lock<std::mutex> inference_lock(session->inference_mutex);
+    release_locked_session(handle, session);
+}
+
+void request_abort(jlong handle) {
+    const std::shared_ptr<NativeSession> session = find_session(handle);
+    if (!session) {
+        throw std::invalid_argument("Unknown or released Whisper context handle.");
+    }
+    bool active = false;
+    {
+        std::lock_guard<std::mutex> state_lock(session->state_mutex);
+        if (session->closing || session->context == nullptr) {
+            throw std::invalid_argument("Unknown or released Whisper context handle.");
+        }
+        active = session->active;
+        if (active) {
+            session->abort_requested.store(true, std::memory_order_release);
+        }
+    }
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        kLogTag,
+        "event=whisper_abort_requested handle=%lld active=%d",
+        static_cast<long long>(handle),
+        active ? 1 : 0);
+}
+
+whisper_full_params make_full_params(JavaCancellationContext * cancellation) {
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    params.language = "auto";
+    params.translate = false;
+    params.detect_language = false;
+    params.no_context = false;
+    params.single_segment = false;
+    params.print_progress = false;
+    params.print_realtime = false;
+    params.print_timestamps = false;
+    params.print_special = false;
+    const unsigned int hardware_threads = std::thread::hardware_concurrency();
+    params.n_threads = static_cast<int>(
+        std::clamp(hardware_threads == 0 ? 2U : hardware_threads, 1U, 4U));
+    params.abort_callback = whisper_abort_callback;
+    params.abort_callback_user_data = cancellation;
+    return params;
+}
+
+void prepare_cancellation(
+    JNIEnv * env,
+    jobject cancellation_token,
+    NativeSession * session,
+    JavaCancellationContext * cancellation
+) {
+    cancellation->session = session;
+    if (cancellation_token == nullptr) {
+        return;
+    }
+    if (env->GetJavaVM(&cancellation->vm) != JNI_OK) {
+        throw std::runtime_error("Could not access the Java VM for Whisper cancellation.");
+    }
+    cancellation->token = env->NewGlobalRef(cancellation_token);
+    jclass token_class = env->GetObjectClass(cancellation_token);
+    cancellation->is_cancelled = env->GetMethodID(token_class, "isCancelled", "()Z");
+    env->DeleteLocalRef(token_class);
+    if (cancellation->token == nullptr || cancellation->is_cancelled == nullptr) {
+        if (cancellation->token != nullptr) {
+            env->DeleteGlobalRef(cancellation->token);
+            cancellation->token = nullptr;
+        }
+        throw std::runtime_error("Could not prepare Whisper cancellation callback.");
+    }
+}
+
+void clear_cancellation(JNIEnv * env, JavaCancellationContext * cancellation) {
+    if (cancellation->token != nullptr) {
+        env->DeleteGlobalRef(cancellation->token);
+        cancellation->token = nullptr;
+    }
+}
+
+jobjectArray build_segments(JNIEnv * env, whisper_context * context) {
+    jclass segment_class = env->FindClass(
+        "com/example/lyriccaptioner/processing/WhisperSegment");
+    if (segment_class == nullptr) {
+        throw std::runtime_error("Could not find WhisperSegment class.");
+    }
+    jmethodID constructor = env->GetMethodID(
+        segment_class,
+        "<init>",
+        "(JJLjava/lang/String;F)V");
+    if (constructor == nullptr) {
+        env->DeleteLocalRef(segment_class);
+        throw std::runtime_error("Could not find WhisperSegment constructor.");
+    }
+
+    const int segment_count = whisper_full_n_segments(context);
+    jobjectArray result = env->NewObjectArray(segment_count, segment_class, nullptr);
+    if (result == nullptr) {
+        env->DeleteLocalRef(segment_class);
+        throw std::runtime_error("Could not allocate Whisper segment array.");
+    }
+
+    for (int index = 0; index < segment_count; ++index) {
+        const int64_t start_ms = whisper_full_get_segment_t0(context, index) * 10;
+        const int64_t end_ms = whisper_full_get_segment_t1(context, index) * 10;
+        const std::string text = trim_text(whisper_full_get_segment_text(context, index));
+        jstring java_text = new_java_string(env, text);
+        if (java_text == nullptr) {
+            env->DeleteLocalRef(segment_class);
+            throw std::runtime_error("Could not allocate Whisper segment text.");
+        }
+        jobject segment = env->NewObject(
+            segment_class,
+            constructor,
+            static_cast<jlong>(start_ms),
+            static_cast<jlong>(std::max(end_ms, start_ms + 10)),
+            java_text,
+            static_cast<jfloat>(segment_confidence(context, index)));
+        env->DeleteLocalRef(java_text);
+        if (segment == nullptr) {
+            env->DeleteLocalRef(segment_class);
+            throw std::runtime_error("Could not allocate Whisper segment.");
+        }
+        env->SetObjectArrayElement(result, index, segment);
+        env->DeleteLocalRef(segment);
+        if (env->ExceptionCheck()) {
+            env->DeleteLocalRef(segment_class);
+            throw std::runtime_error("Could not populate Whisper segment array.");
+        }
+    }
+
+    env->DeleteLocalRef(segment_class);
+    return result;
+}
+
+jobjectArray transcribe_session(
+    JNIEnv * env,
+    jlong handle,
+    const std::string & audio_path,
+    jint sample_rate,
+    jint channels,
+    jobject cancellation_token
+) {
+    if (sample_rate != 16000 || channels != 1) {
+        throw std::invalid_argument("Whisper input must be 16 kHz mono.");
+    }
+    const std::shared_ptr<NativeSession> session = find_session(handle);
+    if (!session) {
+        throw std::invalid_argument("Unknown or released Whisper context handle.");
+    }
+
+    std::unique_lock<std::mutex> inference_lock(session->inference_mutex);
+    whisper_context * context = nullptr;
+    {
+        std::lock_guard<std::mutex> state_lock(session->state_mutex);
+        if (session->closing || session->context == nullptr) {
+            throw std::invalid_argument("Unknown or released Whisper context handle.");
+        }
+        session->abort_requested.store(false, std::memory_order_release);
+        session->active = true;
+        context = session->context;
+    }
+
+    JavaCancellationContext cancellation;
+    try {
+        WavAudio audio = read_pcm16_wav(audio_path);
+        prepare_cancellation(env, cancellation_token, session.get(), &cancellation);
+        whisper_full_params params = make_full_params(&cancellation);
+        if (whisper_abort_callback(&cancellation)) {
+            throw TranscriptionCancelled();
+        }
+
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_jni_inference_started handle=%lld",
+            static_cast<long long>(handle));
+        const int whisper_result = whisper_full(
+            context,
+            params,
+            audio.samples.data(),
+            static_cast<int>(audio.samples.size()));
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_full_exited handle=%lld result=%d",
+            static_cast<long long>(handle),
+            whisper_result);
+
+        const bool cancelled = whisper_abort_callback(&cancellation);
+        if (whisper_result != 0) {
+            if (cancelled) {
+                throw TranscriptionCancelled();
+            }
+            throw std::runtime_error("Whisper transcription failed.");
+        }
+        if (cancelled) {
+            throw TranscriptionCancelled();
+        }
+
+        jobjectArray result = build_segments(env, context);
+        if (whisper_abort_callback(&cancellation)) {
+            env->DeleteLocalRef(result);
+            throw TranscriptionCancelled();
+        }
+        clear_cancellation(env, &cancellation);
+        {
+            std::lock_guard<std::mutex> state_lock(session->state_mutex);
+            session->active = false;
+            session->abort_requested.store(false, std::memory_order_release);
+        }
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_jni_transcribe_completed handle=%lld",
+            static_cast<long long>(handle));
+        return result;
+    } catch (...) {
+        clear_cancellation(env, &cancellation);
+        {
+            std::lock_guard<std::mutex> state_lock(session->state_mutex);
+            session->active = false;
+            session->closing = true;
+            session->abort_requested.store(false, std::memory_order_release);
+        }
+        // The handle becomes immediately non-reusable. The Kotlin runtime calls
+        // freeContext only after its inference worker has completely returned; that call
+        // then waits on inference_mutex before invoking whisper_free.
+        throw;
+    }
+}
+
+}  // namespace
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_example_lyriccaptioner_processing_WhisperNativeSessionBridge_nativeCreateContext(
+    JNIEnv * env,
+    jobject,
+    jstring model_path_value
+) {
+    try {
+        return create_session(java_string(env, model_path_value, "Model path"));
+    } catch (const std::invalid_argument & error) {
+        throw_java(env, "java/lang/IllegalArgumentException", error.what());
+    } catch (const std::exception & error) {
+        __android_log_print(ANDROID_LOG_ERROR, kLogTag, "event=whisper_context_create_failed");
+        throw_java(env, "java/lang/IllegalStateException", error.what());
+    }
+    return 0;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_example_lyriccaptioner_processing_WhisperNativeSessionBridge_nativeTranscribeContext(
+    JNIEnv * env,
+    jobject,
+    jlong context_handle,
+    jstring audio_path_value,
+    jint sample_rate,
+    jint channels,
+    jobject cancellation_token
+) {
+    try {
+        const std::string audio_path = java_string(env, audio_path_value, "Audio path");
+        return transcribe_session(
+            env,
+            context_handle,
+            audio_path,
+            sample_rate,
+            channels,
+            cancellation_token);
+    } catch (const TranscriptionCancelled & error) {
+        __android_log_print(
+            ANDROID_LOG_INFO,
+            kLogTag,
+            "event=whisper_jni_transcribe_cancelled handle=%lld",
+            static_cast<long long>(context_handle));
+        throw_java(env, "java/util/concurrent/CancellationException", error.what());
+    } catch (const std::invalid_argument & error) {
+        throw_java(env, "java/lang/IllegalArgumentException", error.what());
+    } catch (const std::exception & error) {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            kLogTag,
+            "event=whisper_jni_transcribe_failed handle=%lld",
+            static_cast<long long>(context_handle));
+        throw_java(env, "java/lang/IllegalStateException", error.what());
+    }
+    return nullptr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_lyriccaptioner_processing_WhisperNativeSessionBridge_nativeRequestAbort(
+    JNIEnv * env,
+    jobject,
+    jlong context_handle
+) {
+    try {
+        request_abort(context_handle);
+    } catch (const std::exception & error) {
+        throw_java(env, "java/lang/IllegalArgumentException", error.what());
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_example_lyriccaptioner_processing_WhisperNativeSessionBridge_nativeFreeContext(
+    JNIEnv *,
+    jobject,
+    jlong context_handle
+) {
+    free_session(context_handle);
 }

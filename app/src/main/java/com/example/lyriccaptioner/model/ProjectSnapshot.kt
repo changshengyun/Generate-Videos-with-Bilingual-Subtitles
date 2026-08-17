@@ -5,4 +5,7 @@ data class ProjectSnapshot(
     val videoDurationMs: Long?,
     val captions: List<CaptionCue>,
     val exportProfile: ExportProfile,
+    val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
+    val captionLayout: CaptionLayout = CaptionLayout(),
+    val defaultCaptionStyle: DefaultCaptionStyle = DefaultCaptionStyle(),
 )

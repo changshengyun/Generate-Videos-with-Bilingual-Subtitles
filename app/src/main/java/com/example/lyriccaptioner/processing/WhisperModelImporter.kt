@@ -8,6 +8,15 @@ import java.nio.file.StandardCopyOption
 
 object WhisperModelImporter {
     fun install(input: InputStream, target: File) {
+        val model = WhisperModelCatalog.find(target.name)
+            ?: throw IllegalArgumentException("The selected Whisper model is not approved: ${target.name}")
+        install(input, target, model)
+    }
+
+    fun install(input: InputStream, target: File, model: ApprovedWhisperModel) {
+        require(target.name == model.fileName) {
+            "The target filename does not match the approved Whisper model."
+        }
         val directory = requireNotNull(target.parentFile)
         check(directory.exists() || directory.mkdirs()) {
             "Could not create the local model directory."
@@ -19,8 +28,8 @@ object WhisperModelImporter {
             input.use { source ->
                 temporary.outputStream().buffered().use { output -> source.copyTo(output) }
             }
-            require(WhisperModelValidator.isValid(temporary)) {
-                "The selected file is not the approved ggml-base.bin model."
+            require(WhisperModelValidator.isValid(temporary, model)) {
+                "The selected file is not the approved ${model.fileName} model."
             }
             moveReplacing(temporary, target)
         } catch (error: Throwable) {

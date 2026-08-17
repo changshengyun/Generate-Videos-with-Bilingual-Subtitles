@@ -17,13 +17,13 @@ import org.junit.Test
 
 class AsrModuleTest {
     @Test
-    fun runtimeResolverSeparatesLocalDemoAndUnavailable() {
+    fun runtimeResolverSeparatesLocalAndUnavailable() {
         assertEquals(SpeechMode.LOCAL, WhisperRuntimeStatusResolver.resolve(true, true).mode)
-        assertEquals(SpeechMode.DEMO, WhisperRuntimeStatusResolver.resolve(false, true).mode)
-        assertEquals(SpeechMode.DEMO, WhisperRuntimeStatusResolver.resolve(true, false).mode)
+        assertEquals(SpeechMode.UNAVAILABLE, WhisperRuntimeStatusResolver.resolve(false, true).mode)
+        assertEquals(SpeechMode.UNAVAILABLE, WhisperRuntimeStatusResolver.resolve(true, false).mode)
         assertEquals(
             SpeechMode.UNAVAILABLE,
-            WhisperRuntimeStatusResolver.resolve(false, false, demoAvailable = false).mode,
+            WhisperRuntimeStatusResolver.resolve(false, false).mode,
         )
     }
 
@@ -54,17 +54,27 @@ class AsrModuleTest {
     @Test
     fun recognizerRejectsMissingJniAndPropagatesJniFailure() = runBlocking {
         val audio = ExtractedAudio(TestUri("file:///tmp/audio.wav"), 16_000, 1, "/tmp/audio.wav")
-        val unavailable = WhisperLocalSpeechRecognizer("model", FakeNativeClient(false))
+        val unavailableRuntime = WhisperSessionRuntime(FakeNativeClient(false))
+        val unavailable = WhisperLocalSpeechRecognizer("model", unavailableRuntime)
         assertThrows(WhisperJniUnavailableException::class.java) {
             runBlocking { unavailable.recognize(audio) }
         }
 
-        val failure = IllegalStateException("native boom")
-        val failing = WhisperLocalSpeechRecognizer("model", FakeNativeClient(true, failure = failure))
-        val thrown = assertThrows(IllegalStateException::class.java) {
-            runBlocking { failing.recognize(audio) }
+        val model = File.createTempFile("whisper-model", ".bin").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val failingRuntime = WhisperSessionRuntime(
+            FakeNativeClient(true, failure = IllegalStateException("native boom")),
+        )
+        try {
+            val failing = WhisperLocalSpeechRecognizer(model.absolutePath, failingRuntime)
+            val thrown = assertThrows(IllegalStateException::class.java) {
+                runBlocking { failing.recognize(audio) }
+            }
+            assertEquals("native boom", thrown.message)
+        } finally {
+            unavailableRuntime.close()
+            failingRuntime.close()
+            model.delete()
         }
-        assertEquals("native boom", thrown.message)
     }
 
     @Test
@@ -102,11 +112,33 @@ class AsrModuleTest {
 
     @Test
     fun unavailableModuleNeverRunsRecognition() = runBlocking<Unit> {
-        val status = WhisperRuntimeStatusResolver.resolve(false, false, demoAvailable = false)
+        val status = WhisperRuntimeStatusResolver.resolve(false, false)
         val module = UnavailableAsrModule(status)
 
         assertThrows(AsrUnavailableException::class.java) {
             runBlocking { module.recognize(TestUri("content://video/unavailable")) }
+        }
+    }
+
+    @Test
+    fun productRouteUsesLocalOnlyAndFailsExplicitlyOtherwise() {
+        val local = object : AsrModule {
+            override val runtimeStatus = WhisperRuntimeStatusResolver.resolve(true, true)
+            override suspend fun recognize(
+                videoUri: android.net.Uri,
+                onStatus: (String) -> Unit,
+            ): List<CaptionCue> = emptyList()
+        }
+
+        assertEquals(
+            local,
+            AppPipelineFactory.routeAsr(local.runtimeStatus) { local },
+        )
+        listOf(
+            WhisperRuntimeStatusResolver.resolve(false, true),
+            WhisperRuntimeStatusResolver.resolve(false, false),
+        ).forEach { status ->
+            assertTrue(AppPipelineFactory.routeAsr(status) { local } is UnavailableAsrModule)
         }
     }
 
@@ -144,15 +176,22 @@ class AsrModuleTest {
     private class FakeNativeClient(
         override val isAvailable: Boolean,
         private val failure: Throwable? = null,
-    ) : WhisperNativeClient {
+    ) : WhisperSessionNativeClient {
+        override fun createContext(modelPath: String): Long = 1L
+
         override fun transcribe(
-            modelPath: String,
+            contextHandle: Long,
             audioPath: String,
             sampleRate: Int,
             channels: Int,
+            cancellationToken: WhisperCancellationToken,
         ): List<WhisperSegment> {
             failure?.let { throw it }
             return listOf(WhisperSegment(0, 100, "ok", 0.9f))
         }
+
+        override fun requestAbort(contextHandle: Long) = Unit
+
+        override fun freeContext(contextHandle: Long) = Unit
     }
 }

@@ -16,11 +16,11 @@ import org.junit.Test
 
 class TranslationModuleTest {
     @Test
-    fun refreshReportsNeedsDownloadAndReadyFromInstalledModelState() = runBlocking {
+    fun refreshReportsNeedsInstallAndReadyFromInstalledModelState() = runBlocking {
         val translator = FakeTranslator(modelReady = false)
         val module = TranslationModule(translator)
 
-        assertEquals(TranslationModelState.NEEDS_DOWNLOAD, module.refreshModelState())
+        assertEquals(TranslationModelState.NEEDS_INSTALL, module.refreshModelState())
         translator.modelReady = true
         assertEquals(TranslationModelState.READY, module.refreshModelState())
     }

@@ -1,0 +1,7 @@
+interface:
+  display_name: "LyricCaptioner Brain"
+  short_description: "负责内部分析决策、调度 Brain-owned Limbs 与阶段验收"
+  default_prompt: "使用 $lyriccaptioner-brain 读取实时项目状态，完成分析决策并协调 Brain-owned Limbs。"
+
+policy:
+  allow_implicit_invocation: true

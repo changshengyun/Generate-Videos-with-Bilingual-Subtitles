@@ -1,0 +1,151 @@
+package com.example.lyriccaptioner.processing.enhancement.byok
+
+const val DEEPSEEK_PROVIDER = "DeepSeek"
+const val DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+enum class DeepSeekKeyState {
+    UNCONFIGURED,
+    INPUT_NEW_KEY,
+    VALIDATING_NEW_KEY,
+    TESTING_CONNECTION,
+    CONFIGURED,
+    VALIDATION_FAILED,
+    NEEDS_REENTRY,
+}
+
+data class DeepSeekKeyStatus(
+    val state: DeepSeekKeyState,
+    val maskedKey: String? = null,
+    val detail: String? = null,
+)
+
+data class DeepSeekKeyUiModel(
+    val provider: String = DEEPSEEK_PROVIDER,
+    val baseUrl: String = DEEPSEEK_BASE_URL,
+    val state: DeepSeekKeyState,
+    val maskedKey: String? = null,
+    val showSave: Boolean,
+    val showReplace: Boolean,
+    val showDelete: Boolean,
+    val showTestConnection: Boolean,
+    val showCancel: Boolean,
+    val detail: String? = null,
+)
+
+object DeepSeekKeyUiMapper {
+    fun from(status: DeepSeekKeyStatus): DeepSeekKeyUiModel = DeepSeekKeyUiModel(
+        state = status.state,
+        maskedKey = status.maskedKey,
+        showSave = status.state != DeepSeekKeyState.CONFIGURED,
+        showReplace = status.state == DeepSeekKeyState.CONFIGURED,
+        showDelete = status.state == DeepSeekKeyState.CONFIGURED || status.state == DeepSeekKeyState.NEEDS_REENTRY,
+        showTestConnection = status.maskedKey != null && (
+            status.state == DeepSeekKeyState.CONFIGURED ||
+                status.state == DeepSeekKeyState.TESTING_CONNECTION ||
+                status.state == DeepSeekKeyState.VALIDATION_FAILED
+            ),
+        showCancel = status.state == DeepSeekKeyState.VALIDATING_NEW_KEY ||
+            status.state == DeepSeekKeyState.TESTING_CONNECTION ||
+            status.state == DeepSeekKeyState.CONFIGURED ||
+            status.state == DeepSeekKeyState.VALIDATION_FAILED ||
+            status.state == DeepSeekKeyState.NEEDS_REENTRY,
+        detail = status.detail,
+    )
+}
+
+data class EncryptedDeepSeekKeyRecord(
+    val ciphertext: ByteArray,
+    val iv: ByteArray,
+    val maskedKey: String,
+    val healthCiphertext: ByteArray = ByteArray(0),
+    val healthIv: ByteArray = ByteArray(0),
+) {
+    override fun equals(other: Any?): Boolean = other is EncryptedDeepSeekKeyRecord &&
+        ciphertext.contentEquals(other.ciphertext) &&
+        iv.contentEquals(other.iv) &&
+        maskedKey == other.maskedKey &&
+        healthCiphertext.contentEquals(other.healthCiphertext) &&
+        healthIv.contentEquals(other.healthIv)
+
+    override fun hashCode(): Int = listOf(
+        ciphertext.contentHashCode(),
+        iv.contentHashCode(),
+        maskedKey.hashCode(),
+        healthCiphertext.contentHashCode(),
+        healthIv.contentHashCode(),
+    ).fold(1) { result, value -> 31 * result + value }
+}
+
+interface DeepSeekKeyWriteTransaction {
+    val record: EncryptedDeepSeekKeyRecord
+
+    /** Commits only while [commitAllowed] remains true; otherwise restores the previous record. */
+    fun commit(commitAllowed: () -> Boolean)
+
+    /** Idempotently restores the state captured before this transaction was prepared. */
+    fun rollback()
+}
+
+interface DeepSeekKeyStore {
+    fun readEncrypted(): EncryptedDeepSeekKeyRecord?
+    fun health(): DeepSeekKeyStoreHealth
+    fun prepareWrite(apiKey: String): DeepSeekKeyWriteTransaction
+    fun writeEncrypted(apiKey: String): EncryptedDeepSeekKeyRecord = prepareWrite(apiKey).let { transaction ->
+        transaction.commit { true }
+        transaction.record
+    }
+    fun decrypt(): String?
+    fun delete()
+}
+
+enum class DeepSeekKeyAvailability {
+    ABSENT,
+    AVAILABLE,
+    NEEDS_REENTRY,
+}
+
+data class DeepSeekKeyStoreHealth(
+    val availability: DeepSeekKeyAvailability,
+    val maskedKey: String? = null,
+)
+
+fun interface DeepSeekKeyProbe {
+    suspend fun validate(apiKey: String)
+}
+
+interface DeepSeekByokManager {
+    fun status(): DeepSeekKeyStatus
+    suspend fun validateAndSave(apiKey: String): DeepSeekKeyStatus
+    suspend fun replace(apiKey: String): DeepSeekKeyStatus
+    suspend fun testConnection(): DeepSeekKeyStatus
+    suspend fun cancelInput(): DeepSeekKeyStatus
+    suspend fun delete(): DeepSeekKeyStatus
+    suspend fun <T> withDecryptedKey(block: suspend (String) -> T): T
+}
+
+class DeepSeekKeyUnavailableException(
+    message: String = "DeepSeek API key is not configured.",
+) : IllegalStateException(message)
+
+class DeepSeekKeyStorageException : IllegalStateException("Secure API key operation failed.")
+
+enum class DeepSeekAuthFailureCategory {
+    AUTHENTICATION_REJECTED,
+    ACCOUNT_RESTRICTED,
+    RATE_LIMITED,
+    PROVIDER_UNAVAILABLE,
+    NETWORK_UNAVAILABLE,
+    UNEXPECTED_HTTP_RESPONSE,
+}
+
+class DeepSeekAuthenticationException(
+    val category: DeepSeekAuthFailureCategory,
+    val httpStatusCode: Int? = null,
+) : IllegalStateException("DeepSeek authentication probe failed: ${category.name}")
+
+object DeepSeekKeyMasker {
+    fun mask(apiKey: String): String = "••••••••" + apiKey.takeLast(4)
+
+    fun isPlausibleFormat(apiKey: String): Boolean =
+        apiKey.matches(Regex("sk-[A-Za-z0-9_-]{8,}"))
+}
