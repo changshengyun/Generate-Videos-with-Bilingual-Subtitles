@@ -572,7 +572,9 @@ whisper_full_params make_full_params(JavaCancellationContext * cancellation) {
     params.language = "auto";
     params.translate = false;
     params.detect_language = false;
-    params.no_context = false;
+    // Disable context reuse because no_context=false was verified to stall
+    // whisper_full on Android ARM64 with the fixed base/WAV diagnostic input.
+    params.no_context = true;
     params.single_segment = false;
     params.print_progress = false;
     params.print_realtime = false;

@@ -1,9 +1,9 @@
 # Current Task: V3-ASR-DIAG-001
 
-- `STATE_REV: 2026-08-23.003`
-- `TASK_REV: V3-ASR-DIAG-001.003`
-- Stage state: `PASS / BASE_DEVICE_DIAGNOSTIC_VERIFIED`
-- Product status: `D / DATA_INSUFFICIENT_FOR_CONTEXT_VS_PARAMETER`
+- `STATE_REV: 2026-08-23.006`
+- `TASK_REV: V3-ASR-DIAG-001.006`
+- Stage state: `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_BLOCKED`
+- Product status: `A / NO_CONTEXT_FALSE_CAUSES_NATIVE_STALL_FIXED_PROD_UNVERIFIED`
 - Evidence ceiling: `DEVICE_DIAGNOSTIC_ONLY`
 - Baseline HEAD: `9a798ccb3890128565a12c924c11e6468908a2b9`
 - Diagnostic implementation: `50fd1407ad9e63c34b27292bf36adc81db7b062e`
@@ -11,17 +11,17 @@
 
 ## 1. 阶段目标
 
-用户取消 small 验证。本任务只使用已经冻结的 16 kHz 单声道 PCM16 WAV，以 base 模型执行一次：新建 Whisper Context、`no_context=true`、调用 `whisper_full()`、采集 segment 与 token 原始观测、随后立即释放 Context。本阶段不修复产品行为。
+用户授权唯一单变量对照：保持既有 App HEAD、Native、base、固定 WAV、fresh context、`language=auto` 和 4 threads 不变，只把 Debug 参数由 `no_context=true` 改为 `no_context=false` 并运行一次。本阶段不修复产品行为。
 
 ## 2. 冻结验收矩阵
 
 | 类别 | 冻结内容 |
 |---|---|
-| 主链路 | 直接读取已经冻结的同一 WAV；base fresh context -> `no_context=true` -> `whisper_full()` -> 原始诊断输出 -> free context。不得重新提取视频。 |
-| 必须证据 | App commit；实际编译的 whisper.cpp version/commit；base model SHA256；WAV SHA256/时长；fresh/reuse/no_context/language/threads；`whisper_full` rc/耗时/segment count；每个 segment 的 start/end/text/no_speech_prob/平均 token probability 和 token id/text/probability。 |
-| 禁止事项 | 不运行 small；不怀疑或重新验证视频是否有声音；不重复走视频流程；不改 UI、字幕后处理、DeepSeek、翻译、导出或业务识别策略；不回滚提交；不调 threshold；不清除 App/用户数据；不 push。 |
-| 退出状态 | base 在设备 `fcf4b0cb` 对冻结 WAV 完成一次诊断，且所需字段可得或明确标为 `Unavailable`，才可标记 `PASS / BASE_DEVICE_DIAGNOSTIC_VERIFIED`。 |
-| 未完成状态 | 缺少 base 或固定 WAV 为 `BLOCKED_INPUT`；Native 诊断入口不能构建为 `BLOCKED_BUILD`；base 推理未完成为 `PARTIAL_PASS`；原因仍不能区分为 `D / DATA_INSUFFICIENT`。 |
+| 主链路 | 直接读取同一固定 WAV；base fresh context -> `no_context=false` -> `whisper_full()` -> segment text/no-speech 摘要 -> free context。 |
+| 必须证据 | Git HEAD、Native version/commit、base SHA256、WAV SHA256、fresh/reuse/no_context/language/threads、`whisper_full` rc/耗时/segment count、各 segment text/no_speech_prob，以及与上一轮 true 结果的 segment count/首段/末段/music marker 对比。 |
+| 禁止事项 | 不运行 small；不复用 Context；不重新提取视频；不改除 Debug `params.no_context` 外任何代码或参数；不输出完整 token；不改业务调用链；不清数据；不 push。 |
+| 退出状态 | `fcf4b0cb` 上完成唯一一次 `no_context=false` 对照并取得全部摘要字段，标记 `PASS / NO_CONTEXT_CONTROL_DEVICE_VERIFIED`。 |
+| 未完成状态 | 构建失败为 `BLOCKED_BUILD`；推理未完成为 `PARTIAL_PASS`；结果不能按用户规则判断为 `D / NEEDS_FURTHER_VALIDATION`。 |
 
 ## 3. 允许范围
 
@@ -42,7 +42,7 @@
 
 ## 5. 下一动作
 
-base 单次诊断已完成，small 未运行。若需要区分 Context 复用与参数因素，唯一最小对照是同一 WAV/base/fresh context 下仅改 `no_context=false`；本任务未授权也未运行该对照。
+唯一一次 `no_context=false` 对照已完成；不得执行其他实验。
 
 ## 6. 验证结果
 
@@ -54,3 +54,29 @@ base 单次诊断已完成，small 未运行。若需要区分 Context 复用与
 - Segment 0–7 为歌词，`no_speech_prob=0.475166`；Segment 8 为 `(upbeat music)`，`no_speech_prob=0.881964`，由 `(`、`up`、`beat`、` music`、`)` token 直接解码产生。
 - 报告：设备 `files/asr-diagnostics/base.json`，SHA256 `69e44af46a24299921e9ad420dd13f4041419870226ffe33993aa0e1646762fc`。
 - 结论：Native/编译环境并非“只能产生音乐标记”的全局故障；本次恢复不能在 Context 复用与 `no_context` 参数之间唯一归因，因此选择 `D`。
+
+## 7. `no_context=false` 单变量对照
+
+- Git HEAD 保持 `fe05a6dc4d76e705e98461c68a957417a01d78c3`；实验 APK SHA256 `6045b74f91bdf4a6b7ad0f8a9b4ab60452bb19077b9d491ec46f70db74018d52`。
+- 运行时：`whisper.cpp 1.9.1 / f049fff`；fresh context；无复用；`no_context=false`；`language=auto`；4 threads；base/WAV SHA256 与上一轮一致。
+- `whisper_full` 在 10 分钟观察窗内未返回；return code、segment count、segment text/no-speech 均为 `Unavailable`。
+- 四个 Whisper 工作线程最初各累计约 2 秒 CPU，随后连续数分钟不增长；无 `whisper_full_exited` 或 `context_freed`。
+- 为结束残留实验进程执行 App force-stop；未清数据，base 与固定 WAV hash 未变化；未重跑。
+- 对比：`no_context=true` 在 `8,580 ms` 返回 9 segments；`false` 在同一其他条件下 stalled。结论选 `A. no_context 导致`，表现为 Native non-return，而不是本轮重新观察到 `[MUSIC]`。
+
+## 8. 修复后验证
+
+- 仅修改 `app/src/main/cpp/whisper_jni.cpp`：业务 `make_full_params()` 现在设置 `params.no_context = true`，并记录 ARM64 stall 证据。
+- Debug APK：`assembleDebug -PenableWhisperNative=true` 成功；AndroidTest APK 同样成功构建。
+- 设备：`fcf4b0cb` ARM64；同一 base/WAV；fresh context；无 context reuse；`language=auto`；4 threads。
+- `whisper_full` return：`0`；inference：`10,319 ms`；segment count：`9`。
+- Segment 0：` I have to live without you`；LastSegment：` (upbeat music)`。
+- 结论：`FIXED / NO_CONTEXT_FIX_DEVICE_VERIFIED`。
+
+## 9. 真实 App 流程收尾验证
+
+- 代码确认：`app/src/main/cpp/whisper_jni.cpp` 的业务 `params.no_context = true` 保持不变。
+- 真实 App 已完成视频导入并点击“生成字幕”，但当前 App 初始化路径 `AppPipelineFactory.createAsrDefault()` 会调用 `WhisperModelStore.ensureBundledModel()`，强制选择 `ggml-small.en-q5_1.bin`。
+- 通过 App 模型导入入口导入同一 base 后，运行时仍重新选择 small；该次 small 推理按用户要求不计入验证，并已停止。
+- 由于当前约束禁止 small 测试、禁止修改 Kotlin 业务逻辑和模型选择架构，无法取得合规的 base 生产入口 `whisper_full`/字幕结果。
+- 状态：诊断入口 `DEVICE_VERIFIED`；真实 App base 流程 `BLOCKED`，未声称生产 PASS。

@@ -1,14 +1,14 @@
 # LyricCaptioner V3 Project State
 
-- `STATE_REV: 2026-08-23.003`
+- `STATE_REV: 2026-08-23.006`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
 - Stage baseline HEAD: `9a798ccb3890128565a12c924c11e6468908a2b9`
 - Upstream: `origin/migration/lyric-captioner-history`, snapshot ahead 37
 - Current task: `V3-ASR-DIAG-001`
-- Stage state: `PASS / BASE_DEVICE_DIAGNOSTIC_VERIFIED`
-- Product status: `D / DATA_INSUFFICIENT_FOR_CONTEXT_VS_PARAMETER`
-- Current gate: `DIAGNOSTIC_COMPLETE`
+- Stage state: `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_BLOCKED`
+- Product status: `A / NO_CONTEXT_FALSE_CAUSES_NATIVE_STALL_FIXED_PROD_UNVERIFIED`
+- Current gate: `PRODUCTION_BASE_BLOCKED`
 - Evidence ceiling: `BASE_DEVICE_DIAGNOSTIC_ONLY`
 - Last state sync: 2026-08-22
 
@@ -20,6 +20,11 @@
 - 只做 Debug/instrumentation 与 Native provenance 观测，不改产品业务逻辑；结果只用于在 Context 复用、Native/编译环境、Whisper 参数之间定位。
 - base 在 fresh context、`no_context=true` 下以 `whisper_full=0` 完成，8 段歌词加末尾 `(upbeat music)`；Native/编译环境不是只能输出音乐标记的全局故障。
 - fresh context 与 `no_context=true` 同时变化，不能唯一地区分 Context 复用和参数因素；正式结论为 `D`。
+- 用户授权同一 base/WAV/fresh context 仅改 `no_context=false` 的一次对照；禁止扩展到 Context 复用或正式调用链。
+- 单变量对照中 `no_context=false` 10 分钟未返回，线程 CPU 停止增长；`true` 基线 8.58 秒返回 9 segments。参数差异已确认影响 Native 执行，本轮未复现具体 `[MUSIC]` 文本。
+- 已按最小修复将 `app/src/main/cpp/whisper_jni.cpp` 的业务 `params.no_context` 固定为 `true`，并加入 stall 原因注释；未修改 Native 版本、模型、AudioExtractor、Kotlin 业务逻辑、SessionRuntime、UI、翻译或字幕处理。
+- 修复后同一 ARM64 设备、base 模型和固定 WAV 验证：`whisper_full=0`，推理 `10,319 ms`，9 segments；Segment 0 为 ` I have to live without you`，末段为 ` (upbeat music)`。
+- 真实 App 收尾验证未取得合规 base 结果：`AppPipelineFactory.createAsrDefault()` 调用 `WhisperModelStore.ensureBundledModel()`，初始化时强制选择 `ggml-small.en-q5_1.bin`；导入 base 后仍被重新选择为 small。small 推理已停止，未计入验收。
 
 - 用户停止旧 AI15 真机验收；旧逐 cue 修正/翻译准确率不被接受。
 - 用户批准立即实现路线 B：AI 识别候选歌曲，SearchTool 检索完整英文歌词，多 cue 验证候选，再由 AI 基于整首歌词生成中文歌词并对齐回字幕。
@@ -41,7 +46,7 @@
 
 ## 下一允许动作
 
-本诊断已关闭。若用户要求继续定位，下一最小动作仅允许同一 base/WAV/fresh context 的 `no_context=false` 单变量对照；不得自动修改产品 ASR 策略。
+修复已在诊断入口的同一 base/WAV 和 ARM64 设备上验证；真实 App base 流程因现有 small 强制选择而阻断。不得绕过该门禁、运行 small 或修改 Kotlin 模型选择逻辑；如需生产入口验收，必须由后续任务明确授权模型选择修复。
 
 ## 上下文与轮换
 

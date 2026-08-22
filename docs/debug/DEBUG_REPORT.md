@@ -64,3 +64,31 @@ Average token probability includes all finite tokens, including special timestam
 ## Conclusion
 
 The decoder itself emitted `(upbeat music)` only for the final high-no-speech window. It was not introduced by Kotlin subtitle post-processing. The current Native artifact can decode the fixed WAV normally. This run cannot uniquely distinguish Context reuse from the `no_context` parameter; no product fix is authorized or applied.
+
+## `no_context=false` control
+
+- Date/device: `2026-08-23 / fcf4b0cb`.
+- Git HEAD remained `fe05a6dc4d76e705e98461c68a957417a01d78c3`; experimental APK SHA256 `6045b74f91bdf4a6b7ad0f8a9b4ab60452bb19077b9d491ec46f70db74018d52`.
+- Exact control: same Native `1.9.1/f049fff`, base and WAV hashes, fresh context, no reuse, auto language, and 4 threads; only Debug `params.no_context=false`.
+- Native log reached `event=context_created` and `event=params ... no_context=0`; it never emitted `whisper_full_exited`.
+- The 10-minute observation window expired with no return code or segments. Four Whisper workers accumulated about two seconds CPU each and then stopped advancing for several minutes.
+- The test-owned App process was force-stopped to end the stalled instrumentation. App data was not cleared; base and WAV hashes remained unchanged; the test was not rerun.
+- Comparison: `no_context=true` returned 9 segments in `8,580 ms`; `false` did not return within `>600,000 ms` under the same remaining conditions.
+- Decision: `A. no_context caused the regression`. The observed regression in this control is Native non-return; the specific `[MUSIC]` text was not re-observed because no segment result existed.
+
+## Fix validation
+
+- Changed only `app/src/main/cpp/whisper_jni.cpp`: production `make_full_params()` now sets `params.no_context = true` with a comment recording the ARM64 stall evidence.
+- Build: `assembleDebug -PenableWhisperNative=true` and `assembleDebugAndroidTest -PenableWhisperNative=true` both succeeded.
+- Device: `fcf4b0cb` ARM64; same base SHA256 `a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002`; same WAV SHA256 `cd76904fc36ac08de32da432a4a6c14c48bf34f267c082cb74d6a1ec5c692d1d`.
+- Runtime: fresh context, no context reuse, `no_context=true`, `language=auto`, 4 threads; `whisper_full=0`, inference `10,319 ms`, 9 segments.
+- Segment 0: ` I have to live without you`; last segment: ` (upbeat music)`.
+- Conclusion: `FIXED` for this diagnostic path; no architecture or dependency change was made.
+
+## Production App validation boundary
+
+- The real App flow reached video import and the user-facing “生成字幕” action.
+- The App's `AppPipelineFactory.createAsrDefault()` calls `WhisperModelStore.ensureBundledModel()`, which always selects the bundled `ggml-small.en-q5_1.bin` during initialization.
+- Importing the approved base model through the App model picker did not produce a base production run because the initialization path selected small again. That small inference was stopped and is excluded from acceptance.
+- Under the explicit prohibition on small testing and Kotlin/model-selection changes, a compliant base production result cannot be obtained in this task.
+- Diagnostic path: `DEVICE_VERIFIED`. Real App base path: `BLOCKED`; no production PASS claimed.
