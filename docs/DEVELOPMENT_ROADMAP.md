@@ -1,7 +1,7 @@
 # LyricCaptioner V3 开发路线
 
 - `ROADMAP_REV: 2026-08-12.003`
-- 当前任务：`V3-ASR-DIAG-001 / MATRIX_DEFINED / IN_PROGRESS`
+- 当前任务：`V3-ASR-DIAG-001 / PASS / BASE_DEVICE_DIAGNOSTIC_VERIFIED`
 - 当前历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -31,14 +31,14 @@
 | `V3-MEDIA-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | Photo Picker 与 MediaStore 唯一媒体入口 |
 | `V3-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | 产品化交互外壳 |
 | `V3-AI-001` | `ACCEPTED / SRT_DEVICE_VERIFIED` | 单歌曲对齐与错位 SRT 真机样本通过；不包含视频、Whisper 或完整端到端验证 |
-| `V3-ASR-DIAG-001` | `IN_PROGRESS / DEVICE_DIAGNOSTIC_ONLY` | 同一固定 WAV 的 fresh-context、`no_context=true`、small/base Native 原始观测；不实施产品修复 |
+| `V3-ASR-DIAG-001` | `PASS / BASE_DEVICE_DIAGNOSTIC_VERIFIED` | base 对固定 WAV 正常输出 9 segments；Native provenance 与 token/no-speech 已取证；A/C 尚未单独区分 |
 | `V3-CLEAN-001` | `PLANNED` | 依赖 V3-AI-001 验收；删除非主链路分支 |
 | `V3-E2E-003` | `PLANNED` | 依赖前述阶段；ARM64 真机最终验收 |
 
 ## 当前和下一阶段
 
-- 当前：`V3-ASR-DIAG-001.001` 已冻结最小定位矩阵，只验证 Context 复用、Native/编译环境和 Whisper 参数三个候选边界。
-- 下一：完成同一 WAV 的 small/base 真机诊断后由结果决定一个最小验证动作；不得自动实施产品修复或启动 `V3-CLEAN-001`。
+- 当前：`V3-ASR-DIAG-001.003` 已完成 base 单次真机诊断；small 按用户指令取消。
+- 下一：若用户要求唯一地区分 Context 与参数，只运行同一 base/WAV 的 `no_context=false` 对照；不得自动实施产品修复或启动 `V3-CLEAN-001`。
 - 最终：`V3-E2E-003` 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和回放。
 
 ## 跨阶段不变量

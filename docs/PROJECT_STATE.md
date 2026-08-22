@@ -1,23 +1,25 @@
 # LyricCaptioner V3 Project State
 
-- `STATE_REV: 2026-08-22.001`
+- `STATE_REV: 2026-08-23.003`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
 - Stage baseline HEAD: `9a798ccb3890128565a12c924c11e6468908a2b9`
 - Upstream: `origin/migration/lyric-captioner-history`, snapshot ahead 37
 - Current task: `V3-ASR-DIAG-001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `DIAGNOSIS_IN_PROGRESS`
-- Current gate: `DEVICE_DIAGNOSTIC_AUTHORIZED`
-- Evidence ceiling: `DEVICE_DIAGNOSTIC_ONLY`
+- Stage state: `PASS / BASE_DEVICE_DIAGNOSTIC_VERIFIED`
+- Product status: `D / DATA_INSUFFICIENT_FOR_CONTEXT_VS_PARAMETER`
+- Current gate: `DIAGNOSTIC_COMPLETE`
+- Evidence ceiling: `BASE_DEVICE_DIAGNOSTIC_ONLY`
 - Last state sync: 2026-08-22
 
 ## 当前决定
 
 - 用户明确固定“视频肯定有声音”，本阶段不再验证或怀疑输入视频音轨。
-- 只从既有输入提取一次并冻结同一个 WAV；small/base 推理不得并发，以免同设备资源争用污染 A/B。
+- 用户取消 small 验证；当前只允许 base 对已经冻结的同一个 WAV 运行一次。
 - 每次识别必须 fresh context、`no_context=true`、结束立即 free，并输出 segment/no-speech/token 原始观测。
 - 只做 Debug/instrumentation 与 Native provenance 观测，不改产品业务逻辑；结果只用于在 Context 复用、Native/编译环境、Whisper 参数之间定位。
+- base 在 fresh context、`no_context=true` 下以 `whisper_full=0` 完成，8 段歌词加末尾 `(upbeat music)`；Native/编译环境不是只能输出音乐标记的全局故障。
+- fresh context 与 `no_context=true` 同时变化，不能唯一地区分 Context 复用和参数因素；正式结论为 `D`。
 
 - 用户停止旧 AI15 真机验收；旧逐 cue 修正/翻译准确率不被接受。
 - 用户批准立即实现路线 B：AI 识别候选歌曲，SearchTool 检索完整英文歌词，多 cue 验证候选，再由 AI 基于整首歌词生成中文歌词并对齐回字幕。
@@ -39,7 +41,7 @@
 
 ## 下一允许动作
 
-为 `V3-ASR-DIAG-001` 建立 checkpoint，随后实现 Debug-only 诊断入口、固定单一 WAV、在 `fcf4b0cb` 串行运行 small/base，并按冻结矩阵提取证据。不得在本阶段直接修改产品 ASR 策略。
+本诊断已关闭。若用户要求继续定位，下一最小动作仅允许同一 base/WAV/fresh context 的 `no_context=false` 单变量对照；不得自动修改产品 ASR 策略。
 
 ## 上下文与轮换
 
