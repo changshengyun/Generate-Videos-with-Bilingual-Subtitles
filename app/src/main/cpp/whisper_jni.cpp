@@ -3,12 +3,16 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
+#include <locale>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -16,6 +20,7 @@
 #include <vector>
 
 #include "whisper.h"
+#include "ggml.h"
 
 namespace {
 
@@ -292,6 +297,165 @@ std::string trim_text(const char * raw_text) {
     }
     const auto last = text.find_last_not_of(" \t\r\n");
     return text.substr(first, last - first + 1);
+}
+
+std::string json_escape(const char * raw_text) {
+    const std::string text = raw_text == nullptr ? "" : raw_text;
+    constexpr char kHex[] = "0123456789abcdef";
+    std::string escaped;
+    escaped.reserve(text.size());
+    for (const unsigned char value : text) {
+        switch (value) {
+            case '\"': escaped += "\\\""; break;
+            case '\\': escaped += "\\\\"; break;
+            case '\b': escaped += "\\b"; break;
+            case '\f': escaped += "\\f"; break;
+            case '\n': escaped += "\\n"; break;
+            case '\r': escaped += "\\r"; break;
+            case '\t': escaped += "\\t"; break;
+            default:
+                if (value < 0x20U || value == 0x7fU) {
+                    escaped += "\\u00";
+                    escaped += kHex[(value >> 4U) & 0x0fU];
+                    escaped += kHex[value & 0x0fU];
+                } else {
+                    escaped += static_cast<char>(value);
+                }
+        }
+    }
+    return escaped;
+}
+
+std::string run_raw_diagnostic(
+    const std::string & model_path,
+    const std::string & audio_path
+) {
+    const WavAudio audio = read_pcm16_wav(audio_path);
+    whisper_context_params context_params = whisper_context_default_params();
+    context_params.use_gpu = false;
+
+    const auto init_started = std::chrono::steady_clock::now();
+    std::unique_ptr<whisper_context, decltype(&whisper_free)> context(
+        whisper_init_from_file_with_params(model_path.c_str(), context_params),
+        &whisper_free);
+    const auto init_finished = std::chrono::steady_clock::now();
+    if (!context) {
+        throw std::runtime_error("Could not load the diagnostic Whisper model.");
+    }
+
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    params.language = "auto";
+    params.translate = false;
+    params.detect_language = false;
+    params.no_context = true;
+    params.single_segment = false;
+    params.print_progress = false;
+    params.print_realtime = false;
+    params.print_timestamps = false;
+    params.print_special = false;
+    const unsigned int hardware_threads = std::thread::hardware_concurrency();
+    params.n_threads = static_cast<int>(
+        std::clamp(hardware_threads == 0 ? 2U : hardware_threads, 1U, 4U));
+
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        "WhisperDiag",
+        "event=context_created whisper_version=%s ggml_version=%s ggml_commit=%s",
+        whisper_version(),
+        ggml_version(),
+        ggml_commit());
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        "WhisperDiag",
+        "event=params fresh_context=1 context_reuse=0 no_context=1 language=auto threads=%d",
+        params.n_threads);
+
+    const auto inference_started = std::chrono::steady_clock::now();
+    const int whisper_result = whisper_full(
+        context.get(),
+        params,
+        audio.samples.data(),
+        static_cast<int>(audio.samples.size()));
+    const auto inference_finished = std::chrono::steady_clock::now();
+
+    const auto init_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        init_finished - init_started).count();
+    const auto inference_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        inference_finished - inference_started).count();
+    const int segment_count = whisper_result == 0
+        ? whisper_full_n_segments(context.get())
+        : 0;
+
+    std::ostringstream report;
+    report.imbue(std::locale::classic());
+    report << std::fixed << std::setprecision(6);
+    report
+        << "{\"whisper_version\":\"" << json_escape(whisper_version())
+        << "\",\"whisper_commit\":\"" << json_escape(ggml_commit())
+        << "\",\"ggml_version\":\"" << json_escape(ggml_version())
+        << "\",\"fresh_context\":true,\"context_reuse\":false"
+        << ",\"no_context\":true,\"language\":\"auto\",\"threads\":" << params.n_threads
+        << ",\"sample_count\":" << audio.samples.size()
+        << ",\"wav_duration_ms\":"
+        << (audio.samples.size() * 1000ULL / static_cast<uint64_t>(audio.sample_rate))
+        << ",\"context_init_ms\":" << init_ms
+        << ",\"inference_ms\":" << inference_ms
+        << ",\"whisper_full_return_code\":" << whisper_result
+        << ",\"segment_count\":" << segment_count
+        << ",\"segments\":[";
+
+    for (int segment_index = 0; segment_index < segment_count; ++segment_index) {
+        if (segment_index > 0) report << ',';
+        const int token_count = whisper_full_n_tokens(context.get(), segment_index);
+        double probability_sum = 0.0;
+        int probability_count = 0;
+        for (int token_index = 0; token_index < token_count; ++token_index) {
+            const float probability = whisper_full_get_token_p(
+                context.get(), segment_index, token_index);
+            if (std::isfinite(probability)) {
+                probability_sum += probability;
+                ++probability_count;
+            }
+        }
+        const double average_probability = probability_count == 0
+            ? 0.0
+            : probability_sum / static_cast<double>(probability_count);
+        report
+            << "{\"index\":" << segment_index
+            << ",\"start_ms\":" << whisper_full_get_segment_t0(context.get(), segment_index) * 10
+            << ",\"end_ms\":" << whisper_full_get_segment_t1(context.get(), segment_index) * 10
+            << ",\"text\":\""
+            << json_escape(whisper_full_get_segment_text(context.get(), segment_index))
+            << "\",\"no_speech_prob\":"
+            << whisper_full_get_segment_no_speech_prob(context.get(), segment_index)
+            << ",\"avg_token_prob\":" << average_probability
+            << ",\"token_count\":" << token_count
+            << ",\"tokens\":[";
+        for (int token_index = 0; token_index < token_count; ++token_index) {
+            if (token_index > 0) report << ',';
+            report
+                << "{\"id\":"
+                << whisper_full_get_token_id(context.get(), segment_index, token_index)
+                << ",\"text\":\""
+                << json_escape(whisper_full_get_token_text(context.get(), segment_index, token_index))
+                << "\",\"probability\":"
+                << whisper_full_get_token_p(context.get(), segment_index, token_index)
+                << '}';
+        }
+        report << "]}";
+    }
+    report << "]}";
+
+    __android_log_print(
+        ANDROID_LOG_INFO,
+        "WhisperDiag",
+        "event=whisper_full_exited result=%d inference_ms=%lld segment_count=%d",
+        whisper_result,
+        static_cast<long long>(inference_ms),
+        segment_count);
+    context.reset();
+    __android_log_print(ANDROID_LOG_INFO, "WhisperDiag", "event=context_freed");
+    return report.str();
 }
 
 std::shared_ptr<NativeSession> find_session(jlong handle) {
@@ -685,4 +849,28 @@ Java_com_example_lyriccaptioner_processing_WhisperNativeSessionBridge_nativeFree
     jlong context_handle
 ) {
     free_session(context_handle);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_example_lyriccaptioner_AsrDiagnosticInstrumentation_nativeRunWhisperDebug(
+    JNIEnv * env,
+    jobject,
+    jstring model_path_value,
+    jstring audio_path_value
+) {
+    try {
+        const std::string model_path = java_string(env, model_path_value, "Model path");
+        const std::string audio_path = java_string(env, audio_path_value, "Audio path");
+        return new_java_string(env, run_raw_diagnostic(model_path, audio_path));
+    } catch (const std::invalid_argument & error) {
+        throw_java(env, "java/lang/IllegalArgumentException", error.what());
+    } catch (const std::exception & error) {
+        __android_log_print(
+            ANDROID_LOG_ERROR,
+            "WhisperDiag",
+            "event=diagnostic_failed error=%s",
+            error.what());
+        throw_java(env, "java/lang/IllegalStateException", error.what());
+    }
+    return nullptr;
 }

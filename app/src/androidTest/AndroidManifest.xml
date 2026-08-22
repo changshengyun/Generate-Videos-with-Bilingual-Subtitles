@@ -2,4 +2,7 @@
     <instrumentation
         android:name="com.example.lyriccaptioner.LocalAiInstrumentation"
         android:targetPackage="com.example.lyriccaptioner" />
+    <instrumentation
+        android:name="com.example.lyriccaptioner.AsrDiagnosticInstrumentation"
+        android:targetPackage="com.example.lyriccaptioner" />
 </manifest>
