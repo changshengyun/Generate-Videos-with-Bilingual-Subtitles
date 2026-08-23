@@ -1,55 +1,55 @@
-# LyricCaptioner V3 开发路线
+# LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-24.004`
-- 当前任务：`V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_PENDING`
-- 当前历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
+- `ROADMAP_REV: 2026-08-24.005`
+- 当前任务：`V4-FLOW-001 / MATRIX_DEFINED / IN_PROGRESS`
+- V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
 
-本文件只维护 V3 产品目标、阶段顺序、依赖和总体验收。唯一活动任务见 `CURRENT_TASK.md`，实时门禁见 `PROJECT_STATE.md`。V2 归档位于 `../docs-v2/`，关闭的 V3 证据位于 `archive/v3/`。
+本文件只维护 V4 产品目标、阶段顺序、依赖和总体验收。唯一活动任务见 `CURRENT_TASK.md`，实时门禁见 `PROJECT_STATE.md`。V3 保留为历史证据，不参与 V4 当前调度。
 
-## V3 产品目标
+## V4 产品目标
 
-1. Whisper 单模型进程级缓存，完成后保留 3–5 分钟，并在超时、模型切换、严重内存压力或不安全取消后释放。
-2. 产品主链路统一为：相册导入 → 本地识别 → 云端歌词匹配与双语修正/本地回退 → 用户主动编辑 → 相册导出。
-3. 所有字幕共享视频有效画面内的文本框布局，每段字幕可独立覆盖字体样式。
-4. 普通预览、全屏预览和 FFmpegKit 导出使用同一源视频坐标和样式解析规则。
-5. 导入和导出默认且只使用系统相册能力。
-6. 删除 App 自有顶栏、测试标题和版本标签，保留系统栏与 Insets。
-7. DeepSeek 只接收 cue ID、时间戳和英文文本；失败时保留英文并使用本地 OPUS-MT。
-8. 最终只保留模型识别主链路和网络失败本地翻译回退；其他导出分支经清理矩阵证明后删除。
+唯一产品主链路为：
 
-## 阶段顺序
+```text
+相册导入视频
+→ 一次点击“开始识别”
+→ 本地 Whisper 识别
+→ 自动执行 AI 增强
+→ 自动进入字幕编辑
+→ 添加或编辑字幕
+→ 预览并导出最终视频
+```
+
+V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同、cue 时间戳合同、存储架构或导出技术路线。
+
+## V3 历史边界
+
+- `V3-ASR-DIAG-001` 固定为 `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`。
+- 诊断入口的 base 证据继续保留；未执行的新 APK 生产 base 验证不得改写为 PASS。
+- 用户已明确延期该验证，因此它不阻塞 V4，但仍属于完整生产验收的已知缺口。
+
+## V4 阶段顺序
 
 | 阶段 | 当前状态 | 目标/依赖 |
 |---|---|---|
-| `V3-DEC-001` | `PASS` | 冻结 V3 产品与技术边界 |
-| `V3-AI-CONTRACT-001` | `PARTIAL_PASS / LIVE_LYRICS_FLOW_DEFERRED` | BYOK 与认证基线；为 AI 主链路提供安全合同 |
-| `V3-ASR-SESSION-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | Whisper 缓存基础；真机性能归入最终积压 |
-| `V3-EDITOR-001` | `PARTIAL_PASS / REWORKED` | 初始编辑模型 |
-| `V3-EDITOR-002` | `PARTIAL_PASS / COMPONENT_VERIFIED` | 每 cue 样式、统一预览/导出解析 |
-| `V3-MEDIA-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | Photo Picker 与 MediaStore 唯一媒体入口 |
-| `V3-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | 产品化交互外壳 |
-| `V3-AI-001` | `ACCEPTED / SRT_DEVICE_VERIFIED` | 单歌曲对齐与错位 SRT 真机样本通过；不包含视频、Whisper 或完整端到端验证 |
-| `V3-ASR-DIAG-001` | `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_PENDING` | 诊断入口 base/WAV 已通过；已移除启动时强制 small，真实 App base 入口等待新 APK 安装验证 |
-| `V3-CLEAN-001` | `PLANNED` | 依赖 V3-AI-001 验收；删除非主链路分支 |
-| `V3-E2E-003` | `PLANNED` | 依赖前述阶段；ARM64 真机最终验收 |
+| `V4-PLAN-001` | `IN_PROGRESS` | 初始化 S0/S1/S2 规则、V4 路线和活动状态，创建 checkpoint |
+| `V4-FLOW-001` | `MATRIX_DEFINED / IN_PROGRESS` | 一次点击串联本地 ASR、AI 增强和自动进入编辑器 |
+| `V4-EDITOR-001` | `PLANNED` | 按当前播放位置在空档新增双语字幕，并保持编辑/恢复/导出一致 |
+| `V4-UI-001` | `PLANNED` | 普通与全屏预览统一使用视频画面下方的独立播放器控制行 |
+| `V4-E2E-001` | `WAITING_DEVICE_AUTHORIZATION` | 真实相册导入、ASR、AI、编辑、恢复、导出与 Media3 回放验收 |
 
-## 当前和下一阶段
+## 执行和提交顺序
 
-- 当前：`V3-ASR-DIAG-001.006` 的最小 `no_context=true` 修复已在诊断入口通过；`ensureBundledModel()` 已删除，真实 App base 流程等待新 APK 安装验证。
-- 下一：安装本次构建产物后验证生产 base 入口；不得运行 small 或扩展 Context 复用。
-- 最终：`V3-E2E-003` 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和回放。
-- 阶段归档：[`archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md`](archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md)。
+1. `V4-PLAN-001` 文档与规则 checkpoint。
+2. `V4-FLOW-001` 独立功能提交。
+3. `V4-EDITOR-001` 独立功能提交。
+4. `V4-UI-001` 独立功能提交。
+5. `V4-E2E-001` 获得设备授权后执行验收并提交状态。
 
-## 跨阶段不变量
+提交信息使用中文，默认不 push。每次只精确暂存当前阶段文件；所有进入 V4 前的未跟踪或脏内容必须保留。
 
-- 不改变 V2 已验证的本地 Whisper、OPUS-MT、FFmpegKit 和 Media3 基线，除非用户重新授权。
-- API Key 只在 App 内通过 Android Keystore 保护，不能进入源码、聊天、日志、测试夹具或活动文档。
-- 真机、模拟器、组件和构建证据必须分级记录。
-- 每个阶段只有一份验收矩阵；Reviewer 只在整个阶段进入 `READY_FOR_REVIEW` 后自动启动。
-- 阶段提交只在 Reviewer `ACCEPTED` 且活动文档同步后创建，提交信息使用中文。
+## V4 总体验收
 
-## V3 总体验收
-
-正式 V3 PASS 需要目标 ARM64 真机通过系统相册导入、真实 Whisper、DeepSeek 增强或本地回退、逐 cue 编辑、预览一致性、MediaStore 导出和 Media3 回放，并证明取消、恢复、隐私、源文件安全及视觉可用性。缺少任一真机主链路证据时只能记录对应的部分状态。
+正式 V4 PASS 需要在获得设备授权后，使用真实设备从系统相册入口完成：一次点击识别、本地 ASR、真实 AI 增强、自动进入编辑器、开头/中间/结尾新增双语字幕、修改已有字幕、保存恢复、MediaStore 导出和 Media3 回放。缺少真实 AI、真实设备或真实导出证据时，只能标记对应的 `PARTIAL_PASS`。
