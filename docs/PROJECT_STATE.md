@@ -1,13 +1,13 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-24.010`
+- `STATE_REV: 2026-08-24.011`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
 - V4 baseline HEAD: `daf38c884b5b8b9f6b7f1b0517232871f9113417`
-- Current task: `V4-UI-001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `V4_SEPARATE_PLAYER_CONTROLS_IMPLEMENTATION`
-- Current gate: `IMPLEMENTATION_AUTHORIZED`
+- Current task: `V4-E2E-001`
+- Stage state: `MATRIX_DEFINED / WAITING_DEVICE_AUTHORIZATION`
+- Product status: `V4_COMPONENTS_IMPLEMENTED_E2E_PENDING`
+- Current gate: `PHYSICAL_DEVICE_AUTHORIZATION_REQUIRED`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Last state sync: 2026-08-24
 
@@ -22,10 +22,11 @@
 
 ## 当前验收门禁
 
-- `V4-FLOW-001` 已实现并通过聚焦测试；完整回归矩阵延至 V4 收尾统一执行。
-- `V4-EDITOR-001` 已实现并通过插入、直接编辑和项目归档聚焦测试；完整回归矩阵延至 V4 收尾统一执行。
-- `docs/CURRENT_TASK.md` 已冻结 `V4-UI-001` 验收矩阵，允许进入播放器布局实现。
-- 当前禁止真机操作，最高只能记录 `COMPONENT_VERIFIED`；真实 AI、真实设备和真实导出证据归入 `V4-E2E-001`。
+- `V4-FLOW-001` 与 `V4-EDITOR-001` 已达到 `PASS / COMPONENT_VERIFIED`。
+- `V4-UI-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED`；Pixel 8 因已有 snapshot pending 无法启动，未取得新截图或 instrumentation 证据。
+- 收尾矩阵：ASR Python 6/6；JVM 352/352；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
+- `docs/CURRENT_TASK.md` 已冻结 `V4-E2E-001` 验收矩阵；当前必须等待明确真机授权。
+- 当前禁止真机操作，最高只能记录 `COMPONENT_VERIFIED`；真实 AI、真实设备、真实导出与回放证据仍未获得。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
 ## 受保护工作树
@@ -34,7 +35,7 @@
 
 ## 下一允许动作
 
-精确检查并提交 `V4-EDITOR-001`；随后只在 `V4-UI-001` 冻结矩阵范围内实现独立播放器控制行和聚焦测试。
+等待用户明确授权 `V4-E2E-001` 的目标设备与真实主链路；授权前不得连接、安装或操作真机。
 
 ## 权威资料
 
