@@ -25,12 +25,11 @@ class EditorScreenV3UiContractTest {
     }
 
     @Test
-    fun asrSuccessProvidesExplicitEditEntryWithoutImplicitSectionSwitch() {
+    fun completeCaptionFlowAutomaticallyEntersTheEditor() {
         val source = editorScreenSource()
 
-        assertTrue(source.contains("contentDescription = \"asr_success_entry\""))
-        assertTrue(source.contains("contentDescription = \"edit_captions\""))
-        assertTrue(source.contains("onClick = { activeSection = EditorSection.CAPTIONS.index }"))
+        assertTrue(source.contains("CaptionWorkflowStage.READY_FOR_EDIT"))
+        assertTrue(source.contains("activeSection = EditorSection.CAPTIONS.index"))
         assertTrue(source.contains("when (activeSection)"))
     }
 
@@ -51,7 +50,7 @@ class EditorScreenV3UiContractTest {
             "workbench_subtitles",
             "workbench_export",
             "import_video",
-            "edit_captions",
+            "generate_captions",
             "export_video",
             "caption_list",
         ).forEach { id ->
@@ -71,12 +70,14 @@ class EditorScreenV3UiContractTest {
     }
 
     @Test
-    fun productUiExposesOnlyWhisperGatedEnhancementAndGalleryVideoExport() {
+    fun productUiExposesOneCompleteCaptionWorkflowAndGalleryVideoExport() {
         val source = editorScreenSource()
 
         assertTrue(source.contains("PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)"))
-        assertTrue(source.contains("onClick = viewModel::generateCaptions"))
-        assertTrue(source.contains("onClick = viewModel::enhanceCaptions"))
+        assertTrue(source.contains("onClick = viewModel::generateCompleteCaptions"))
+        assertTrue(source.contains("onClick = viewModel::cancelCaptionWorkflow"))
+        assertFalse(source.contains("onClick = viewModel::enhanceCaptions"))
+        assertFalse(source.contains("accessibilityId = \"enhance_captions\""))
         assertTrue(source.contains("onClick = { projectPicker.launch"))
         assertTrue(source.contains("modelPicker.launch"))
         assertTrue(source.contains("viewModel.exportVideo()"))

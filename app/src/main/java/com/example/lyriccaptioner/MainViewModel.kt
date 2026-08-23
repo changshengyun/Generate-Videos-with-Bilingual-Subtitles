@@ -18,7 +18,9 @@ import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
+import com.example.lyriccaptioner.model.CaptionProcessingSnapshot
 import com.example.lyriccaptioner.model.CaptionStyleOverride
+import com.example.lyriccaptioner.model.CaptionWorkflowStage
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.ResolvedCaptionStyle
 import com.example.lyriccaptioner.model.adjustCaptionFontSizeRatio
@@ -47,6 +49,9 @@ import com.example.lyriccaptioner.model.VideoImportPolicy
 import com.example.lyriccaptioner.processing.AsrModule
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
+import com.example.lyriccaptioner.processing.CompleteCaptionWorkflowPreflight
+import com.example.lyriccaptioner.processing.CompleteCaptionWorkflowRunner
+import com.example.lyriccaptioner.processing.blockingMessage
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.TranslationModule
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatus
@@ -297,8 +302,7 @@ class MainViewModel(
         )
     }
     private var exportJob: Job? = null
-    private var asrJob: Job? = null
-    private var enhancementJob: Job? = null
+    private var captionWorkflowJob: Job? = null
     private var deepSeekKeyOperationJob: Job? = null
     private var deepSeekKeyOperationGeneration = 0L
 
@@ -410,96 +414,116 @@ class MainViewModel(
         readTextFile(uri, "lyrics") { raw -> applyLyricText(raw) }
     }
 
-    /** Runs one complete provider batch; partial cloud results are never committed. */
-    fun enhanceCaptions() {
+    fun generateCompleteCaptions() {
         val snapshot = state.value
-        if (snapshot.captions.isEmpty()) {
-            mutableState.update { it.copy(status = "Generate or import captions before AI enhancement.") }
-            return
-        }
-        if (enhancementJob?.isActive == true || snapshot.isWorking) return
-        // Real AI enhancement requires a configured DeepSeek key. Without one, guide the user
-        // to configure it instead of silently downgrading to the local translation model.
-        if (deepSeekKeyUi.value.state != DeepSeekKeyState.CONFIGURED) {
-            mutableState.update {
-                it.copy(status = "请先在\"AI 服务配置\"中保存并验证 DeepSeek API Key，再进行 AI 增强。")
+        val module = asrModule
+        val preflight = CompleteCaptionWorkflowPreflight(
+            hasVideo = snapshot.videoUri != null,
+            localRecognitionReady = module.runtimeStatus.mode == SpeechMode.LOCAL,
+            deepSeekKeyConfigured = deepSeekKeyUi.value.state == DeepSeekKeyState.CONFIGURED,
+            alreadyRunning = captionWorkflowJob?.isActive == true || snapshot.isWorking,
+        )
+        val blockingMessage = preflight.blockingMessage()
+        if (blockingMessage != null) {
+            if (!preflight.alreadyRunning) {
+                mutableState.update {
+                    it.copy(
+                        captionWorkflowStage = CaptionWorkflowStage.FAILED,
+                        status = if (!preflight.localRecognitionReady && preflight.hasVideo) {
+                            module.runtimeStatus.detail
+                        } else {
+                            blockingMessage
+                        },
+                    )
+                }
             }
             return
         }
+
+        val uri = checkNotNull(snapshot.videoUri)
         val jobId = "caption-${elapsedRealtimeMs()}"
-        enhancementJob = viewModelScope.launch {
-            mutableState.update {
-                it.copy(
-                    isWorking = true,
-                    enhancementRunning = true,
-                    status = "Enhancing captions with DeepSeek...",
-                    captionProcessing = it.captionProcessing.copy(
-                        state = CaptionEnhancementState.CLOUD_PENDING,
-                        lastErrorKind = null,
-                    ),
-                )
-            }
+        val runner = CompleteCaptionWorkflowRunner()
+        captionWorkflowJob = viewModelScope.launch {
+            var rawCaptionsCommitted = false
             try {
-                val outcome = enhancementService.enhance(
-                    jobId = jobId,
-                    captions = snapshot.captions,
-                    onStateChanged = { processingState ->
-                        mutableState.update { current ->
-                            current.copy(
-                                captionProcessing = current.captionProcessing.copy(state = processingState),
-                                status = when (processingState) {
-                                    CaptionEnhancementState.CLOUD_PENDING -> "Sending subtitle cues to DeepSeek..."
-                                    CaptionEnhancementState.CLOUD_VALIDATING -> "Validating enhanced subtitle batch..."
-                                    CaptionEnhancementState.LOCAL_FALLBACK_APPLIED -> "DeepSeek unavailable; applying local Chinese fallback..."
-                                    else -> current.status
+                val outcome = runner.run(
+                    recognize = { onStatus -> module.recognize(uri, onStatus) },
+                    enhance = { captions, onStateChanged ->
+                        enhancementService.enhance(jobId, captions, onStateChanged)
+                    },
+                    onStageChanged = { stage ->
+                        mutableState.update {
+                            it.copy(
+                                isWorking = true,
+                                asrRunning = stage == CaptionWorkflowStage.LOCAL_RECOGNIZING,
+                                enhancementRunning = stage == CaptionWorkflowStage.AI_ENHANCING,
+                                captionWorkflowStage = stage,
+                                status = when (stage) {
+                                    CaptionWorkflowStage.LOCAL_RECOGNIZING -> module.runtimeStatus.detail
+                                    CaptionWorkflowStage.AI_ENHANCING -> "Enhancing captions with DeepSeek..."
+                                    else -> it.status
                                 },
                             )
                         }
                     },
+                    onRecognitionStatus = { status -> mutableState.update { it.copy(status = status) } },
+                    onEnhancementState = ::applyEnhancementProgress,
+                    onRawCaptionsReady = { cues ->
+                        rawCaptionsCommitted = true
+                        mutableState.update {
+                            DerivedOutputPolicy.invalidateDerivedOutputs(
+                                it.copy(
+                                    captions = cues,
+                                    selectedCaptionId = cues.firstOrNull()?.id,
+                                    captionProcessing = CaptionProcessingSnapshot(),
+                                    status = "Local Whisper JNI generated ${cues.size} English captions.",
+                                ),
+                            )
+                        }
+                        Log.i(LOG_TAG, "event=asr_completed mode=${module.runtimeStatus.mode} captionCount=${cues.size}")
+                    },
                 )
-                mutableState.update { current ->
-                    if (current.captions != snapshot.captions) {
-                        current.copy(
+                mutableState.update {
+                    DerivedOutputPolicy.invalidateDerivedOutputs(
+                        it.copy(
                             isWorking = false,
+                            asrRunning = false,
                             enhancementRunning = false,
-                            status = "Enhancement was not applied because captions changed. Retry.",
-                            captionProcessing = current.captionProcessing.copy(
-                                state = CaptionEnhancementState.RAW_ASR_READY,
-                                lastErrorKind = outcome.errorKind,
-                            ),
-                        )
-                    } else {
-                        DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
-                            isWorking = false,
-                            enhancementRunning = false,
+                            captionWorkflowStage = CaptionWorkflowStage.READY_FOR_EDIT,
                             captions = outcome.captions,
-                            captionProcessing = com.example.lyriccaptioner.model.CaptionProcessingSnapshot.from(outcome),
+                            selectedCaptionId = outcome.captions.firstOrNull()?.id,
+                            captionProcessing = CaptionProcessingSnapshot.from(outcome),
                             status = if (outcome.source == CaptionResultSource.CLOUD_AI) {
                                 "DeepSeek enhanced ${outcome.captions.size} captions."
                             } else {
                                 "Applied local fallback to ${outcome.captions.size} captions."
                             },
-                        ))
-                    }
+                        ),
+                    )
                 }
             } catch (_: CancellationException) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
+                        asrRunning = false,
                         enhancementRunning = false,
-                        status = "Caption enhancement cancelled. No changes were applied.",
+                        captionWorkflowStage = CaptionWorkflowStage.CANCELLED,
+                        status = "字幕生成已取消；不会继续下一阶段。",
                         captionProcessing = it.captionProcessing.copy(state = CaptionEnhancementState.CANCELLED),
                     )
                 }
+                Log.i(LOG_TAG, "event=caption_workflow_cancelled rawCaptionsCommitted=$rawCaptionsCommitted")
             } catch (error: CaptionEnhancementException) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
+                        asrRunning = false,
                         enhancementRunning = false,
+                        captionWorkflowStage = CaptionWorkflowStage.FAILED,
                         status = when (error.kind) {
-                            CaptionEnhancementErrorKind.AUTHENTICATION -> "DeepSeek authentication failed. Check the saved key."
-                            CaptionEnhancementErrorKind.LOCAL_TRANSLATION -> "Local Chinese fallback failed. Retry."
-                            else -> "DeepSeek enhancement failed. Retry."
+                            CaptionEnhancementErrorKind.AUTHENTICATION -> "DeepSeek authentication failed. Raw ASR captions were kept."
+                            CaptionEnhancementErrorKind.LOCAL_TRANSLATION -> "Local Chinese fallback failed. Raw ASR captions were kept."
+                            else -> "DeepSeek enhancement failed. Raw ASR captions were kept."
                         },
                         captionProcessing = it.captionProcessing.copy(
                             state = CaptionEnhancementState.RAW_ASR_READY,
@@ -507,71 +531,45 @@ class MainViewModel(
                         ),
                     )
                 }
-            } finally {
-                enhancementJob = null
-            }
-        }
-    }
-
-    fun cancelEnhancement() {
-        if (enhancementJob?.isActive == true) enhancementJob?.cancel()
-    }
-
-    fun generateCaptions() {
-        val current = state.value
-        val uri = current.videoUri ?: return
-        val module = asrModule
-        if (module.runtimeStatus.mode == SpeechMode.UNAVAILABLE) {
-            mutableState.update { it.copy(status = module.runtimeStatus.detail) }
-            Log.w(LOG_TAG, "event=asr_unavailable reason=${module.runtimeStatus.detail}")
-            return
-        }
-        Log.i(LOG_TAG, "event=asr_started mode=${module.runtimeStatus.mode}")
-        asrJob = viewModelScope.launch {
-            mutableState.update { it.copy(isWorking = true, asrRunning = true, status = module.runtimeStatus.detail) }
-            try {
-                val cues = module.recognize(uri) { status ->
-                    mutableState.update { it.copy(status = status) }
-                }
-                val mode = module.runtimeStatus.mode
-                mutableState.update {
-                    DerivedOutputPolicy.invalidateDerivedOutputs(it.copy(
-                        isWorking = false,
-                        asrRunning = false,
-                        captions = cues,
-                        selectedCaptionId = cues.firstOrNull()?.id,
-                        status = if (mode == SpeechMode.LOCAL) {
-                            "Local Whisper JNI generated ${cues.size} English captions."
-                        } else {
-                            module.runtimeStatus.detail
-                        },
-                    ))
-                }
-                Log.i(LOG_TAG, "event=asr_completed mode=$mode captionCount=${cues.size}")
-            } catch (error: CancellationException) {
-                mutableState.update {
-                    it.copy(isWorking = false, asrRunning = false, status = "ASR cancelled; temporary audio was cleaned.")
-                }
-                Log.i(LOG_TAG, "event=asr_cancelled mode=${module.runtimeStatus.mode}")
             } catch (error: Throwable) {
                 mutableState.update {
                     it.copy(
                         isWorking = false,
                         asrRunning = false,
-                        status = "ASR failed (${module.runtimeStatus.mode}): ${error.message ?: "unknown error"}",
+                        enhancementRunning = false,
+                        captionWorkflowStage = CaptionWorkflowStage.FAILED,
+                        status = if (rawCaptionsCommitted) {
+                            "AI enhancement failed. Raw ASR captions were kept."
+                        } else {
+                            "ASR failed (${module.runtimeStatus.mode}): ${error.message ?: "unknown error"}"
+                        },
                     )
                 }
-                Log.e(LOG_TAG, "event=asr_failed mode=${module.runtimeStatus.mode}", error)
+                Log.e(LOG_TAG, "event=caption_workflow_failed rawCaptionsCommitted=$rawCaptionsCommitted", error)
             } finally {
-                asrJob = null
+                captionWorkflowJob = null
             }
         }
     }
 
-    fun cancelGenerateCaptions() {
-        if (asrJob?.isActive == true) {
-            Log.i(LOG_TAG, "event=asr_cancel_requested")
-            asrJob?.cancel()
+    fun cancelCaptionWorkflow() {
+        if (captionWorkflowJob?.isActive == true) {
+            Log.i(LOG_TAG, "event=caption_workflow_cancel_requested")
+            captionWorkflowJob?.cancel()
+        }
+    }
+
+    private fun applyEnhancementProgress(processingState: CaptionEnhancementState) {
+        mutableState.update { current ->
+            current.copy(
+                captionProcessing = current.captionProcessing.copy(state = processingState),
+                status = when (processingState) {
+                    CaptionEnhancementState.CLOUD_PENDING -> "Sending subtitle cues to DeepSeek..."
+                    CaptionEnhancementState.CLOUD_VALIDATING -> "Validating enhanced subtitle batch..."
+                    CaptionEnhancementState.LOCAL_FALLBACK_APPLIED -> "DeepSeek unavailable; applying local Chinese fallback..."
+                    else -> current.status
+                },
+            )
         }
     }
 

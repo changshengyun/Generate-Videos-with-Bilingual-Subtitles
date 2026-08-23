@@ -103,6 +103,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionGeometryResolver
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
+import com.example.lyriccaptioner.model.CaptionWorkflowStage
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.ExportState
@@ -148,6 +149,11 @@ fun EditorScreen(viewModel: MainViewModel) {
     val editorSnapshot = buildEditorSnapshot(state)
     var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
     var activeSection by remember { mutableStateOf(EditorSection.IMPORT.index) }
+    LaunchedEffect(state.captionWorkflowStage) {
+        if (state.captionWorkflowStage == CaptionWorkflowStage.READY_FOR_EDIT) {
+            activeSection = EditorSection.CAPTIONS.index
+        }
+    }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             viewModel.importVideo(uri, videoImportMode)
@@ -258,67 +264,20 @@ fun EditorScreen(viewModel: MainViewModel) {
                             SecondaryAction("Whisper 模型", !state.isWorking) { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }
                         }
                     }
-                    1 -> WorkflowPanel(title = "识别 / 翻译", subtitle = "使用本地模型处理当前视频") {
+                    1 -> WorkflowPanel(title = "生成完整字幕", subtitle = "本地识别后自动执行 AI 增强") {
                         ActionRow {
                             ActionButton(
                                 icon = "▶",
-                                label = if (state.modelState.speechMode == SpeechMode.LOCAL) "生成字幕" else "识别不可用",
+                                label = if (state.modelState.speechMode == SpeechMode.LOCAL) "开始识别" else "识别不可用",
                                 enabled = state.videoUri != null && !state.isWorking && state.modelState.speechMode == SpeechMode.LOCAL,
                                 primary = true,
                                 accessibilityId = "generate_captions",
-                                onClick = viewModel::generateCaptions,
-                            )
-                        }
-                        ActionRow {
-                            ActionButton(
-                                icon = "✦",
-                                label = "AI 增强字幕",
-                                enabled = state.captions.isNotEmpty() && !state.isWorking,
-                                primary = true,
-                                accessibilityId = "enhance_captions",
-                                onClick = viewModel::enhanceCaptions,
+                                onClick = viewModel::generateCompleteCaptions,
                             )
                         }
                         if (state.asrRunning || state.enhancementRunning) {
                             ActionRow {
-                                SecondaryAction("取消当前任务", true) {
-                                    if (state.asrRunning) viewModel.cancelGenerateCaptions()
-                                    if (state.enhancementRunning) viewModel.cancelEnhancement()
-                                }
-                            }
-                        }
-                        val editEntry = asrEditEntryState(
-                            status = state.status,
-                            captionCount = state.captions.size,
-                            asrRunning = state.asrRunning,
-                            isWorking = state.isWorking,
-                        )
-                        if (editEntry.visible) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .semantics { contentDescription = "asr_success_entry" },
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1C3328)),
-                                shape = RoundedCornerShape(10.dp),
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Text(
-                                        text = "识别完成：已生成 ${editEntry.captionCount} 条英文字幕",
-                                        color = Color(0xFFB7F36B),
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Button(
-                                        modifier = Modifier.semantics {
-                                            contentDescription = "edit_captions"
-                                        },
-                                        onClick = { activeSection = EditorSection.CAPTIONS.index },
-                                    ) {
-                                        Text("编辑字幕")
-                                    }
-                                }
+                                SecondaryAction("取消当前任务", true, onClick = viewModel::cancelCaptionWorkflow)
                             }
                         }
                     }

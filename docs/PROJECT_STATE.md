@@ -1,12 +1,12 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-24.008`
+- `STATE_REV: 2026-08-24.009`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
 - V4 baseline HEAD: `daf38c884b5b8b9f6b7f1b0517232871f9113417`
-- Current task: `V4-FLOW-001`
+- Current task: `V4-EDITOR-001`
 - Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `V4_ONE_CLICK_CAPTION_FLOW_IMPLEMENTATION`
+- Product status: `V4_PLAYHEAD_CAPTION_INSERTION_IMPLEMENTATION`
 - Current gate: `IMPLEMENTATION_AUTHORIZED`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Last state sync: 2026-08-24
@@ -22,7 +22,8 @@
 
 ## 当前验收门禁
 
-- `docs/CURRENT_TASK.md` 已冻结 `V4-FLOW-001` 验收矩阵，允许进入产品实现。
+- `V4-FLOW-001` 已实现并通过聚焦测试；完整回归矩阵延至 V4 收尾统一执行。
+- `docs/CURRENT_TASK.md` 已冻结 `V4-EDITOR-001` 验收矩阵，允许进入字幕新增实现。
 - 当前禁止真机操作，最高只能记录 `COMPONENT_VERIFIED`；真实 AI、真实设备和真实导出证据归入 `V4-E2E-001`。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
@@ -32,7 +33,7 @@
 
 ## 下一允许动作
 
-精确检查 `V4-PLAN-001` 文档 diff 并创建 checkpoint；随后只在 `V4-FLOW-001` 冻结矩阵范围内实现一键完整字幕流程和聚焦测试。
+精确检查并提交 `V4-FLOW-001`；随后只在 `V4-EDITOR-001` 冻结矩阵范围内实现播放位置插入策略和聚焦测试。
 
 ## 权威资料
 

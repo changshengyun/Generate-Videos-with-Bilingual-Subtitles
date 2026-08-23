@@ -1,50 +1,39 @@
-# Current Task: V4-FLOW-001
+# Current Task: V4-EDITOR-001
 
-- `STATE_REV: 2026-08-24.008`
-- `TASK_REV: V4-FLOW-001.001`
+- `STATE_REV: 2026-08-24.009`
+- `TASK_REV: V4-EDITOR-001.001`
 - Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `V4_ONE_CLICK_CAPTION_FLOW_IMPLEMENTATION`
-- Evidence ceiling: `COMPONENT_VERIFIED`；未获得设备授权，不得声明 `DEVICE_VERIFIED`
-- Baseline HEAD: `daf38c884b5b8b9f6b7f1b0517232871f9113417`
+- Product status: `V4_PLAYHEAD_CAPTION_INSERTION_IMPLEMENTATION`
+- Evidence ceiling: `COMPONENT_VERIFIED`
+- Stage checkpoint: `V4-FLOW-001 feature commit`
 - Device gate: `NO_PHYSICAL_DEVICE_ACTIONS / V4-E2E-001_REQUIRES_EXPLICIT_AUTHORIZATION`
 
 ## 1. 阶段目标
 
-实现唯一用户入口 `generateCompleteCaptions()` 与 `cancelCaptionWorkflow()`：从一次点击开始，依次执行本地 Whisper、现有 AI 增强，并在成功或既有本地回退时自动进入字幕编辑区。
-
-工作流状态固定为：
-
-```text
-IDLE → LOCAL_RECOGNIZING → AI_ENHANCING → READY_FOR_EDIT
-                                   ↘ FAILED
-任意运行阶段 → CANCELLED
-```
+新增 `addCaptionAt(playheadMs)`，只允许在已有字幕之间的有效空档、第一条之前或最后一条之后新增一条双语可编辑字幕。新增 cue 占满对应空档、使用独立 ID、自动选中并按时间排序。
 
 ## 2. 冻结验收矩阵
 
 | 类别 | 冻结内容 |
 |---|---|
-| 主链路 | 从已导入视频的“开始识别”入口一次点击，检查视频、本地模型和 DeepSeek Key；只调用一次本地 ASR，原子提交原始 cue；只调用一次现有 AI 增强，原子提交结果，并自动切换到字幕编辑区。 |
-| 必须证据 | 聚焦单元测试证明调用次数与顺序、缺少 Key、ASR 失败、AI 本地回退、AI 抛错、取消、重复点击和成功自动进入编辑区；阶段收尾完成 JVM 测试、lint、普通/Native Debug、AndroidTest 构建；在不连接真机的前提下记录可达到的最高证据等级。 |
-| 禁止事项 | 不修改 AI Prompt、歌词检索、模型、响应合同、cue 时间戳、导出链路或依赖；不运行 V3 延期的生产 base 验证；不连接或操作真机；不保留用户可见的独立“AI 增强字幕”入口；不 reset、clean、批量暂存或 push。 |
-| 退出状态 | 所有聚焦测试与阶段构建矩阵通过，真实业务入口的状态、取消和失败保留行为符合合同，标记 `PASS / COMPONENT_VERIFIED`；设备与真实 AI 完整主链路留给 `V4-E2E-001`。 |
-| 未完成状态 | 实现完成但构建/组件证据不全为 `PARTIAL_PASS`；普通工程故障按 S1/S2 自主闭环；只有命中架构、依赖、破坏性操作、需求冲突或无法证明安全时为 `HUMAN_DECISION`。 |
-
-矩阵于产品代码修改前冻结。实施失败后不得降低退出条件。
+| 主链路 | 在字幕编辑区以播放器当前时间调用 `addCaptionAt(playheadMs)`；开头使用 `0 → first.startMs`，中间使用 `previous.endMs → next.startMs`，结尾使用 `last.endMs → videoDurationMs`；创建后立即进入该 cue 的英文/中文编辑。 |
+| 必须证据 | 聚焦单元测试覆盖开头、中间、结尾、cue 内拒绝、相邻重叠、空档不足 100ms、未知时长、空列表、边界播放位置、独立 ID、排序、选中和派生产物失效；既有双语文本、时间、位置、宽度、字号编辑与项目保存恢复测试保持通过。 |
+| 禁止事项 | 不新增批量编辑、动画、复杂模板、自动拆分、自动合并或再次调用 AI；不改变既有 cue 的内容和时间；不引入依赖；不操作真机；不 reset、clean、批量暂存或 push。 |
+| 退出状态 | 插入策略与 ViewModel 写入路径的聚焦测试通过，保存/恢复/预览/导出继续共享 `CaptionCue` 数据，标记 `IMPLEMENTED / FOCUSED_TEST_VERIFIED`；完整矩阵在 V4 收尾统一执行。 |
+| 未完成状态 | 代码完成但聚焦证据不全为 `PARTIAL_PASS`；普通故障按 S1/S2 自主闭环；命中架构、依赖、需求冲突或无法证明安全时为 `HUMAN_DECISION`。 |
 
 ## 3. 允许范围
 
-- `MainViewModel`、编辑状态模型、编辑界面及与本工作流直接相关的测试。
-- 复用现有本地识别、AI 增强、回退和持久化实现；允许为可测试性提取局部协调逻辑。
-- 更新三份活动文档；当前阶段结束后切换到已批准的 `V4-EDITOR-001`，并在其编码前冻结下一矩阵。
+- 新增纯 Kotlin 插入策略、修改 `MainViewModel.addCaptionAt`、从播放器上报当前播放位置、更新字幕编辑区按钮及聚焦测试。
+- 复用既有 `CaptionCue`、`DerivedOutputPolicy`、项目快照、预览和导出解析链路。
+- 阶段完成后把活动任务切换到已批准的 `V4-UI-001`，并在 UI 编码前冻结其矩阵。
 
-## 4. 已验证起点与历史缺口
+## 4. 已完成上游
 
-- Git 根目录：`D:\DevEnv\Projects\lyric-captioner-android`；分支：`migration/lyric-captioner-history`；起点 HEAD：`daf38c884b5b8b9f6b7f1b0517232871f9113417`。
-- V3 的本地识别与 AI 增强目前是两个用户操作；V4 只串联现有能力，不改变其合同。
-- `V3-ASR-DIAG-001`：`PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`，不得补做或写成 PASS。
-- V4 进入前的全部未跟踪内容保持原样，不属于本任务提交。
+- `V4-PLAN-001` checkpoint：`758cfa1`。
+- `V4-FLOW-001` 聚焦测试：`CompleteCaptionWorkflowTest` 与 `EditorScreenV3UiContractTest` 通过；完整回归矩阵尚未执行。
+- `V3-ASR-DIAG-001` 继续保持 `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`。
 
 ## 5. 下一动作
 
-完成 `V4-PLAN-001` 精确文档 diff 与 checkpoint 后，实现 `V4-FLOW-001`，先运行最贴近的聚焦测试，阶段收尾再运行一次完整矩阵。
+精确检查并提交 `V4-FLOW-001`；随后实现和聚焦验证播放位置插入策略。

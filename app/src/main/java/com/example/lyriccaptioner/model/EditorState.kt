@@ -19,10 +19,20 @@ data class EditorState(
     val isWorking: Boolean = false,
     val asrRunning: Boolean = false,
     val enhancementRunning: Boolean = false,
+    val captionWorkflowStage: CaptionWorkflowStage = CaptionWorkflowStage.IDLE,
     val status: String = "Import a video up to 5 minutes to start.",
     val exportUri: Uri? = null,
     val exportState: ExportState = ExportState.IDLE,
 )
+
+enum class CaptionWorkflowStage {
+    IDLE,
+    LOCAL_RECOGNIZING,
+    AI_ENHANCING,
+    READY_FOR_EDIT,
+    FAILED,
+    CANCELLED,
+}
 
 enum class ExportState {
     IDLE,
