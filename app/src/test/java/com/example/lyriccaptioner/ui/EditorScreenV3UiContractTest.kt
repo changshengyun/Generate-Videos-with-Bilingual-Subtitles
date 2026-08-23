@@ -88,6 +88,15 @@ class EditorScreenV3UiContractTest {
     }
 
     @Test
+    fun addCaptionUsesTheCurrentPlayerPosition() {
+        val source = editorScreenSource()
+
+        assertTrue(source.contains("onPlaybackPositionChanged = { playbackPositionMs = it }"))
+        assertTrue(source.contains("viewModel.addCaptionAt(playbackPositionMs)"))
+        assertFalse(source.contains("viewModel.addCaption()"))
+    }
+
+    @Test
     fun exportSemanticsAndCancellationUseExplicitExportState() {
         val source = editorScreenSource()
 

@@ -149,6 +149,7 @@ fun EditorScreen(viewModel: MainViewModel) {
     val editorSnapshot = buildEditorSnapshot(state)
     var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
     var activeSection by remember { mutableStateOf(EditorSection.IMPORT.index) }
+    var playbackPositionMs by remember(state.videoUri) { mutableLongStateOf(0L) }
     LaunchedEffect(state.captionWorkflowStage) {
         if (state.captionWorkflowStage == CaptionWorkflowStage.READY_FOR_EDIT) {
             activeSection = EditorSection.CAPTIONS.index
@@ -233,6 +234,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     onPositionCommitted = viewModel::updateCueDirectPosition,
                     onWidthCommitted = viewModel::updateCueDirectWidth,
                     onFontSizeCommitted = viewModel::updateCueDirectFontSize,
+                    onPlaybackPositionChanged = { playbackPositionMs = it },
                 )
                 WorkbenchTabs(activeSection = activeSection, onSectionSelected = { activeSection = it })
                 when (activeSection) {
@@ -283,7 +285,9 @@ fun EditorScreen(viewModel: MainViewModel) {
                     }
                     2 -> WorkflowPanel(title = "字幕编辑", subtitle = "在视频画面内直接调整字幕") {
                         ActionRow {
-                            SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) { viewModel.addCaption() }
+                            SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) {
+                                viewModel.addCaptionAt(playbackPositionMs)
+                            }
                             SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
                         }
                         Text(
@@ -1215,6 +1219,7 @@ private fun VideoPreview(
     onPositionCommitted: (String, Float, Float) -> Unit,
     onWidthCommitted: (String, Float) -> Unit,
     onFontSizeCommitted: (String, Float) -> Unit,
+    onPlaybackPositionChanged: (Long) -> Unit,
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
@@ -1267,6 +1272,7 @@ private fun VideoPreview(
                         onPositionCommitted = onPositionCommitted,
                         onWidthCommitted = onWidthCommitted,
                         onFontSizeCommitted = onFontSizeCommitted,
+                        onPlaybackPositionChanged = onPlaybackPositionChanged,
                     )
                     Box(
                         modifier = Modifier
@@ -1321,6 +1327,7 @@ private fun VideoPlayer(
     onPositionCommitted: (String, Float, Float) -> Unit,
     onWidthCommitted: (String, Float) -> Unit,
     onFontSizeCommitted: (String, Float) -> Unit,
+    onPlaybackPositionChanged: (Long) -> Unit,
 ) {
     val context = LocalContext.current
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
@@ -1367,6 +1374,7 @@ private fun VideoPlayer(
     LaunchedEffect(player) {
         while (isActive) {
             positionMs = player.currentPosition.coerceAtLeast(0L)
+            onPlaybackPositionChanged(positionMs)
             delay(100L)
         }
     }

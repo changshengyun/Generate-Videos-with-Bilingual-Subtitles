@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
 - `ROADMAP_REV: 2026-08-24.005`
-- 当前任务：`V4-EDITOR-001 / MATRIX_DEFINED / IN_PROGRESS`
+- 当前任务：`V4-UI-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -36,8 +36,8 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 |---|---|---|
 | `V4-PLAN-001` | `PASS / CHECKPOINT_CREATED` | 初始化 S0/S1/S2 规则、V4 路线和活动状态，创建 checkpoint |
 | `V4-FLOW-001` | `IMPLEMENTED / FOCUSED_TEST_VERIFIED` | 一次点击串联本地 ASR、AI 增强和自动进入编辑器；阶段整体验证待 V4 收尾统一执行 |
-| `V4-EDITOR-001` | `MATRIX_DEFINED / IN_PROGRESS` | 按当前播放位置在空档新增双语字幕，并保持编辑/恢复/导出一致 |
-| `V4-UI-001` | `PLANNED` | 普通与全屏预览统一使用视频画面下方的独立播放器控制行 |
+| `V4-EDITOR-001` | `IMPLEMENTED / FOCUSED_TEST_VERIFIED` | 按当前播放位置在空档新增双语字幕，并保持编辑/恢复/导出一致；整体验证待 V4 收尾 |
+| `V4-UI-001` | `MATRIX_DEFINED / IN_PROGRESS` | 普通与全屏预览统一使用视频画面下方的独立播放器控制行 |
 | `V4-E2E-001` | `WAITING_DEVICE_AUTHORIZATION` | 真实相册导入、ASR、AI、编辑、恢复、导出与 Media3 回放验收 |
 
 ## 执行和提交顺序

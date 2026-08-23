@@ -39,6 +39,7 @@ import com.example.lyriccaptioner.model.withBasicStylePreset
 import com.example.lyriccaptioner.model.withDirectEditFontSize
 import com.example.lyriccaptioner.model.withDirectEditWidth
 import com.example.lyriccaptioner.model.withFontSizeRatio
+import com.example.lyriccaptioner.model.insertCaptionAt
 import com.example.lyriccaptioner.model.withUnifiedTextColor
 import com.example.lyriccaptioner.model.validated
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
@@ -606,33 +607,14 @@ class MainViewModel(
         }
     }
 
-    fun addCaption() {
+    fun addCaptionAt(playheadMs: Long) {
         mutableState.update { current ->
-            val previousEndMs = current.captions.maxOfOrNull { it.endMs } ?: 0L
-            val videoDurationMs = current.videoDurationMs
-            val startMs = when {
-                videoDurationMs == null -> previousEndMs
-                previousEndMs < videoDurationMs -> previousEndMs
-                else -> (videoDurationMs - MIN_CAPTION_DURATION_MS).coerceAtLeast(0L)
-            }
-            val endMs = videoDurationMs
-                ?.coerceAtLeast(startMs + MIN_CAPTION_DURATION_MS)
-                ?.let { minOf(it, startMs + DEFAULT_CAPTION_DURATION_MS) }
-                ?: startMs + DEFAULT_CAPTION_DURATION_MS
-            val cue = CaptionCue(
-                id = "manual-${System.nanoTime()}",
-                startMs = startMs,
-                endMs = endMs,
-                english = "",
-                chinese = "",
-                confidence = 1f,
-                confirmed = false,
-            )
-            DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
-                captions = current.captions + cue,
-                selectedCaptionId = cue.id,
-                status = "Added a caption. Edit its text and timing.",
-            ))
+            val existingIds = current.captions.mapTo(mutableSetOf()) { it.id }
+            var cueId: String
+            do {
+                cueId = "manual-${System.nanoTime()}"
+            } while (cueId in existingIds)
+            current.insertCaptionAt(playheadMs, cueId)
         }
     }
 
@@ -1331,8 +1313,6 @@ class MainViewModel(
 
     private companion object {
         const val LOG_TAG = "MainViewModel"
-        const val DEFAULT_CAPTION_DURATION_MS = 2_000L
-        const val MIN_CAPTION_DURATION_MS = 100L
         const val PREVIEW_RELEASE_DELAY_MS = 1_500L
         const val MAX_TEXT_FILE_BYTES = 1 * 1_024 * 1_024
     }
