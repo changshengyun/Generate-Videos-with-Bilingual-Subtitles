@@ -49,6 +49,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -198,6 +199,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                .imePadding()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -1379,79 +1381,77 @@ private fun VideoPlayer(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (!fullscreen) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { viewContext ->
-                    PlayerView(viewContext).apply {
-                        this.player = player
-                        useController = true
-                    }
-                },
-                update = { playerView ->
-                    playerView.player = player
-                },
-            )
-            if (directEditMode) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .semantics { contentDescription = "取消字幕选择" }
-                        .pointerInput(player, currentCue?.id) {
-                            detectTapGestures {
-                                visibleSelectionId = null
-                                if (player.isPlaying) player.pause() else player.play()
-                            }
-                        },
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            if (!fullscreen) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            this.player = player
+                            useController = false
+                        }
+                    },
+                    update = { playerView -> playerView.player = player },
                 )
+                if (directEditMode) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { contentDescription = "取消字幕选择" }
+                            .pointerInput(player, currentCue?.id) {
+                                detectTapGestures {
+                                    visibleSelectionId = null
+                                    if (player.isPlaying) player.pause() else player.play()
+                                }
+                            },
+                    )
+                }
+                if (currentRender != null && sourceVideoSize != null) {
+                    SubtitlePreviewOverlay(
+                        render = currentRender,
+                        sourceVideoSize = sourceVideoSize,
+                        directEditMode = directEditMode,
+                        selected = visibleSelectionId == currentRender.caption.id,
+                        onSelect = {
+                            player.pause()
+                            visibleSelectionId = currentRender.caption.id
+                            onSelectCue(currentRender.caption.id)
+                        },
+                        onDelete = {
+                            visibleSelectionId = null
+                            onDeleteCue(currentRender.caption.id)
+                        },
+                        onPositionCommitted = onPositionCommitted,
+                        onWidthCommitted = onWidthCommitted,
+                        onFontSizeCommitted = onFontSizeCommitted,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                TextButton(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .heightIn(min = 48.dp)
+                        .semantics { contentDescription = "preview_fullscreen" },
+                    onClick = { fullscreen = true },
+                ) { Text("全屏", color = Color.White) }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { Text("正在全屏预览", color = Color.White) }
             }
-            TextButton(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(4.dp)
-                    .semantics { contentDescription = "preview_fullscreen" },
-                onClick = { fullscreen = true },
-            ) { Text("全屏", color = Color.White) }
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) { Text("正在全屏预览", color = Color.White) }
         }
-        if (currentRender != null && sourceVideoSize != null) {
-            SubtitlePreviewOverlay(
-                render = currentRender,
-                sourceVideoSize = sourceVideoSize,
-                directEditMode = directEditMode,
-                selected = visibleSelectionId == currentRender.caption.id,
-                onSelect = {
-                    player.pause()
-                    visibleSelectionId = currentRender.caption.id
-                    onSelectCue(currentRender.caption.id)
-                },
-                onDelete = {
-                    visibleSelectionId = null
-                    onDeleteCue(currentRender.caption.id)
-                },
-                onPositionCommitted = onPositionCommitted,
-                onWidthCommitted = onWidthCommitted,
-                onFontSizeCommitted = onFontSizeCommitted,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        if (directEditMode && !fullscreen) {
-            TextButton(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(4.dp)
-                    .heightIn(min = 48.dp)
-                    .semantics { contentDescription = "预览播放控制" },
-                onClick = { if (player.isPlaying) player.pause() else player.play() },
-            ) {
-                Text(if (player.isPlaying) "暂停" else "播放", color = Color.White)
-            }
-        }
+        PlayerControlRow(
+            player = player,
+            positionMs = positionMs,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
     if (fullscreen) {
         Dialog(
@@ -1466,57 +1466,125 @@ private fun VideoPlayer(
                 modifier = Modifier.fillMaxSize(),
                 color = Color.Black,
             ) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
                         .navigationBarsPadding()
+                        .imePadding()
                         .semantics { contentDescription = "preview_fullscreen_dialog" },
                 ) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { viewContext ->
-                            PlayerView(viewContext).apply {
-                                this.player = player
-                                useController = true
-                            }
-                        },
-                        update = { playerView -> playerView.player = player },
-                    )
-                    if (currentRender != null && sourceVideoSize != null) {
-                        SubtitlePreviewOverlay(
-                            render = currentRender,
-                            sourceVideoSize = sourceVideoSize,
-                            directEditMode = false,
-                            selected = false,
-                            onSelect = {},
-                            onDelete = {},
-                            onPositionCommitted = { _, _, _ -> },
-                            onWidthCommitted = { _, _ -> },
-                            onFontSizeCommitted = { _, _ -> },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+                            .weight(1f),
                     ) {
-                        Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
-                        TextButton(
-                            modifier = Modifier.semantics { contentDescription = "preview_exit" },
-                            onClick = { fullscreen = false },
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { viewContext ->
+                                PlayerView(viewContext).apply {
+                                    this.player = player
+                                    useController = false
+                                }
+                            },
+                            update = { playerView -> playerView.player = player },
+                        )
+                        if (currentRender != null && sourceVideoSize != null) {
+                            SubtitlePreviewOverlay(
+                                render = currentRender,
+                                sourceVideoSize = sourceVideoSize,
+                                directEditMode = false,
+                                selected = false,
+                                onSelect = {},
+                                onDelete = {},
+                                onPositionCommitted = { _, _, _ -> },
+                                onWidthCommitted = { _, _ -> },
+                                onFontSizeCommitted = { _, _ -> },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("退出", color = Color.White)
+                            Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
+                            TextButton(
+                                modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .semantics { contentDescription = "preview_exit" },
+                                onClick = { fullscreen = false },
+                            ) {
+                                Text("退出", color = Color.White)
+                            }
                         }
                     }
+                    PlayerControlRow(
+                        player = player,
+                        positionMs = positionMs,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun PlayerControlRow(
+    player: Player,
+    positionMs: Long,
+    modifier: Modifier = Modifier,
+) {
+    val durationMs = player.duration.takeIf { it > 0L } ?: 0L
+    val boundedPositionMs = positionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
+    Row(
+        modifier = modifier
+            .background(Color(0xFF111318))
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        TextButton(
+            modifier = Modifier
+                .size(48.dp)
+                .semantics { contentDescription = if (player.isPlaying) "暂停预览" else "播放预览" },
+            onClick = { if (player.isPlaying) player.pause() else player.play() },
+        ) {
+            Text(if (player.isPlaying) "Ⅱ" else "▶", color = Color.White)
+        }
+        Text(
+            text = formatPlaybackTime(boundedPositionMs),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+        )
+        Slider(
+            value = if (durationMs > 0L) boundedPositionMs.toFloat() else 0f,
+            onValueChange = { value -> if (durationMs > 0L) player.seekTo(value.toLong()) },
+            valueRange = 0f..durationMs.coerceAtLeast(1L).toFloat(),
+            enabled = durationMs > 0L,
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "预览进度条" },
+        )
+        Text(
+            text = formatPlaybackTime(durationMs),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
+
+private fun formatPlaybackTime(timeMs: Long): String {
+    val totalSeconds = timeMs.coerceAtLeast(0L) / 1_000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "%d:%02d".format(minutes, seconds)
 }
 
 @Composable

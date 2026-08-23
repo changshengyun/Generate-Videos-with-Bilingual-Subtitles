@@ -1,6 +1,7 @@
 package com.example.lyriccaptioner.ui
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -94,6 +95,20 @@ class EditorScreenV3UiContractTest {
         assertTrue(source.contains("onPlaybackPositionChanged = { playbackPositionMs = it }"))
         assertTrue(source.contains("viewModel.addCaptionAt(playbackPositionMs)"))
         assertFalse(source.contains("viewModel.addCaption()"))
+    }
+
+    @Test
+    fun normalAndFullscreenPlayersUseASeparateAccessibleControlRow() {
+        val source = editorScreenSource()
+
+        assertEquals(2, Regex("useController = false").findAll(source).count())
+        assertFalse(source.contains("useController = true"))
+        assertEquals(2, Regex("PlayerControlRow\\(").findAll(source).count() - 1)
+        assertTrue(source.contains("private fun PlayerControlRow"))
+        assertTrue(source.contains("contentDescription = \"预览进度条\""))
+        assertTrue(source.contains(".size(48.dp)"))
+        assertTrue(source.contains(".heightIn(min = 48.dp)"))
+        assertTrue(source.contains(".imePadding()"))
     }
 
     @Test
