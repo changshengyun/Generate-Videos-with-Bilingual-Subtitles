@@ -1,7 +1,6 @@
 package com.example.lyriccaptioner.processing
 
 import android.net.Uri
-import com.example.lyriccaptioner.captions.SrtWriter
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
@@ -9,7 +8,6 @@ import com.example.lyriccaptioner.model.ExportProfile
 
 class CaptionPipeline(
     private val exportEngine: ExportEngine,
-    private val srtWriter: SrtWriter = SrtWriter(),
 ) {
     suspend fun export(
         videoUri: Uri,
@@ -19,7 +17,7 @@ class CaptionPipeline(
         captionLayout: CaptionLayout = CaptionLayout(),
         defaultCaptionStyle: DefaultCaptionStyle = DefaultCaptionStyle(),
         onStatus: (String) -> Unit,
-    ): Uri {
+    ): ExportResult {
         onStatus("Preparing subtitle overlay...")
         return exportEngine.export(
             CaptionProject(
@@ -30,11 +28,7 @@ class CaptionPipeline(
                 defaultCaptionStyle = defaultCaptionStyle,
             ),
             destinationUri,
-        ).outputUri
-    }
-
-    fun exportSidecarSrt(captions: List<CaptionCue>): String {
-        return srtWriter.write(captions)
+        )
     }
 }
 

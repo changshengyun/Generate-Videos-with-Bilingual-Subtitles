@@ -13,6 +13,7 @@ import java.util.ArrayDeque
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,6 +26,9 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertTrue(body.contains("\"thinking\":{\"type\":\"disabled\"}"))
         assertTrue(body.contains("raw_english"))
         assertTrue(body.contains("Hello from the quiet street"))
+        assertTrue(body.contains("必须综合整批字幕中的多条歌词识别对应歌曲"))
+        assertTrue(body.contains("最多 2 个候选"))
+        assertTrue(body.contains("不得编造候选"))
         assertTrue(body.contains("\"response_format\":{\"type\":\"json_object\"}"))
         assertFalse(body.contains("complete_english_lyrics"))
         assertFalse(body.contains("content://"))
@@ -50,11 +54,47 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertTrue(body.contains("verified_complete_lyrics"))
         assertTrue(body.contains("complete_english_lyrics"))
         assertTrue(body.contains("Hello from the quiet street"))
-        assertTrue(body.contains("must not be isolated cue-by-cue literal translation"))
-        assertTrue(body.contains("repeated identical canonical English lines"))
+        assertTrue(body.contains("外部歌词检索工具取得并经多条 Whisper 字幕验证"))
+        assertTrue(body.contains("先通读整首英文歌词"))
+        assertTrue(body.contains("整批英文纠错完成后，再根据 corrected_english"))
+        assertTrue(body.contains("不要逐词直译"))
+        assertTrue(body.contains("不得为了押韵改变原意"))
+        assertTrue(body.contains("未提供时不得凭模型记忆编造或冒充网易云译文"))
+        assertTrue(body.contains("相同 canonical 英文歌词必须返回完全相同的中文"))
         assertTrue(body.contains("corrected_english"))
         assertTrue(body.contains("coherent Chinese lyric line"))
         assertTrue(body.contains("\"max_tokens\":960"))
+    }
+
+    @Test
+    fun songCandidateContractAcceptsAtMostTwoAndRejectsThirdCandidate() {
+        val twoCandidates = envelope(
+            """{"candidates":[{"title":"First Song","artist":"First Artist"},{"title":"Second Song","artist":"Second Artist"}]}""",
+        )
+        val threeCandidates = envelope(
+            """{"candidates":[{"title":"First Song","artist":"First Artist"},{"title":"Second Song","artist":"Second Artist"},{"title":"Third Song","artist":"Third Artist"}]}""",
+        )
+
+        assertEquals(2, DeepSeekCaptionEnhancementJson.parseSongCandidates(twoCandidates).size)
+        assertThrows(JsonParseException::class.java) {
+            DeepSeekCaptionEnhancementJson.parseSongCandidates(threeCandidates)
+        }
+    }
+
+    @Test
+    fun unconfirmedPromptRemainsConservativeAndDoesNotClaimNeteaseVersion() {
+        assertEquals(
+            """
+当前没有从在线歌词来源取得并验证完整歌词，不得声称歌曲已经确认，不得编造 canonical 歌词或网易云中英对照歌词。
+必须先综合整批 Whisper 英文字幕进行保守纠错，确定全部 corrected_english；完成后再根据整批上下文生成自然的中文歌词。
+中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
+不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+只返回 JSON，格式必须严格为：
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v3","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
+每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
+""".trimIndent(),
+            DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT,
+        )
     }
 
     @Test
@@ -66,7 +106,13 @@ class DeepSeekCaptionEnhancementProviderTest {
         val response = DeepSeekCaptionEnhancementJson.parseResponse(body)
 
         assertEquals("job-1", response.jobId)
+        assertEquals("caption-enhancement.v3", response.schemaVersion)
+        assertEquals("ignored-model-version", response.processingVersion)
+        assertEquals("cue-1", response.cues.single().id)
+        assertEquals(0L, response.cues.single().startMs)
+        assertEquals(1000L, response.cues.single().endMs)
         assertEquals("Hello", response.cues.single().correctedEnglish)
+        assertEquals("你好", response.cues.single().chinese)
         assertEquals(null, response.songMatch)
     }
 
@@ -136,7 +182,8 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertEquals("lyrics-search-unavailable", response.songMatch?.source)
         val finalRequest = usedConnections.last().writtenBody()
         assertTrue(finalRequest.contains("unconfirmed_full_batch"))
-        assertTrue(finalRequest.contains("complete Whisper cue batch as one song context"))
+        assertTrue(finalRequest.contains("先综合整批 Whisper 英文字幕进行保守纠错"))
+        assertTrue(finalRequest.contains("不得声称为网易云版本"))
         assertFalse(finalRequest.contains("complete_english_lyrics"))
     }
 

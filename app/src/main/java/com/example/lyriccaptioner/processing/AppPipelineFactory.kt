@@ -10,7 +10,6 @@ object AppPipelineFactory {
 
     fun createAsrDefault(context: Context): AsrModule {
         val store = WhisperModelStore(context)
-        store.ensureBundledModel()
         val status = store.status()
         return routeAsr(status) {
             createLocalAsr(

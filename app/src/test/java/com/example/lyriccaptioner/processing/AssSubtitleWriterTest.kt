@@ -1,17 +1,102 @@
 package com.example.lyriccaptioner.processing
 
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.SubtitleStyle
+import com.example.lyriccaptioner.model.withBasicStylePreset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AssSubtitleWriterTest {
+    @Test
+    fun backgroundDisabledKeepsLegacyAssStyleFields() {
+        val ass = AssSubtitleWriter.write(
+            captions = listOf(CaptionCue("legacy", 0L, 1_000L, "Legacy", "", 1f)),
+            layout = CaptionLayout(),
+            defaultStyle = DefaultCaptionStyle(
+                outlineColorHex = "#102030",
+                outlineWidthRatio = 3f / 1080f,
+                backgroundEnabled = false,
+                backgroundColorHex = "#AABBCC",
+            ),
+        )
+
+        val style = ass.lineSequence().single { it.startsWith("Style:") }
+        assertTrue(style.contains("&H00302010,&H80000000,0,0,0,0,100,100,0,0,1,3,0,"))
+        assertFalse(style.contains("&H00CCBBAA"))
+    }
+
+    @Test
+    fun opaqueBackgroundUsesResolvedBackColourBorderStyleThreeAndOutlineAsPadding() {
+        val ass = AssSubtitleWriter.write(
+            captions = listOf(
+                CaptionCue(
+                    "boxed",
+                    0L,
+                    1_000L,
+                    "English",
+                    "Chinese",
+                    1f,
+                    styleOverride = CaptionStyleOverride(
+                        backgroundEnabled = true,
+                        backgroundColorHex = "#123456",
+                        outlineWidthRatio = 5f / 1080f,
+                    ),
+                ),
+            ),
+            layout = CaptionLayout(xRatio = 0.15f, yRatio = 0.25f, widthRatio = 0.6f),
+            defaultStyle = DefaultCaptionStyle(),
+        )
+
+        val style = ass.lineSequence().single { it.startsWith("Style:") }
+        assertTrue(style.contains("&H00563412,0,0,0,0,100,100,0,0,3,5,0,"))
+        assertTrue(ass.contains("English\\N{\\c&H00A1E7F4&}Chinese"))
+        assertTrue(ass.contains("{\\an8\\pos(864,270)\\q0}"))
+    }
+
+    @Test
+    fun allBasicStylePresetsProduceDeterministicAssBackgroundFields() {
+        CaptionBasicStylePreset.entries.forEach { preset ->
+            val override = CaptionStyleOverride().withBasicStylePreset(preset)
+            val ass = AssSubtitleWriter.write(
+                captions = listOf(
+                    CaptionCue("preset-$preset", 0L, 1_000L, "English", "涓枃", 1f, styleOverride = override),
+                ),
+                layout = CaptionLayout(),
+                defaultStyle = DefaultCaptionStyle(),
+            )
+            val style = ass.lineSequence().single { it.startsWith("Style:") }
+            val (resolvedColors, backgroundFields) = when (preset) {
+                CaptionBasicStylePreset.PLAIN_TEXT ->
+                    "&H00FFFFFF,&H00A1E7F4,&H00000000" to
+                        "&H80000000,0,0,0,0,100,100,0,0,1,0,0,"
+                CaptionBasicStylePreset.DARK_OUTLINE ->
+                    "&H00FFFFFF,&H00FFFFFF,&H00000000" to
+                        "&H80000000,0,0,0,0,100,100,0,0,1,2,0,"
+                CaptionBasicStylePreset.LIGHT_OUTLINE ->
+                    "&H00000000,&H00000000,&H00FFFFFF" to
+                        "&H80000000,0,0,0,0,100,100,0,0,1,2,0,"
+                CaptionBasicStylePreset.LIGHT_BACKGROUND ->
+                    "&H00000000,&H00000000,&H00000000" to
+                        "&H00FFFFFF,0,0,0,0,100,100,0,0,3,0,0,"
+                CaptionBasicStylePreset.DARK_BACKGROUND ->
+                    "&H00FFFFFF,&H00FFFFFF,&H00000000" to
+                        "&H00000000,0,0,0,0,100,100,0,0,3,0,0,"
+                CaptionBasicStylePreset.GRAY_BACKGROUND ->
+                    "&H00FFFFFF,&H00FFFFFF,&H00000000" to
+                        "&H004A4A4A,0,0,0,0,100,100,0,0,3,0,0,"
+            }
+            assertTrue("Missing resolved colors for $preset: $style", style.contains(resolvedColors))
+            assertTrue("Missing ASS background mapping for $preset: $style", style.contains(backgroundFields))
+        }
+    }
+
     @Test
     fun writesBilingualTimedDialogueAndStyle() {
         val ass = AssSubtitleWriter.write(

@@ -32,16 +32,6 @@ class WhisperModelStore(
         )
     }
 
-    fun ensureBundledModel() {
-        val model = WhisperModelCatalog.smallEnQ5_1
-        if (!WhisperModelValidator.isValid(fileFor(model), model)) {
-            appContext.assets.open("models/${model.fileName}").use { input ->
-                WhisperModelImporter.install(input, fileFor(model), model)
-            }
-        }
-        select(model.fileName)
-    }
-
     suspend fun install(sourceUri: Uri): WhisperRuntimeStatus = withContext(Dispatchers.IO) {
         val fileName = queryDisplayName(sourceUri)
             ?: throw IllegalArgumentException("The selected file has no model filename.")

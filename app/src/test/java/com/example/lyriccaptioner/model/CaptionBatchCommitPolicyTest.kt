@@ -19,7 +19,7 @@ class CaptionBatchCommitPolicyTest {
         val state = EditorState(
             captions = original,
             exportUri = TestUri("old-export"),
-            pendingSidecarSrt = "old-srt",
+            exportState = ExportState.SUCCEEDED,
         )
         val updated = original.map { it.copy(english = "fixed:${it.english}", chinese = "translated") }
         val outcome = CaptionEnhancementOutcome(
@@ -34,7 +34,7 @@ class CaptionBatchCommitPolicyTest {
         assertTrue(result.committed)
         assertEquals(updated, result.state.captions)
         assertNull(result.state.exportUri)
-        assertNull(result.state.pendingSidecarSrt)
+        assertEquals(ExportState.IDLE, result.state.exportState)
         assertEquals(CaptionResultSource.CLOUD_AI, result.state.captionProcessing.source)
         assertEquals("provider-v1", result.state.captionProcessing.processingVersion)
     }
@@ -46,7 +46,7 @@ class CaptionBatchCommitPolicyTest {
         val state = EditorState(
             captions = edited,
             exportUri = TestUri("old-export"),
-            pendingSidecarSrt = "old-srt",
+            exportState = ExportState.SUCCEEDED,
         )
         val outcome = CaptionEnhancementOutcome(
             captions = original.map { it.copy(chinese = "translated") },
@@ -60,7 +60,7 @@ class CaptionBatchCommitPolicyTest {
         assertFalse(result.committed)
         assertSame(state, result.state)
         assertEquals("old-export", result.state.exportUri.toString())
-        assertEquals("old-srt", result.state.pendingSidecarSrt)
+        assertEquals(ExportState.SUCCEEDED, result.state.exportState)
     }
 
     @Test

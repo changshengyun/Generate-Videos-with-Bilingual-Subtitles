@@ -86,18 +86,22 @@ class AndroidMediaStoreDestinationStore(
         resolver.openOutputStream(destination.uri, "w")
 
     override fun sizeBytes(destination: MediaStoreDestination): Long? = runCatching {
-        resolver.query(destination.uri, arrayOf(MediaStore.Video.Media.SIZE), null, null, null)
-            ?.use { cursor ->
-                if (!cursor.moveToFirst()) null
-                else cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE))
-            }
+        // The MediaStore SIZE column is not reliably refreshed for pending rows on some
+        // OEM builds (e.g. MIUI) until IS_PENDING is cleared. Stat the underlying file
+        // descriptor instead, which reflects the actual bytes already written.
+        resolver.openFileDescriptor(destination.uri, "r")?.use { descriptor ->
+            descriptor.statSize
+        }
     }.getOrNull()
 
     override fun publish(destination: MediaStoreDestination) {
         if (!destination.usesPendingRow) return
         val values = ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) }
-        check(resolver.update(destination.uri, values, null, null) > 0) {
-            "MediaStore publish did not update the task-owned row"
+        // Some OEM MediaStore returns 0 for a successful publish (the row may already
+        // report IS_PENDING=0). Only a negative result indicates a real failure.
+        val updated = resolver.update(destination.uri, values, null, null)
+        if (updated < 0) {
+            throw IllegalStateException("MediaStore publish did not update the task-owned row")
         }
     }
 
@@ -146,12 +150,13 @@ class MediaStoreExportSession internal constructor(
         return store.openOutput(destination) ?: fail("Could not open MediaStore output")
     }
 
-    fun publish(): MediaStoreExportResult {
+    fun publish(expectedSize: Long? = null): MediaStoreExportResult {
         if (state == MediaStoreExportState.PUBLISHED) {
             return checkNotNull(publishedResult)
         }
         check(state == MediaStoreExportState.WRITING) { "Export is not writable: $state" }
-        val size = store.sizeBytes(destination) ?: return fail("Could not validate MediaStore output")
+        val size = expectedSize ?: store.sizeBytes(destination)
+            ?: return fail("Could not validate MediaStore output")
         if (size <= 0L) return fail("MediaStore output is empty")
         return try {
             store.publish(destination)

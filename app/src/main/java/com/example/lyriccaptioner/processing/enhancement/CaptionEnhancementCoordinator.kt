@@ -4,8 +4,11 @@ import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.processing.TranslationBatchException
 import com.example.lyriccaptioner.processing.TranslationModule
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
  * Orchestrates one complete cloud enhancement attempt and its deterministic local fallback.
@@ -19,6 +22,7 @@ class CaptionEnhancementCoordinator(
     private val localTranslation: TranslationModule,
     private val validator: CaptionEnhancementResponseValidator = CaptionEnhancementResponseValidator(),
     private val mapper: CaptionEnhancementRequestMapper = CaptionEnhancementRequestMapper(),
+    private val workerDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : CaptionEnhancementService {
     /**
      * Only transport/provider failures in this explicit allowlist may use the local path.
@@ -48,15 +52,24 @@ class CaptionEnhancementCoordinator(
         // Keep this snapshot untouched throughout the operation. TranslationModule already
         // performs an atomic batch commit, and passing this list prevents cloud corrections from
         // becoming fallback input after a recoverable provider failure.
-        val originalCaptions = captions.toList()
         emit(CaptionEnhancementState.RAW_ASR_READY, onStateChanged)
-        val request = mapper.map(jobId = jobId, captions = originalCaptions)
+        val (originalCaptions, request) = try {
+            withContext(workerDispatcher) {
+                val snapshot = captions.toList()
+                snapshot to mapper.map(jobId = jobId, captions = snapshot)
+            }
+        } catch (_: CancellationException) {
+            emit(CaptionEnhancementState.CANCELLED, onStateChanged)
+            throw safeCancellationException()
+        }
         emit(CaptionEnhancementState.CLOUD_PENDING, onStateChanged)
 
         try {
             val response = try {
                 // Exactly one provider invocation belongs to one enhancement job.
-                provider.enhance(request)
+                withContext(workerDispatcher) {
+                    provider.enhance(request)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: CaptionEnhancementProviderException) {
@@ -74,11 +87,13 @@ class CaptionEnhancementCoordinator(
             }
 
             emit(CaptionEnhancementState.CLOUD_VALIDATING, onStateChanged)
-            val validated = validator.validate(
-                request = request,
-                response = response,
-                rawCaptions = originalCaptions,
-            )
+            val validated = withContext(workerDispatcher) {
+                validator.validate(
+                    request = request,
+                    response = response,
+                    rawCaptions = originalCaptions,
+                )
+            }
             emit(CaptionEnhancementState.CLOUD_APPLIED, onStateChanged)
             return CaptionEnhancementOutcome(
                 captions = validated.captions,
@@ -153,7 +168,9 @@ class CaptionEnhancementCoordinator(
             // TranslationModule translates only missing Chinese fields, but always uses the
             // original Whisper English from originalCaptions. Its result is committed only after
             // every cue succeeds, so no partial local batch can escape this method.
-            val translated = localTranslation.translateMissingChinese(originalCaptions)
+            val translated = withContext(workerDispatcher) {
+                localTranslation.translateMissingChinese(originalCaptions)
+            }
             currentCoroutineContext().ensureActive()
             emit(CaptionEnhancementState.LOCAL_FALLBACK_APPLIED, onStateChanged)
             return CaptionEnhancementOutcome(

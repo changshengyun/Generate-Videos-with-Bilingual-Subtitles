@@ -224,40 +224,42 @@ class DeepSeekCaptionEnhancementProvider(
     companion object {
         const val ENDPOINT = "https://api.deepseek.com/chat/completions"
         const val MODEL = "deepseek-v4-pro"
-        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v2"
+        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v3"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
-        const val MAX_SONG_CANDIDATES = 3
+        const val MAX_SONG_CANDIDATES = 2
         const val LRCLIB_BATCH_DELAY_MS = 250L
 
         val IDENTIFICATION_SYSTEM_PROMPT = """
-Identify a song only from the complete Whisper English cue batch. Return JSON only.
-Use evidence across multiple cues. Never claim that a candidate is confirmed.
-Return at most $MAX_SONG_CANDIDATES candidates ordered by likelihood, each with non-empty title and artist.
-If the batch is insufficient or not recognizably lyrics, return an empty candidates array.
-The response shape is exactly: {"candidates":[{"title":"...","artist":"..."}]}.
+输入是同一首英文歌曲的整批 Whisper 识别字幕，内容可能包含错词、漏词和错误断句。
+1.必须综合整批字幕中的多条歌词识别对应歌曲，不能只凭单句判断，也不能声称候选已经确认。
+2.按可能性从高到低返回最多 $MAX_SONG_CANDIDATES 个候选，每个候选必须包含非空的英文歌名和歌手。
+3.如果整批证据不足或内容无法识别为歌词，返回空 candidates 数组，不得编造候选。
+只返回 JSON，格式必须严格为：{"candidates":[{"title":"...","artist":"..."}]}。
 """.trimIndent()
 
         val VERIFIED_LYRICS_SYSTEM_PROMPT = """
-Create a bilingual subtitle batch for a song using the supplied verified complete English lyrics as the authority.
-Read the entire song before writing any Chinese. The Chinese must be a coherent song-lyric rendering that preserves recurring imagery, pronouns, cross-line meaning, tone, and repeated chorus wording; it must not be isolated cue-by-cue literal translation.
-Use supplied canonical cue alignments when present. Correct unmatched English conservatively from the complete lyrics.
-For repeated identical canonical English lines, return identical Chinese wording.
-Never add, remove, split, merge, reorder, or retime cues. Keep every cue id and timestamp exact.
-Return JSON only. The exact response shape is:
+输入已经包含由外部歌词检索工具取得并经多条 Whisper 字幕验证的歌曲信息、完整英文歌词和可用的 canonical cue 对齐。
+任务必须按以下顺序完成：
+1.先通读整首英文歌词，依据完整歌词和 canonical cue 对齐完成整批英文纠错，确定每个 cue 的 corrected_english。没有对齐的内容只能依据完整歌词保守纠错，不得凭模型记忆补写歌词。
+2.整批英文纠错完成后，再根据 corrected_english 和整首歌曲上下文生成对应的中文歌词。中文应忠实表达歌曲原意，同时采用自然的中文歌词表达；不要逐词直译，也不能把每条字幕孤立翻译。
+3.保持意象、情绪、语气、代词、跨行语义和重复副歌译法一致；不得为了押韵改变原意，不得输出解释、注释或歌词以外的内容。相同 canonical 英文歌词必须返回完全相同的中文。
+只能使用请求中实际提供并经过验证的歌词内容。只有请求明确提供了经过验证的网易云中英对照歌词及来源时，才能采用并声称为网易云版本；未提供时不得凭模型记忆编造或冒充网易云译文。
+不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+只返回 JSON，格式必须严格为：
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
-Every cue object must contain all six shown fields. Do not return song_match.
+每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent()
 
         val UNCONFIRMED_SYSTEM_PROMPT = """
-Create a bilingual subtitle batch from the complete Whisper cue batch as one song context.
-No searched lyrics were verified. Do not claim a song identity or invent canonical lyrics.
-Read the entire batch before writing Chinese. Keep recurring imagery, pronouns, cross-line meaning, tone, and repeated wording consistent; do not translate each cue in isolation.
-Correct English conservatively. Never add, remove, split, merge, reorder, or retime cues.
-Keep every cue id and timestamp exact. Return JSON only. The exact response shape is:
+当前没有从在线歌词来源取得并验证完整歌词，不得声称歌曲已经确认，不得编造 canonical 歌词或网易云中英对照歌词。
+必须先综合整批 Whisper 英文字幕进行保守纠错，确定全部 corrected_english；完成后再根据整批上下文生成自然的中文歌词。
+中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
+不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+只返回 JSON，格式必须严格为：
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
-Every cue object must contain all six shown fields. Do not return song_match.
+每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent()
     }
 }

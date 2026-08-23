@@ -31,7 +31,7 @@ object CaptionBatchCommitPolicy {
                 captions = outcome.captions,
                 captionProcessing = CaptionProcessingSnapshot.from(outcome),
                 exportUri = null,
-                pendingSidecarSrt = null,
+                exportState = ExportState.IDLE,
             ),
         )
     }

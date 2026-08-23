@@ -1,17 +1,24 @@
 package com.example.lyriccaptioner.processing.enhancement
 
+import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.processing.LocalTranslator
 import com.example.lyriccaptioner.processing.TranslationModule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class CaptionEnhancementCoordinatorTest {
     @Test
@@ -92,6 +99,20 @@ class CaptionEnhancementCoordinatorTest {
     }
 
     @Test
+    fun unknownProviderFailureDoesNotSilentlyDowngradeToLocalTranslation() {
+        val provider = RecordingProvider { throw IllegalStateException("unexpected provider failure") }
+        val translator = RecordingTranslator()
+
+        val error = assertThrows(CaptionEnhancementProviderException::class.java) {
+            runBlocking { coordinator(provider, translator).enhance("job-unknown", rawCues()) }
+        }
+
+        assertEquals(CaptionEnhancementErrorKind.UNKNOWN, error.kind)
+        assertEquals(0, translator.translateCalls)
+        assertEquals(1, provider.calls)
+    }
+
+    @Test
     fun cancellationEmitsCancelledAndDoesNotStartFallback() = runBlocking {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
@@ -120,6 +141,67 @@ class CaptionEnhancementCoordinatorTest {
     }
 
     @Test
+    fun cancellationWhileWorkerPreprocessingIsQueuedEmitsCancelledWithoutProviderOrFallback() {
+        val workerExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "coordinator-preprocessing-worker")
+        }
+        val workerDispatcher = workerExecutor.asCoroutineDispatcher()
+        val blockerEntered = CountDownLatch(1)
+        val releaseBlocker = CountDownLatch(1)
+        workerExecutor.execute {
+            blockerEntered.countDown()
+            releaseBlocker.await()
+        }
+
+        try {
+            assertTrue(blockerEntered.await(5, TimeUnit.SECONDS))
+            runBlocking {
+                val rawReady = CompletableDeferred<Unit>()
+                val provider = RecordingProvider { request -> validResponse(request) }
+                val translator = RecordingTranslator()
+                val states = mutableListOf<CaptionEnhancementState>()
+                var callerReceivedCancellation = false
+                val job = launch {
+                    try {
+                        coordinator(
+                            provider = provider,
+                            translator = translator,
+                            workerDispatcher = workerDispatcher,
+                        ).enhance("job-cancel-preprocessing", largeCueBatch(4_000)) { state ->
+                            states += state
+                            if (state == CaptionEnhancementState.RAW_ASR_READY) {
+                                rawReady.complete(Unit)
+                            }
+                        }
+                    } catch (_: CancellationException) {
+                        callerReceivedCancellation = true
+                    }
+                }
+                rawReady.await()
+
+                job.cancel()
+                releaseBlocker.countDown()
+                job.join()
+
+                assertTrue(callerReceivedCancellation)
+                assertEquals(
+                    listOf(
+                        CaptionEnhancementState.RAW_ASR_READY,
+                        CaptionEnhancementState.CANCELLED,
+                    ),
+                    states,
+                )
+                assertEquals(0, provider.calls)
+                assertEquals(0, translator.translateCalls)
+                assertEquals(0, translator.prepareCalls)
+            }
+        } finally {
+            releaseBlocker.countDown()
+            workerDispatcher.close()
+        }
+    }
+
+    @Test
     fun localFallbackFailureReturnsRecoverableErrorWithoutPartialCaptionBatch() = runBlocking {
         val source = rawCues()
         val provider = RecordingProvider {
@@ -140,14 +222,78 @@ class CaptionEnhancementCoordinatorTest {
         assertTrue(source.all { it.chinese.isBlank() })
     }
 
+    @Test
+    fun largeBatchProcessingUsesWorkerWhileCallerStatesAndHeartbeatRemainResponsive() {
+        val callerDispatcher = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "coordinator-test-caller")
+        }.asCoroutineDispatcher()
+        val workerDispatcher = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "coordinator-test-worker")
+        }.asCoroutineDispatcher()
+
+        try {
+            runBlocking(callerDispatcher) {
+                val source = largeCueBatch(4_000)
+                val providerEntered = CompletableDeferred<Unit>()
+                val heartbeatRan = AtomicBoolean(false)
+                var providerObservedHeartbeat = false
+                var providerThread = ""
+                val stateThreads = mutableListOf<String>()
+                val provider = RecordingProvider { request ->
+                    providerThread = Thread.currentThread().name
+                    providerEntered.complete(Unit)
+                    val deadline = System.nanoTime() + 2_000_000_000L
+                    while (!heartbeatRan.get() && System.nanoTime() < deadline) {
+                        Thread.yield()
+                    }
+                    providerObservedHeartbeat = heartbeatRan.get()
+                    validResponse(request)
+                }
+                val heartbeat = launch {
+                    providerEntered.await()
+                    heartbeatRan.set(true)
+                }
+
+                val outcome = coordinator(
+                    provider = provider,
+                    translator = RecordingTranslator(),
+                    workerDispatcher = workerDispatcher,
+                ).enhance("job-large-batch", source) {
+                    stateThreads += Thread.currentThread().name
+                }
+                heartbeat.join()
+
+                assertEquals(4_000, outcome.captions.size)
+                assertTrue(providerThread.startsWith("coordinator-test-worker"))
+                assertTrue("Caller heartbeat must run during worker processing", providerObservedHeartbeat)
+                assertTrue(stateThreads.isNotEmpty())
+                assertTrue(stateThreads.all { it.startsWith("coordinator-test-caller") })
+            }
+        } finally {
+            callerDispatcher.close()
+            workerDispatcher.close()
+        }
+    }
+
     private fun coordinator(
         provider: CaptionEnhancementProvider,
         translator: RecordingTranslator,
+        workerDispatcher: CoroutineDispatcher = Dispatchers.Default,
     ) = CaptionEnhancementCoordinator(
         provider = provider,
         localTranslation = TranslationModule(translator),
         validator = CaptionEnhancementResponseValidator(),
+        workerDispatcher = workerDispatcher,
     )
+
+    private fun largeCueBatch(size: Int): List<CaptionCue> = List(size) { index ->
+        cue(
+            id = "cue-$index",
+            english = "line $index",
+            startMs = index * 1_000L,
+            endMs = (index + 1) * 1_000L,
+        )
+    }
 
     private fun validResponse(request: CaptionEnhancementRequest) = CaptionEnhancementResponse(
         schemaVersion = request.schemaVersion,

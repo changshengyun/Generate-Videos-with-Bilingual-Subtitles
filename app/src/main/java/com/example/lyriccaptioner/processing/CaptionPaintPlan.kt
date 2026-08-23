@@ -10,6 +10,45 @@ enum class CaptionPaintPass {
 }
 
 /**
+ * Height contract for an opaque subtitle background.
+ *
+ * Text height is deliberately not guessed in the renderer-neutral layer: it depends on the
+ * renderer's real font metrics and wrapping result.  A consumer lays text out within
+ * [CaptionPaintBackground.widthPx], then paints one opaque rectangle for every resulting line
+ * box, expanded by [CaptionPaintBackground.boxPaddingPx] on all sides.  This is the contract
+ * exposed by ASS/libass `BorderStyle=3` as well as the contract Compose must reproduce.
+ */
+enum class CaptionBackgroundHeightPolicy {
+    TEXT_LAYOUT_LINE_BOXES,
+}
+
+/**
+ * Optional opaque-background description for one caption text layout.
+ *
+ * [leftPx], [topPx] and [widthPx] describe the same text-box constraint used by the glyph layers,
+ * not a pre-measured rectangle.  The actual line-box height is resolved by the renderer according
+ * to [heightPolicy].  `BorderStyle=3` treats ASS Outline as opaque-box padding, so [boxPaddingPx]
+ * intentionally mirrors the resolved outline width.  A renderer must not add another padding.
+ */
+data class CaptionPaintBackground(
+    val enabled: Boolean,
+    val colorHex: String,
+    val leftPx: Int,
+    val topPx: Int,
+    val widthPx: Int,
+    val boxPaddingPx: Int,
+    val heightPolicy: CaptionBackgroundHeightPolicy = CaptionBackgroundHeightPolicy.TEXT_LAYOUT_LINE_BOXES,
+) {
+    init {
+        require(enabled) { "A present caption background must be enabled" }
+        require(leftPx >= 0 && topPx >= 0 && widthPx > 0) {
+            "Background position and width must be non-negative and positive"
+        }
+        require(boxPaddingPx >= 0) { "Background box padding must be non-negative" }
+    }
+}
+
+/**
  * A renderer-neutral description of one subtitle paint pass.
  *
  * The values are physical pixels in the shared [CaptionRenderSpec] coordinate
@@ -51,6 +90,7 @@ data class CaptionPaintLayer(
  */
 data class CaptionPaintPlan(
     val layers: List<CaptionPaintLayer>,
+    val background: CaptionPaintBackground? = null,
 ) {
     init {
         require(layers.size == 2) { "A caption paint plan requires stroke and fill layers" }
@@ -72,6 +112,18 @@ data class CaptionPaintPlan(
         require(stroke.alignment == fill.alignment) { "Stroke and fill alignment must match" }
         require(stroke.bold == fill.bold && stroke.italic == fill.italic) {
             "Stroke and fill font style must match"
+        }
+        background?.let {
+            require(
+                it.leftPx == stroke.leftPx &&
+                    it.topPx == stroke.topPx &&
+                    it.widthPx == stroke.widthPx,
+            ) {
+                "Background and glyph text-box geometry must match"
+            }
+            require(it.boxPaddingPx == stroke.outlineWidthPx) {
+                "Background padding must match the resolved outline width"
+            }
         }
     }
 
@@ -112,6 +164,18 @@ data class CaptionPaintPlan(
                         colorHex = fillColorHex,
                     ),
                 ),
+                background = if (style.backgroundEnabled) {
+                    CaptionPaintBackground(
+                        enabled = true,
+                        colorHex = style.backgroundColorHex,
+                        leftPx = geometry.textBoxLeftPx,
+                        topPx = geometry.textBoxTopPx,
+                        widthPx = geometry.textBoxWidthPx,
+                        boxPaddingPx = spec.outlineWidthPx,
+                    )
+                } else {
+                    null
+                },
             )
         }
 

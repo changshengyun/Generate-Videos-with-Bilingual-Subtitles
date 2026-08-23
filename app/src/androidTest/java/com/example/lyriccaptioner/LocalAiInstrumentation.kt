@@ -104,6 +104,8 @@ class LocalAiInstrumentation : Instrumentation() {
                         useMisalignedFixture = inputArguments.getString(ARG_LYRICS_ALIGNMENT)?.toBoolean() == true,
                     )
                 }
+            } else if (inputArguments.getString(ARG_CLEAN_MEDIA_ACCEPTANCE)?.toBoolean() == true) {
+                runCleanMediaAcceptance(results)
             } else if (inputArguments.getString(ARG_IMPORT_ACCEPTANCE)?.toBoolean() == true) {
                 if (inputArguments.getString(ARG_IMPORT_PHASE) == IMPORT_PHASE_RESTORE) {
                     runImportRestoreAcceptance(results)
@@ -748,7 +750,6 @@ class LocalAiInstrumentation : Instrumentation() {
 
     private suspend fun runWhisperCancellationAcceptance(results: Bundle) {
         val store = WhisperModelStore(targetContext)
-        store.ensureBundledModel()
         check(store.status().localRecognitionReady) {
             "Real Whisper cancellation requires the selected model and JNI library."
         }
@@ -819,7 +820,6 @@ class LocalAiInstrumentation : Instrumentation() {
     private suspend fun runWhisperSessionAcceptance(results: Bundle) {
         val appContext = targetContext.applicationContext
         val store = WhisperModelStore(appContext)
-        store.ensureBundledModel()
         check(store.status().localRecognitionReady) {
             "Whisper session acceptance requires the selected model and JNI library."
         }
@@ -1194,6 +1194,89 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putString("sourceFixture", "host_prepared_only_not_deleted_by_product_or_test")
         check(sha256(sourceUri) == sourceHashBefore) { "Source SHA-256 changed during acceptance." }
         results.putString("restartBoundary", "ready_for_external_force_stop")
+        activity.finish()
+    }
+
+    private fun runCleanMediaAcceptance(results: Bundle) {
+        val inputPath = inputArguments.getString(ARG_IMPORT_INPUT)
+            ?: error("Missing -e $ARG_IMPORT_INPUT /sdcard/Download/clean-media-input.mp4")
+        val srtPath = inputArguments.getString(ARG_IMPORT_SRT)
+            ?: error("Missing -e $ARG_IMPORT_SRT /sdcard/Download/clean-media-input.srt")
+        val inputFile = File(inputPath)
+        val srtFile = File(srtPath)
+        check(inputFile.isFile && inputFile.length() > 0L) { "Clean media input is missing or empty: $inputPath" }
+        check(srtFile.isFile && srtFile.length() > 0L) { "Clean media SRT is missing or empty: $srtPath" }
+
+        val sourceUri = scanVideo(inputPath)
+        scanDocument(srtPath, "text/plain")
+        val sourceHashBefore = sha256(sourceUri)
+        val mediaIdsBeforeExport = queryMediaStoreFromShell().mapTo(mutableSetOf()) { it.first }
+
+        val activity = startActivitySync(
+            Intent(targetContext, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            },
+        )
+        waitForIdleSync()
+
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("import_video", 20_000L))
+        clickDocumentFile(inputFile.name)
+        val initialMediaRevision = waitForContentDescriptionStartingWith(
+            "video_media_revision_",
+            45_000L,
+        ).contentDescription.toString()
+        results.putString("importEntry", "product_photo_picker")
+        results.putString("importScreenshot", saveScreenshot("clean-media-import.png"))
+
+        resetDocumentsUi()
+        clickNode(waitForContentDescriptionWithScroll("import_srt", 20_000L))
+        clickDocumentFile(srtFile.name)
+        scrollToTop()
+        clickNode(waitForContentDescription("workbench_export", 20_000L))
+        clickNode(waitForContentDescription("export_video", 20_000L))
+        waitForContentDescription("export_complete", 120_000L)
+
+        val outputRecord = waitForNewMediaRecord(mediaIdsBeforeExport, "LyricCaptioner-", 30_000L)
+        val outputUri = ContentUris.withAppendedId(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            outputRecord.first,
+        )
+        val outputDisplayName = outputRecord.second
+        val output = inspectUri(outputUri)
+        check(output.fileSizeBytes > 0L) { "Product MediaStore export is empty." }
+        check(output.videoMime == "video/avc") { "Expected H.264 product export, got ${output.videoMime}" }
+        check(output.audioMime == "audio/mp4a-latm") { "Expected AAC product export, got ${output.audioMime}" }
+        check(output.durationMs > 0L) { "Product MediaStore export has no duration." }
+        check(sha256(sourceUri) == sourceHashBefore) { "Source fixture changed during product export." }
+        check(isActionEnabledByText("分享视频")) { "Product UI did not expose the successful export as shareable." }
+        results.putString("exportScreenshot", saveScreenshot("clean-media-export.png"))
+
+        resetDocumentsUi()
+        clickNode(waitForContentDescription("workbench_import", 20_000L))
+        clickNode(waitForContentDescription("import_video", 20_000L))
+        clickDocumentFile(outputDisplayName)
+        val reimportedMedia = waitForNode(45_000L) { root ->
+            findAccessibilityNodeContentDescriptionStartingWith(root, "video_media_revision_")
+                ?.takeIf { it.contentDescription?.toString() != initialMediaRevision }
+        }
+        results.putString("reimportMediaRevision", reimportedMedia.contentDescription.toString())
+        verifyMedia3Playback(outputUri)
+        clickNode(waitForContentDescription("preview_fullscreen", 20_000L))
+        waitForContentDescription("preview_fullscreen_dialog", 20_000L)
+        exerciseMedia3Controls(results)
+        results.putString("playbackScreenshot", saveScreenshot("clean-media-playback.png"))
+
+        results.putString("sourceDisplayName", inputFile.name)
+        results.putLong("sourceBytes", inputFile.length())
+        results.putString("sourceSha256Before", sourceHashBefore)
+        results.putString("sourceSha256AfterExport", sha256(sourceUri))
+        results.putString("outputDisplayName", outputDisplayName)
+        results.putLong("outputBytes", output.fileSizeBytes)
+        results.putLong("outputDurationMs", output.durationMs)
+        results.putString("outputVideoMime", output.videoMime)
+        results.putString("outputAudioMime", output.audioMime)
+        results.putString("media3Playback", "product_reimport_ready_play_pause")
         activity.finish()
     }
 
@@ -1723,6 +1806,21 @@ class LocalAiInstrumentation : Instrumentation() {
         }.toList()
     }
 
+    private fun waitForNewMediaRecord(
+        beforeIds: Set<Long>,
+        prefix: String,
+        timeoutMs: Long,
+    ): Pair<Long, String> {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            queryMediaStoreFromShell().firstOrNull { (id, name) ->
+                id !in beforeIds && name.startsWith(prefix)
+            }?.let { return it }
+            SystemClock.sleep(300L)
+        }
+        error("Timed out waiting for new media record: $prefix")
+    }
+
     private fun displayName(uri: Uri): String {
         targetContext.contentResolver.query(
             uri,
@@ -1977,7 +2075,6 @@ class LocalAiInstrumentation : Instrumentation() {
         val inputUri = Uri.fromFile(inputFile)
 
         val modelStore = com.example.lyriccaptioner.processing.WhisperModelStore(appContext)
-        modelStore.ensureBundledModel()
         val whisperStatus = modelStore.status()
         check(whisperStatus.modelInstalled) { whisperStatus.detail }
         check(whisperStatus.nativeLibraryReady) { whisperStatus.detail }
@@ -2137,6 +2234,7 @@ class LocalAiInstrumentation : Instrumentation() {
         const val ARG_BYOK_SECURITY = "byokSecurity"
         const val ARG_LYRICS_ACCURACY = "lyricsAccuracy"
         const val ARG_LYRICS_ALIGNMENT = "lyricsAlignment"
+        const val ARG_CLEAN_MEDIA_ACCEPTANCE = "cleanMediaAcceptance"
         const val LYRICS_ACCURACY_ASSET = "lyrics_accuracy_input.srt"
         const val LYRICS_ACCURACY_OUTPUT = "lyrics_accuracy_output.srt"
         const val LYRICS_ALIGNMENT_ASSET = "lyrics_alignment_input.srt"

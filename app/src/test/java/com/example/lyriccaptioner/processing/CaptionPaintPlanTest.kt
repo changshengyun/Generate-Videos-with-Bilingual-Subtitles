@@ -7,6 +7,8 @@ import com.example.lyriccaptioner.model.DefaultCaptionStyle
 import com.example.lyriccaptioner.model.PreviewContainerSize
 import com.example.lyriccaptioner.model.SourceVideoSize
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class CaptionPaintPlanTest {
@@ -44,6 +46,34 @@ class CaptionPaintPlanTest {
         assertEquals(plan.stroke.italic, plan.fill.italic)
         assertEquals("#000000", plan.stroke.colorHex)
         assertEquals("#FFFFFF", plan.fill.colorHex)
+        assertNull(plan.background)
+    }
+
+    @Test
+    fun enabledBackgroundUsesTheSharedTextBoxAndResolvedOutlineAsBoxPadding() {
+        val cue = cue("cue-background", "Opaque")
+        val spec = CaptionRenderResolver.resolveSpec(
+            caption = cue,
+            layout = CaptionLayout(xRatio = 0.2f, yRatio = 0.3f, widthRatio = 0.5f),
+            defaultStyle = DefaultCaptionStyle(
+                backgroundEnabled = true,
+                backgroundColorHex = "#123456",
+                outlineWidthRatio = 4f / 1080f,
+            ),
+            source = SourceVideoSize(1920, 1080),
+            container = PreviewContainerSize(1920, 1080),
+        )
+
+        val plan = CaptionPaintPlan.from(spec, cue, chinese = false)
+        val background = assertNotNull(plan.background).let { plan.background!! }
+
+        assertEquals(true, background.enabled)
+        assertEquals("#123456", background.colorHex)
+        assertEquals(plan.stroke.leftPx, background.leftPx)
+        assertEquals(plan.stroke.topPx, background.topPx)
+        assertEquals(plan.stroke.widthPx, background.widthPx)
+        assertEquals(4, background.boxPaddingPx)
+        assertEquals(CaptionBackgroundHeightPolicy.TEXT_LAYOUT_LINE_BOXES, background.heightPolicy)
     }
 
     @Test

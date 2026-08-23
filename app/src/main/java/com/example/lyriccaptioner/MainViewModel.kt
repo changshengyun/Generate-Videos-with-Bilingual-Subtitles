@@ -15,20 +15,29 @@ import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.clearOverridesForCue
 import com.example.lyriccaptioner.model.CaptionAlignment
+import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
+import com.example.lyriccaptioner.model.ResolvedCaptionStyle
 import com.example.lyriccaptioner.model.adjustCaptionFontSizeRatio
 import com.example.lyriccaptioner.model.CueEditingPolicy
 import com.example.lyriccaptioner.model.DerivedOutputPolicy
 import com.example.lyriccaptioner.model.EditorState
+import com.example.lyriccaptioner.model.ExportState
 import com.example.lyriccaptioner.model.MediaState
 import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.model.SpeechMode
 import com.example.lyriccaptioner.model.normalizeSubtitleColor
 import com.example.lyriccaptioner.model.resolveCaptionStyle
+import com.example.lyriccaptioner.model.resolveCaptionLayout
+import com.example.lyriccaptioner.model.movedToDirectEditPosition
+import com.example.lyriccaptioner.model.withBasicStylePreset
+import com.example.lyriccaptioner.model.withDirectEditFontSize
+import com.example.lyriccaptioner.model.withDirectEditWidth
 import com.example.lyriccaptioner.model.withFontSizeRatio
+import com.example.lyriccaptioner.model.withUnifiedTextColor
 import com.example.lyriccaptioner.model.validated
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
@@ -38,17 +47,17 @@ import com.example.lyriccaptioner.model.VideoImportPolicy
 import com.example.lyriccaptioner.processing.AsrModule
 import com.example.lyriccaptioner.processing.AppPipelineFactory
 import com.example.lyriccaptioner.processing.CaptionPipeline
-import com.example.lyriccaptioner.processing.TranslationBatchException
 import com.example.lyriccaptioner.processing.TranslationModelState
 import com.example.lyriccaptioner.processing.TranslationModule
-import com.example.lyriccaptioner.processing.TranslationStage
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatus
 import com.example.lyriccaptioner.processing.WhisperModelStore
 import com.example.lyriccaptioner.processing.WhisperRuntimeStatusResolver
 import com.example.lyriccaptioner.processing.UnavailableAsrModule
 import com.example.lyriccaptioner.processing.AndroidMediaStoreDestinationStore
 import com.example.lyriccaptioner.processing.MediaStoreExportGateway
+import com.example.lyriccaptioner.processing.MediaStoreExportResult
 import com.example.lyriccaptioner.processing.MediaStoreExportSession
+import com.example.lyriccaptioner.processing.MediaStoreExportState
 import com.example.lyriccaptioner.processing.MediaStoreWritePolicy
 import com.example.lyriccaptioner.processing.enhancement.byok.AndroidKeystoreDeepSeekKeyStore
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
@@ -78,7 +87,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -87,6 +99,160 @@ private fun createDefaultDeepSeekManager(context: Context): DeepSeekByokManager 
         store = AndroidKeystoreDeepSeekKeyStore(context.applicationContext),
         probe = DeepSeekModelsAuthenticationProbe(),
     )
+
+/**
+ * Pure state reducer for direct-edit writes. Keeping this Android-free makes the stable cue-id,
+ * field-isolation and derived-output invalidation contract directly testable on the JVM.
+ */
+internal fun EditorState.updateDirectEditedCue(
+    cueId: String,
+    transform: (CaptionCue, EditorState) -> CaptionCue,
+): EditorState {
+    val index = captions.indexOfFirst { it.id == cueId }
+    if (index < 0) return this
+    val currentCue = captions[index]
+    val updatedCue = transform(currentCue, this)
+    if (updatedCue == currentCue) return this
+    val updatedCaptions = captions.toMutableList().also { it[index] = updatedCue }
+    return DerivedOutputPolicy.invalidateDerivedOutputs(copy(captions = updatedCaptions))
+}
+
+private fun CaptionLayout.minimizedAgainst(defaultLayout: CaptionLayout): CaptionLayoutOverride =
+    CaptionLayoutOverride(
+        xRatio = xRatio.takeUnless { it == defaultLayout.xRatio },
+        yRatio = yRatio.takeUnless { it == defaultLayout.yRatio },
+        widthRatio = widthRatio.takeUnless { it == defaultLayout.widthRatio },
+    )
+
+private fun ResolvedCaptionStyle.toDirectEditOverride(): CaptionStyleOverride =
+    CaptionStyleOverride(
+        primaryColorHex = primaryColorHex,
+        secondaryColorHex = secondaryColorHex,
+        outlineColorHex = outlineColorHex,
+        fontFamily = fontFamily,
+        bold = bold,
+        italic = italic,
+        alignment = alignment,
+        fontSizeRatio = fontSizeRatio,
+        outlineWidthRatio = outlineWidthRatio,
+        backgroundEnabled = backgroundEnabled,
+        backgroundColorHex = backgroundColorHex,
+    )
+
+private fun CaptionStyleOverride.minimizedAgainst(
+    defaultStyle: ResolvedCaptionStyle,
+): CaptionStyleOverride = CaptionStyleOverride(
+    primaryColorHex = primaryColorHex?.takeUnless { it == defaultStyle.primaryColorHex },
+    secondaryColorHex = secondaryColorHex?.takeUnless { it == defaultStyle.secondaryColorHex },
+    outlineColorHex = outlineColorHex?.takeUnless { it == defaultStyle.outlineColorHex },
+    fontFamily = fontFamily?.takeUnless { it == defaultStyle.fontFamily },
+    bold = bold?.takeUnless { it == defaultStyle.bold },
+    italic = italic?.takeUnless { it == defaultStyle.italic },
+    alignment = alignment?.takeUnless { it == defaultStyle.alignment },
+    fontSizeRatio = fontSizeRatio?.takeUnless { it == defaultStyle.fontSizeRatio },
+    outlineWidthRatio = outlineWidthRatio?.takeUnless { it == defaultStyle.outlineWidthRatio },
+    backgroundEnabled = backgroundEnabled?.takeUnless { it == defaultStyle.backgroundEnabled },
+    backgroundColorHex = backgroundColorHex?.takeUnless { it == defaultStyle.backgroundColorHex },
+).validated()
+
+internal fun EditorState.withCueDirectPosition(
+    cueId: String,
+    xRatio: Float,
+    yRatio: Float,
+): EditorState = updateDirectEditedCue(cueId) { cue, snapshot ->
+    val resolved = resolveCaptionLayout(snapshot.captionLayout, cue.layoutOverride)
+    val updated = resolved.movedToDirectEditPosition(xRatio, yRatio)
+    cue.copy(
+        layoutOverride = updated.minimizedAgainst(snapshot.captionLayout).takeUnless { it.isEmpty },
+    )
+}
+
+internal fun EditorState.withCueDirectWidth(cueId: String, widthRatio: Float): EditorState =
+    updateDirectEditedCue(cueId) { cue, snapshot ->
+        val resolved = resolveCaptionLayout(snapshot.captionLayout, cue.layoutOverride)
+        val updated = resolved.withDirectEditWidth(widthRatio)
+        cue.copy(
+            layoutOverride = updated.minimizedAgainst(snapshot.captionLayout).takeUnless { it.isEmpty },
+        )
+    }
+
+internal fun EditorState.withCueDirectFontSize(cueId: String, fontSizeRatio: Float): EditorState =
+    updateDirectEditedCue(cueId) { cue, snapshot ->
+        val resolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, cue.styleOverride)
+        val defaultResolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, null)
+        val updated = resolved.toDirectEditOverride()
+            .withDirectEditFontSize(fontSizeRatio)
+            .minimizedAgainst(defaultResolved)
+        cue.copy(styleOverride = updated.takeUnless { it.isEmpty })
+    }
+
+internal fun EditorState.withCueBasicStyle(
+    cueId: String,
+    preset: CaptionBasicStylePreset,
+): EditorState = updateDirectEditedCue(cueId) { cue, snapshot ->
+    val resolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, cue.styleOverride)
+    val defaultResolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, null)
+    val updated = resolved.toDirectEditOverride()
+        .withBasicStylePreset(preset)
+        .minimizedAgainst(defaultResolved)
+    cue.copy(styleOverride = updated.takeUnless { it.isEmpty })
+}
+
+internal fun EditorState.withCueUnifiedTextColor(cueId: String, colorHex: String): EditorState =
+    updateDirectEditedCue(cueId) { cue, snapshot ->
+        val resolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, cue.styleOverride)
+        val defaultResolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, null)
+        val updated = resolved.toDirectEditOverride()
+            .withUnifiedTextColor(colorHex)
+            .minimizedAgainst(defaultResolved)
+        cue.copy(styleOverride = updated.takeUnless { it.isEmpty })
+    }
+
+internal suspend fun executeExportTask(
+    beginSession: suspend () -> MediaStoreExportSession,
+    beforeRender: suspend () -> Unit,
+    render: suspend (MediaStoreExportSession) -> Long,
+    onRunning: () -> Unit,
+    onSucceeded: (MediaStoreExportResult) -> Unit,
+    onCancelled: () -> Unit,
+    onFailed: (Throwable) -> Unit,
+) {
+    var session: MediaStoreExportSession? = null
+    try {
+        withContext(NonCancellable + Dispatchers.IO) {
+            session = beginSession()
+        }
+        currentCoroutineContext().ensureActive()
+        val exportSession = checkNotNull(session)
+        exportSession.beginExternalWrite()
+        onRunning()
+        beforeRender()
+        val writtenBytes = render(exportSession)
+        val published = withContext(Dispatchers.IO) { exportSession.publish(writtenBytes) }
+        onSucceeded(published)
+    } catch (error: CancellationException) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            val activeSession = session
+            if (activeSession?.state == MediaStoreExportState.PUBLISHED) {
+                onSucceeded(activeSession.publish())
+            } else {
+                activeSession?.cancel()
+                onCancelled()
+            }
+        }
+        throw error
+    } catch (error: Throwable) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            val activeSession = session
+            if (activeSession?.state == MediaStoreExportState.PUBLISHED) {
+                onSucceeded(activeSession.publish())
+            } else {
+                activeSession?.rollback()
+                onFailed(error)
+            }
+        }
+    }
+}
 
 class MainViewModel(
     context: Context,
@@ -132,7 +298,6 @@ class MainViewModel(
     }
     private var exportJob: Job? = null
     private var asrJob: Job? = null
-    private var translationJob: Job? = null
     private var enhancementJob: Job? = null
     private var deepSeekKeyOperationJob: Job? = null
     private var deepSeekKeyOperationGeneration = 0L
@@ -186,7 +351,7 @@ class MainViewModel(
                     mediaState = access.toEditorMediaState(),
                     mode = mode,
                     status = status,
-                )
+                ).copy(mediaRevision = it.mediaRevision + 1L)
             }
             Log.i(
                 LOG_TAG,
@@ -245,146 +410,6 @@ class MainViewModel(
         readTextFile(uri, "lyrics") { raw -> applyLyricText(raw) }
     }
 
-    fun createCaptionsFromLyrics(raw: String) {
-        val lyricLines = raw.lines().map { it.trim() }.filter { it.isNotBlank() }
-        val durationMs = state.value.videoDurationMs
-        if (lyricLines.isEmpty()) {
-            mutableState.update { it.copy(status = "No lyric lines found.") }
-            return
-        }
-        if (durationMs == null || durationMs <= 0L) {
-            mutableState.update { it.copy(status = "Import a readable video before creating captions.") }
-            return
-        }
-
-        val cues = lyricLines.mapIndexed { index, line ->
-            val startMs = durationMs * index / lyricLines.size
-            val endMs = (durationMs * (index + 1) / lyricLines.size)
-                .coerceAtLeast(startMs + MIN_CAPTION_DURATION_MS)
-                .coerceAtMost(durationMs)
-            CaptionCue(
-                id = "lyrics-$index-${System.nanoTime()}",
-                startMs = startMs,
-                endMs = endMs,
-                english = line,
-                chinese = "",
-                confidence = 1f,
-                confirmed = false,
-            )
-        }
-        mutableState.update {
-            DerivedOutputPolicy.invalidateDerivedOutputs(it.copy(
-                captions = cues,
-                selectedCaptionId = cues.firstOrNull()?.id,
-                status = "Created ${cues.size} lyric captions. Adjust timing as needed.",
-            ))
-        }
-    }
-
-    fun translateMissingChinese() {
-        val snapshot = state.value
-        val targets = snapshot.captions.filter { it.english.isNotBlank() && it.chinese.isBlank() }
-        if (targets.isEmpty()) {
-            mutableState.update { it.copy(status = "All English captions already have Chinese text.") }
-            return
-        }
-        val startedAtMs = elapsedRealtimeMs()
-        Log.i(LOG_TAG, "event=translation_started targetCount=${targets.size}")
-        translationJob = viewModelScope.launch {
-            mutableState.update {
-                it.copy(
-                    isWorking = true,
-                    translationRunning = true,
-                    status = "Preparing English-to-Chinese translation model...",
-                )
-            }
-            try {
-                val result = translationModule.translateMissingChinese(
-                    captions = snapshot.captions,
-                    onStateChanged = ::updateTranslationModelState,
-                    onStageChanged = { stage ->
-                        mutableState.update {
-                            it.copy(
-                                status = when (stage) {
-                                    TranslationStage.MODEL_PREPARATION ->
-                                        "Preparing English-to-Chinese translation model..."
-                                    TranslationStage.TRANSLATING ->
-                                        "Translating ${targets.size} captions locally..."
-                                    TranslationStage.COMMITTING ->
-                                        "Applying translated captions..."
-                                },
-                            )
-                        }
-                        Log.i(
-                            LOG_TAG,
-                            "event=translation_stage stage=$stage targetCount=${targets.size}",
-                        )
-                    },
-                )
-                var committed = false
-                mutableState.update { current ->
-                    if (current.captions != snapshot.captions) {
-                        current.copy(
-                            isWorking = false,
-                            translationRunning = false,
-                            status = "Translation was not applied because captions changed. Retry.",
-                        )
-                    } else {
-                        committed = true
-                        DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
-                            isWorking = false,
-                            translationRunning = false,
-                            captions = result.captions,
-                            status = "Translated ${result.translatedCount} captions to Chinese.",
-                        ))
-                    }
-                }
-                Log.i(
-                    LOG_TAG,
-                    "event=translation_completed targetCount=${targets.size} " +
-                        "translatedCount=${result.translatedCount} committed=$committed " +
-                        "elapsedMs=${elapsedRealtimeMs() - startedAtMs}",
-                )
-            } catch (error: CancellationException) {
-                mutableState.update {
-                    it.copy(
-                        isWorking = false,
-                        translationRunning = false,
-                        status = "Translation cancelled. No translated captions were applied.",
-                    )
-                }
-                Log.i(
-                    LOG_TAG,
-                    "event=translation_cancelled targetCount=${targets.size} " +
-                        "elapsedMs=${elapsedRealtimeMs() - startedAtMs}",
-                )
-            } catch (error: TranslationBatchException) {
-                mutableState.update {
-                    it.copy(
-                        isWorking = false,
-                        translationRunning = false,
-                        status = "Chinese translation failed during ${error.stage.name.lowercase()}. Retry.",
-                    )
-                }
-                Log.w(
-                    LOG_TAG,
-                    "event=translation_failed stage=${error.stage} targetCount=${targets.size} " +
-                        "elapsedMs=${elapsedRealtimeMs() - startedAtMs} " +
-                        "errorType=${error.cause?.javaClass?.simpleName ?: error.javaClass.simpleName}",
-                )
-            } finally {
-                translationJob = null
-            }
-        }
-    }
-
-    fun cancelTranslation() {
-        if (translationJob?.isActive == true) {
-            Log.i(LOG_TAG, "event=translation_cancel_requested")
-            translationJob?.cancel()
-        }
-    }
-
     /** Runs one complete provider batch; partial cloud results are never committed. */
     fun enhanceCaptions() {
         val snapshot = state.value
@@ -393,6 +418,14 @@ class MainViewModel(
             return
         }
         if (enhancementJob?.isActive == true || snapshot.isWorking) return
+        // Real AI enhancement requires a configured DeepSeek key. Without one, guide the user
+        // to configure it instead of silently downgrading to the local translation model.
+        if (deepSeekKeyUi.value.state != DeepSeekKeyState.CONFIGURED) {
+            mutableState.update {
+                it.copy(status = "请先在\"AI 服务配置\"中保存并验证 DeepSeek API Key，再进行 AI 增强。")
+            }
+            return
+        }
         val jobId = "caption-${elapsedRealtimeMs()}"
         enhancementJob = viewModelScope.launch {
             mutableState.update {
@@ -702,62 +735,77 @@ class MainViewModel(
         val uri = checkNotNull(current.videoUri)
         val taskId = "export-${System.nanoTime()}"
         Log.i(LOG_TAG, "event=export_started captionCount=${current.captions.size}")
+        mutableState.update {
+            it.copy(
+                isWorking = true,
+                exportState = ExportState.RUNNING,
+                exportUri = null,
+                status = "Preparing video export...",
+            )
+        }
         exportJob = viewModelScope.launch {
-            var session: MediaStoreExportSession? = null
             try {
-                val exportSession = withContext(Dispatchers.IO) {
-                    galleryGateway.begin(taskId, sourceUri = uri)
-                }
-                session = exportSession
-                exportSession.beginExternalWrite()
-                mutableState.update {
-                    it.copy(
-                        isWorking = true,
-                        exportUri = null,
-                        status = "Rendering burned-in subtitles...",
-                    )
-                }
-                // The API 36.1 emulator releases PlayerView's decoder surface asynchronously.
-                // Wait for that release before Transformer opens a second video decoder.
-                delay(PREVIEW_RELEASE_DELAY_MS)
-                pipeline.export(
-                    uri,
-                    exportSession.destination.uri,
-                    current.captions,
-                    current.exportProfile,
-                    current.captionLayout,
-                    current.defaultCaptionStyle,
-                ) { status ->
-                    mutableState.update { it.copy(status = status) }
-                }
-                val published = withContext(Dispatchers.IO) { exportSession.publish() }
-                mutableState.update {
-                    it.copy(
-                        isWorking = false,
-                        exportUri = published.uri,
-                        status = "Export saved to system gallery.",
-                    )
-                }
-            } catch (error: CancellationException) {
-                withContext(Dispatchers.IO) { session?.cancel() }
-                mutableState.update {
-                    it.copy(
-                        isWorking = false,
-                        status = "Video export cancelled.",
-                        exportUri = null,
-                    )
-                }
-                throw error
-            } catch (error: Throwable) {
-                withContext(Dispatchers.IO) { session?.rollback() }
-                Log.e(LOG_TAG, "event=export_failed destinationUntouched=true")
-                mutableState.update {
-                    it.copy(
-                        isWorking = false,
-                        status = "Video export failed.",
-                        exportUri = null,
-                    )
-                }
+                executeExportTask(
+                    beginSession = { galleryGateway.begin(taskId, sourceUri = uri) },
+                    beforeRender = {
+                        // The API 36.1 emulator releases PlayerView's decoder surface asynchronously.
+                        // Wait for that release before FFmpegKit opens a second video decoder.
+                        delay(PREVIEW_RELEASE_DELAY_MS)
+                    },
+                    render = { exportSession ->
+                        pipeline.export(
+                            uri,
+                            exportSession.destination.uri,
+                            current.captions,
+                            current.exportProfile,
+                            current.captionLayout,
+                            current.defaultCaptionStyle,
+                        ) { status -> mutableState.update { it.copy(status = status) } }.fileSizeBytes
+                    },
+                    onRunning = {
+                        mutableState.update {
+                            it.copy(
+                                exportState = ExportState.RUNNING,
+                                status = "Rendering burned-in subtitles...",
+                            )
+                        }
+                    },
+                    onSucceeded = { published ->
+                        mutableState.update {
+                            it.copy(
+                                isWorking = false,
+                                exportUri = published.uri,
+                                exportState = ExportState.SUCCEEDED,
+                                status = "Export saved to system gallery.",
+                            )
+                        }
+                    },
+                    onCancelled = {
+                        mutableState.update {
+                            it.copy(
+                                isWorking = false,
+                                status = "Video export cancelled.",
+                                exportUri = null,
+                                exportState = ExportState.CANCELLED,
+                            )
+                        }
+                    },
+                    onFailed = { error ->
+                        Log.e(
+                            LOG_TAG,
+                            "event=export_failed destinationUntouched=true " +
+                                "errorType=${error.javaClass.simpleName} reasonCode=EXPORT_PIPELINE_FAILURE",
+                        )
+                        mutableState.update {
+                            it.copy(
+                                isWorking = false,
+                                status = "Video export failed.",
+                                exportUri = null,
+                                exportState = ExportState.FAILED,
+                            )
+                        }
+                    },
+                )
             } finally {
                 exportJob = null
             }
@@ -768,31 +816,6 @@ class MainViewModel(
         if (exportJob?.isActive == true) {
             Log.i(LOG_TAG, "event=export_cancel_requested")
             exportJob?.cancel()
-        }
-    }
-
-    fun exportSidecarSrt() {
-        val srt = pipeline.exportSidecarSrt(state.value.captions)
-        mutableState.update {
-            it.copy(
-                status = "SRT sidecar is ready to save.",
-                pendingSidecarSrt = srt,
-            )
-        }
-    }
-
-    fun sidecarSrtSaved(uri: Uri) {
-        mutableState.update {
-            it.copy(
-                status = "SRT sidecar saved: $uri",
-                pendingSidecarSrt = null,
-            )
-        }
-    }
-
-    fun sidecarSrtSaveFailed(message: String) {
-        mutableState.update {
-            it.copy(status = "Could not save SRT sidecar: $message")
         }
     }
 
@@ -873,24 +896,6 @@ class MainViewModel(
             }
             if (generation == deepSeekKeyOperationGeneration) {
                 updateDeepSeekKeyUi(result)
-            }
-        }
-    }
-
-    fun saveSidecarSrt(uri: Uri, srt: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                appContext.contentResolver.openOutputStream(uri)?.use { output ->
-                    output.write(srt.toByteArray(Charsets.UTF_8))
-                } ?: error("No output stream")
-                withContext(Dispatchers.Main.immediate) { sidecarSrtSaved(uri) }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                Log.w(LOG_TAG, "event=srt_sidecar_save_failed", error)
-                withContext(Dispatchers.Main.immediate) {
-                    sidecarSrtSaveFailed(error.message ?: "unknown error")
-                }
             }
         }
     }
@@ -980,7 +985,7 @@ class MainViewModel(
     fun updateCuePosition(cueId: String, delta: Int) {
         val current = state.value
         val cue = current.captions.firstOrNull { it.id == cueId } ?: return
-        val resolved = com.example.lyriccaptioner.model.resolveCaptionLayout(
+        val resolved = resolveCaptionLayout(
             current.captionLayout,
             cue.layoutOverride,
         )
@@ -989,6 +994,26 @@ class MainViewModel(
             val next = (existing.layoutOverride ?: CaptionLayoutOverride()).copy(yRatio = nextY)
             existing.copy(layoutOverride = next.takeUnless { it.isEmpty })
         }
+    }
+
+    fun updateCueDirectPosition(cueId: String, xRatio: Float, yRatio: Float) {
+        mutableState.update { it.withCueDirectPosition(cueId, xRatio, yRatio) }
+    }
+
+    fun updateCueDirectWidth(cueId: String, widthRatio: Float) {
+        mutableState.update { it.withCueDirectWidth(cueId, widthRatio) }
+    }
+
+    fun updateCueDirectFontSize(cueId: String, fontSizeRatio: Float) {
+        mutableState.update { it.withCueDirectFontSize(cueId, fontSizeRatio) }
+    }
+
+    fun applyCueBasicStyle(cueId: String, preset: CaptionBasicStylePreset) {
+        mutableState.update { it.withCueBasicStyle(cueId, preset) }
+    }
+
+    fun updateCueUnifiedTextColor(cueId: String, colorHex: String) {
+        mutableState.update { it.withCueUnifiedTextColor(cueId, colorHex) }
     }
 
     fun clearCueStyleOverride(cueId: String) {

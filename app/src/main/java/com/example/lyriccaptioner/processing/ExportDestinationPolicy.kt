@@ -46,6 +46,9 @@ object ExportDestinationPolicy {
                 ExportDestinationState.NEW
             }
         }
+        if (destination.scheme == "content" && destination.authority == MediaStore.AUTHORITY) {
+            return inspectMediaStoreRow(resolver, destination)
+        }
         return try {
             resolver.query(
                 destination,
@@ -62,7 +65,7 @@ object ExportDestinationPolicy {
                         ExportDestinationState.NEW
                     } else {
                         val sizeColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
-                        if (sizeColumn < 0) return@use inspectMediaStoreSize(resolver, destination)
+                        if (sizeColumn < 0) return@use ExportDestinationState.UNKNOWN
                         val sizeBytes = sizeColumn.takeIf { !cursor.isNull(it) }
                             ?.let { index -> cursor.getLong(index) }
                         classifyDocumentQuery(true, sizeBytes)
@@ -74,17 +77,20 @@ object ExportDestinationPolicy {
         } catch (_: UnsupportedOperationException) {
             ExportDestinationState.UNKNOWN
         } catch (_: IllegalArgumentException) {
-            inspectMediaStoreSize(resolver, destination)
+            ExportDestinationState.UNKNOWN
         }
     }
 
-    private fun inspectMediaStoreSize(
+    private fun inspectMediaStoreRow(
         resolver: ContentResolver,
         destination: Uri,
     ): ExportDestinationState = runCatching {
         resolver.query(
             destination,
-            arrayOf(MediaStore.Video.Media.SIZE),
+            arrayOf(
+                MediaStore.Video.Media.SIZE,
+                MediaStore.Video.Media.IS_PENDING,
+            ),
             null,
             null,
             null,
@@ -93,9 +99,16 @@ object ExportDestinationPolicy {
                 ExportDestinationState.NEW
             } else {
                 val sizeColumn = cursor.getColumnIndex(MediaStore.Video.Media.SIZE)
-                val sizeBytes = sizeColumn.takeIf { it >= 0 && !cursor.isNull(it) }
+                if (sizeColumn < 0) return@use ExportDestinationState.UNKNOWN
+                val sizeBytes = sizeColumn.takeIf { !cursor.isNull(it) }
                     ?.let { index -> cursor.getLong(index) }
-                classifyDocumentQuery(true, sizeBytes)
+                // IS_PENDING is not reliably queryable on every OEM MediaStore. Treat a
+                // missing/null column as "unknown pending" and fall back to the size signal,
+                // which is the only field that proves pre-existing user content.
+                val pendingColumn = cursor.getColumnIndex(MediaStore.Video.Media.IS_PENDING)
+                val isPending = pendingColumn.takeIf { it >= 0 && !cursor.isNull(it) }
+                    ?.let { index -> cursor.getInt(index) }
+                classifyMediaStoreQuery(true, sizeBytes, isPending)
             }
         } ?: ExportDestinationState.UNKNOWN
     }.getOrDefault(ExportDestinationState.UNKNOWN)
@@ -112,6 +125,18 @@ object ExportDestinationPolicy {
     ): ExportDestinationState = when {
         !hasDocumentRow -> ExportDestinationState.NEW
         sizeBytes == 0L -> ExportDestinationState.NEW
+        else -> ExportDestinationState.EXISTING
+    }
+
+    internal fun classifyMediaStoreQuery(
+        hasRow: Boolean?,
+        sizeBytes: Long?,
+        isPending: Int?,
+    ): ExportDestinationState = when {
+        hasRow == null -> ExportDestinationState.UNKNOWN
+        !hasRow -> ExportDestinationState.NEW
+        isPending == 1 -> ExportDestinationState.NEW
+        sizeBytes == null || sizeBytes == 0L -> ExportDestinationState.NEW
         else -> ExportDestinationState.EXISTING
     }
 
