@@ -1,10 +1,10 @@
 # Current Task: V3-ASR-DIAG-001
 
-- `STATE_REV: 2026-08-23.006`
-- `TASK_REV: V3-ASR-DIAG-001.006`
-- Stage state: `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_BLOCKED`
-- Product status: `A / NO_CONTEXT_FALSE_CAUSES_NATIVE_STALL_FIXED_PROD_UNVERIFIED`
-- Evidence ceiling: `DEVICE_DIAGNOSTIC_ONLY`
+- `STATE_REV: 2026-08-24.007`
+- `TASK_REV: V3-ASR-DIAG-001.007`
+- Stage state: `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_PENDING`
+- Product status: `A / NO_CONTEXT_FALSE_CAUSES_NATIVE_STALL_FIXED_PROD_PENDING`
+- Evidence ceiling: `DEVICE_DIAGNOSTIC_VERIFIED_PRODUCTION_PENDING`
 - Baseline HEAD: `9a798ccb3890128565a12c924c11e6468908a2b9`
 - Diagnostic implementation: `50fd1407ad9e63c34b27292bf36adc81db7b062e`
 - Device gate: `ARM64 device fcf4b0cb authorized for this diagnostic only`
@@ -76,7 +76,13 @@
 ## 9. 真实 App 流程收尾验证
 
 - 代码确认：`app/src/main/cpp/whisper_jni.cpp` 的业务 `params.no_context = true` 保持不变。
-- 真实 App 已完成视频导入并点击“生成字幕”，但当前 App 初始化路径 `AppPipelineFactory.createAsrDefault()` 会调用 `WhisperModelStore.ensureBundledModel()`，强制选择 `ggml-small.en-q5_1.bin`。
-- 通过 App 模型导入入口导入同一 base 后，运行时仍重新选择 small；该次 small 推理按用户要求不计入验证，并已停止。
-- 由于当前约束禁止 small 测试、禁止修改 Kotlin 业务逻辑和模型选择架构，无法取得合规的 base 生产入口 `whisper_full`/字幕结果。
-- 状态：诊断入口 `DEVICE_VERIFIED`；真实 App base 流程 `BLOCKED`，未声称生产 PASS。
+- 已删除 `WhisperModelStore.ensureBundledModel()` 及其 App/AndroidTest 调用；App 不再启动时强制复制并选择 `ggml-small.en-q5_1.bin`。
+- 新 APK 尚未重新安装到设备，真实 App base 流程需在安装本次构建产物后重新验证；当前不宣称生产 PASS。
+- 状态：诊断入口 `DEVICE_VERIFIED`；真实 App base 流程 `PENDING_REINSTALL`。
+
+## 10. V3 阶段总结
+
+- 阶段报告：[`archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md`](archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md)。
+- 本阶段可归档为开发阶段候选版本，但不得宣称完整 V3 生产 PASS。
+- 已验证：Native ASR 修复、固定 base/WAV 真机诊断、Debug 与 AndroidTest 构建、335 条 JVM 单元测试。
+- 未完成：新 APK 安装后的真实 App base 入口，以及导入→ASR→AI→编辑→导出→回放完整真机链路。

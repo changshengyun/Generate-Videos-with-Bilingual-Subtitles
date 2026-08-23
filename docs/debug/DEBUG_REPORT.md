@@ -88,7 +88,6 @@ The decoder itself emitted `(upbeat music)` only for the final high-no-speech wi
 ## Production App validation boundary
 
 - The real App flow reached video import and the user-facing “生成字幕” action.
-- The App's `AppPipelineFactory.createAsrDefault()` calls `WhisperModelStore.ensureBundledModel()`, which always selects the bundled `ggml-small.en-q5_1.bin` during initialization.
-- Importing the approved base model through the App model picker did not produce a base production run because the initialization path selected small again. That small inference was stopped and is excluded from acceptance.
-- Under the explicit prohibition on small testing and Kotlin/model-selection changes, a compliant base production result cannot be obtained in this task.
-- Diagnostic path: `DEVICE_VERIFIED`. Real App base path: `BLOCKED`; no production PASS claimed.
+- Removed `WhisperModelStore.ensureBundledModel()` and its App/AndroidTest call sites; App initialization no longer forces the bundled `ggml-small.en-q5_1.bin`.
+- Debug and AndroidTest APKs build successfully after the removal. The new APK has not yet been reinstalled on the device.
+- Real App base validation remains pending reinstall; no production PASS is claimed yet.

@@ -1,16 +1,16 @@
 # LyricCaptioner V3 Project State
 
-- `STATE_REV: 2026-08-23.006`
+- `STATE_REV: 2026-08-24.007`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
 - Stage baseline HEAD: `9a798ccb3890128565a12c924c11e6468908a2b9`
 - Upstream: `origin/migration/lyric-captioner-history`, snapshot ahead 37
 - Current task: `V3-ASR-DIAG-001`
-- Stage state: `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_BLOCKED`
-- Product status: `A / NO_CONTEXT_FALSE_CAUSES_NATIVE_STALL_FIXED_PROD_UNVERIFIED`
-- Current gate: `PRODUCTION_BASE_BLOCKED`
-- Evidence ceiling: `BASE_DEVICE_DIAGNOSTIC_ONLY`
-- Last state sync: 2026-08-22
+- Stage state: `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_PENDING`
+- Product status: `A / NO_CONTEXT_FALSE_CAUSES_NATIVE_STALL_FIXED_PROD_PENDING`
+- Current gate: `PRODUCTION_BASE_PENDING`
+- Evidence ceiling: `BASE_DEVICE_DIAGNOSTIC_VERIFIED_PRODUCTION_PENDING`
+- Last state sync: 2026-08-24
 
 ## 当前决定
 
@@ -24,7 +24,7 @@
 - 单变量对照中 `no_context=false` 10 分钟未返回，线程 CPU 停止增长；`true` 基线 8.58 秒返回 9 segments。参数差异已确认影响 Native 执行，本轮未复现具体 `[MUSIC]` 文本。
 - 已按最小修复将 `app/src/main/cpp/whisper_jni.cpp` 的业务 `params.no_context` 固定为 `true`，并加入 stall 原因注释；未修改 Native 版本、模型、AudioExtractor、Kotlin 业务逻辑、SessionRuntime、UI、翻译或字幕处理。
 - 修复后同一 ARM64 设备、base 模型和固定 WAV 验证：`whisper_full=0`，推理 `10,319 ms`，9 segments；Segment 0 为 ` I have to live without you`，末段为 ` (upbeat music)`。
-- 真实 App 收尾验证未取得合规 base 结果：`AppPipelineFactory.createAsrDefault()` 调用 `WhisperModelStore.ensureBundledModel()`，初始化时强制选择 `ggml-small.en-q5_1.bin`；导入 base 后仍被重新选择为 small。small 推理已停止，未计入验收。
+- 已删除 `WhisperModelStore.ensureBundledModel()` 及其 App/AndroidTest 调用；App 不再启动时强制选择 bundled small。新 APK 尚未重新安装到设备，真实 App base 验证待重新安装后执行。
 
 - 用户停止旧 AI15 真机验收；旧逐 cue 修正/翻译准确率不被接受。
 - 用户批准立即实现路线 B：AI 识别候选歌曲，SearchTool 检索完整英文歌词，多 cue 验证候选，再由 AI 基于整首歌词生成中文歌词并对齐回字幕。
@@ -46,7 +46,9 @@
 
 ## 下一允许动作
 
-修复已在诊断入口的同一 base/WAV 和 ARM64 设备上验证；真实 App base 流程因现有 small 强制选择而阻断。不得绕过该门禁、运行 small 或修改 Kotlin 模型选择逻辑；如需生产入口验收，必须由后续任务明确授权模型选择修复。
+修复已在诊断入口的同一 base/WAV 和 ARM64 设备上验证；启动时强制 small 的调用已移除，但新 APK 尚未安装。下一步只允许安装当前构建产物并验证 base 生产入口；不得运行 small 或扩展 Context 复用。完整 V3 E2E 仍需后续 `V3-E2E-003` 门禁。
+
+阶段总结：[`docs/archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md`](archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md)。本阶段可归档为开发阶段候选版本，但完整 V3 真机 E2E 仍未宣称通过。
 
 ## 上下文与轮换
 

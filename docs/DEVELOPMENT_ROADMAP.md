@@ -1,7 +1,7 @@
 # LyricCaptioner V3 开发路线
 
-- `ROADMAP_REV: 2026-08-12.003`
-- 当前任务：`V3-ASR-DIAG-001 / PASS / NO_CONTEXT_CONTROL_DEVICE_VERIFIED`
+- `ROADMAP_REV: 2026-08-24.004`
+- 当前任务：`V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_PENDING`
 - 当前历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -31,15 +31,16 @@
 | `V3-MEDIA-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | Photo Picker 与 MediaStore 唯一媒体入口 |
 | `V3-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED` | 产品化交互外壳 |
 | `V3-AI-001` | `ACCEPTED / SRT_DEVICE_VERIFIED` | 单歌曲对齐与错位 SRT 真机样本通过；不包含视频、Whisper 或完整端到端验证 |
-| `V3-ASR-DIAG-001` | `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_BLOCKED` | 诊断入口 base/WAV 已通过；真实 App 初始化仍强制选择 small，base 生产入口未验证 |
+| `V3-ASR-DIAG-001` | `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_PENDING` | 诊断入口 base/WAV 已通过；已移除启动时强制 small，真实 App base 入口等待新 APK 安装验证 |
 | `V3-CLEAN-001` | `PLANNED` | 依赖 V3-AI-001 验收；删除非主链路分支 |
 | `V3-E2E-003` | `PLANNED` | 依赖前述阶段；ARM64 真机最终验收 |
 
 ## 当前和下一阶段
 
-- 当前：`V3-ASR-DIAG-001.006` 的最小 `no_context=true` 修复已在诊断入口通过；真实 App base 流程因 `ensureBundledModel()` 强制 small 而阻断。
-- 下一：不得自动运行 small、修改 Kotlin 模型选择逻辑或扩展 Context 复用；生产 base 入口需后续明确授权。
+- 当前：`V3-ASR-DIAG-001.006` 的最小 `no_context=true` 修复已在诊断入口通过；`ensureBundledModel()` 已删除，真实 App base 流程等待新 APK 安装验证。
+- 下一：安装本次构建产物后验证生产 base 入口；不得运行 small 或扩展 Context 复用。
 - 最终：`V3-E2E-003` 在目标 ARM64 手机完成导入、识别、增强、编辑、恢复、导出和回放。
+- 阶段归档：[`archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md`](archive/v3/V3_DEVELOPMENT_PHASE_SUMMARY_2026-08-24.md)。
 
 ## 跨阶段不变量
 
