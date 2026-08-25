@@ -68,6 +68,30 @@ class ProjectArchiveV4EditorTest {
     }
 
     @Test
+    fun splitCueRoundTripPreservesStableIdsTimelineTextAndStyle() {
+        val style = CaptionStyleOverride(
+            fontSizeRatio = 34f / LEGACY_PLAY_RES_Y,
+            fontFamily = "mono",
+            bold = true,
+            italic = true,
+        )
+        val layout = CaptionLayoutOverride(xRatio = 0.18f, widthRatio = 0.72f)
+        val snapshot = ProjectSnapshot(
+            videoUri = "content://video/split",
+            videoDurationMs = 4_000,
+            captions = listOf(
+                CaptionCue("parent:1", 200, 1_958, "First line", "第一句", 0.87f, styleOverride = style, layoutOverride = layout),
+                CaptionCue("parent:2", 2_042, 3_800, "Second line", "第二句", 0.87f, styleOverride = style, layoutOverride = layout),
+            ),
+            exportProfile = ExportProfile(),
+        )
+
+        val restored = archive.read(archive.write(snapshot))
+
+        assertEquals(snapshot.captions, restored.captions)
+    }
+
+    @Test
     fun legacyV2StyleMigratesToDefaultAndLayoutWithNoCueOverride() {
         val raw = """# LyricCaptionerProject v2
 fontSizeSp=30

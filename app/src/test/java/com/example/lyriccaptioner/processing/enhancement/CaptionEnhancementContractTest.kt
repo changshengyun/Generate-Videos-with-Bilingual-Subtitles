@@ -89,7 +89,7 @@ class CaptionEnhancementContractTest {
         val valid = validResponse(request)
         val variants = listOf(
             valid.copy(cues = valid.cues.dropLast(1)),
-            valid.copy(cues = valid.cues + valid.cues.last().copy(id = "extra")),
+            valid.copy(cues = valid.cues + valid.cues.last().copy(sourceId = "extra")),
             valid.copy(cues = listOf(valid.cues.first(), valid.cues.first())),
         )
 
@@ -123,8 +123,12 @@ class CaptionEnhancementContractTest {
         val variants = listOf(
             valid.copy(schemaVersion = "wrong"),
             valid.copy(jobId = "wrong-job"),
-            valid.copy(cues = valid.cues.mapIndexed { index, cue -> if (index == 0) cue.copy(correctedEnglish = " ") else cue }),
-            valid.copy(cues = valid.cues.mapIndexed { index, cue -> if (index == 0) cue.copy(chinese = "x".repeat(10_001)) else cue }),
+            valid.copy(cues = valid.cues.mapIndexed { index, cue ->
+                if (index == 0) cue.copy(lines = listOf(cue.lines.single().copy(correctedEnglish = " "))) else cue
+            }),
+            valid.copy(cues = valid.cues.mapIndexed { index, cue ->
+                if (index == 0) cue.copy(lines = listOf(cue.lines.single().copy(chinese = "x".repeat(10_001)))) else cue
+            }),
         )
 
         variants.forEach { response ->
@@ -132,6 +136,42 @@ class CaptionEnhancementContractTest {
                 validator.validate(request, response, rawCues())
             }
         }
+    }
+
+    @Test
+    fun twoLineResponseProducesStableOrderedChildCuesWithinParentBoundary() {
+        val request = request()
+        val valid = validResponse(request)
+        val response = valid.copy(
+            cues = valid.cues.mapIndexed { index, cue ->
+                if (index == 0) {
+                    cue.copy(
+                        endMs = 2_000L,
+                        lines = listOf(
+                            CaptionEnhancementResponseLine("first canonical line", "第一行"),
+                            CaptionEnhancementResponseLine("second longer canonical line", "第二行"),
+                        ),
+                    )
+                } else {
+                    cue.copy(startMs = 2_000L, endMs = 3_000L)
+                }
+            },
+        )
+        val adjustedRequest = request.copy(
+            cues = request.cues.mapIndexed { index, cue ->
+                if (index == 0) cue.copy(endMs = 2_000L) else cue.copy(startMs = 2_000L, endMs = 3_000L)
+            },
+        )
+        val adjustedRaw = rawCues().mapIndexed { index, cue ->
+            if (index == 0) cue.copy(endMs = 2_000L) else cue.copy(startMs = 2_000L, endMs = 3_000L)
+        }
+
+        val validated = validator.validate(adjustedRequest, response, adjustedRaw)
+
+        assertEquals(listOf("cue-a:1", "cue-a:2", "cue-b"), validated.captions.map { it.id })
+        assertEquals(0L, validated.captions[0].startMs)
+        assertTrue(validated.captions[0].endMs <= validated.captions[1].startMs)
+        assertEquals(2_000L, validated.captions[1].endMs)
     }
 
     @Test
@@ -173,11 +213,15 @@ class CaptionEnhancementContractTest {
         processingVersion = "provider-v1",
         cues = request.cues.mapIndexed { index, cue ->
             CaptionEnhancementResponseCue(
-                id = cue.id,
+                sourceId = cue.id,
                 startMs = cue.startMs,
                 endMs = cue.endMs,
-                correctedEnglish = if (index == 0) "corrected alpha" else "corrected beta",
-                chinese = if (index == 0) "translation-a" else "translation-b",
+                lines = listOf(
+                    CaptionEnhancementResponseLine(
+                        correctedEnglish = if (index == 0) "corrected alpha" else "corrected beta",
+                        chinese = if (index == 0) "translation-a" else "translation-b",
+                    ),
+                ),
             )
         },
         songMatch = songMatch,

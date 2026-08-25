@@ -1,9 +1,9 @@
 # Current Task: V4-CAPTION-QUALITY-001
 
-- `STATE_REV: 2026-08-25.013`
-- `TASK_REV: V4-CAPTION-QUALITY-001.001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `CAPTION_QUALITY_AND_EDITOR_INTEGRATION_IN_PROGRESS`
+- `STATE_REV: 2026-08-25.014`
+- `TASK_REV: V4-CAPTION-QUALITY-001.002`
+- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
+- Product status: `CAPTION_QUALITY_AND_EDITOR_INTEGRATION_IMPLEMENTED`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Device gate: `USER_LED_DEVICE_VALIDATION / NO_AGENT_DEVICE_ACTION`
 
@@ -39,6 +39,33 @@
 - 自动与人工拆分必须保留父边界、稳定生成子 ID、继承样式/布局并使旧导出失效。
 - 编辑页使用主页面内联时间序列表；每条 cue 的样式独立展开/收起并包含字号、字体族、粗体、斜体等既有能力。
 
-## 5. 下一允许动作
+## 5. 实际实现
 
-建立阶段 checkpoint，然后按“合同与拆分策略 → 唯一最终批次 → 主页面编辑器 → 聚焦验证 → 完整回归”的顺序实施。普通故障按 S1/S2 自主闭环；不操作真机。
+- `caption-enhancement.v4` 采用 `source_id → 1..2 lines`；完整批次验证通过后才生成唯一最终字幕列表。RAW_ASR 只在 runner/coordinator 内部传递，不写入可见或可导出列表。
+- 已验证 LRCLIB 对齐保留原歌词大小写、标点和 1～2 行边界；DeepSeek 英文回显必须与 canonical 归一化内容相等，最终使用原 canonical 文本。未验证歌词每个 source cue 只允许一行。
+- 自动/人工拆分共用确定性策略：稳定子 ID、父边界、84ms 首选间隔、833ms 首选最小时长、英文字符权重、样式/布局/置信度继承；短区间不扩展，并由可读性规则提示复核。
+- 字幕编辑整合进主页面单一 `LazyColumn`，按时间排序全部 cue；每条 cue 可直接修改双语文本和 ±0.1 秒时间，独立展开样式、字号、无衬线/衬线/等宽、粗体、斜体、颜色、描边、对齐、位置及人工拆分。
+- 编辑主页面提升共享 ExoPlayer 生命周期，滚动移除顶部 item 不会释放播放器；文字/样式变化不再触发重复 Seek，滚回时从现有 `videoSize` 恢复字幕叠层。普通与全屏继续共用同一 player 和 `PlayerControlRow`。
+- 项目归档无格式迁移即可保存恢复拆分 ID、时间、文本、字体/样式/布局；拆分和既有文本/时间/样式更新都使旧导出失效。instrumentation 已升级为接受 1→2 云端结果并覆盖内联文本、IME、字体和确认拆分路径。
+
+## 6. 验证证据
+
+- checkpoint：`f427fef4ec463b5c8ae9064278625f0edfb87b46`（`冻结字幕质量与编辑器整合矩阵`）。
+- `python tools\asr_evaluate_test.py`：6/6 通过。
+- 任务相关 JVM 测试：56 tests、0 failures、0 errors、0 skipped；覆盖 canonical 标点/分行、v4 合同、非法响应、本地回退、唯一批次、拆时、可读性、保存恢复、导出失效和 UI 源合同。
+- `testDebugUnitTest`：362 tests 中 359 通过、3 失败。失败仅为隔离 worktree 父路径找不到原仓库已有外部 fixture：OPUS-MT `encoder_model_quantized.onnx` 与 Whisper `ggml-base.bin`/批准模型集合；资产在 `D:\DevEnv\Projects\lyric-captioner-android` 中存在，未复制、链接、下载或改变环境。
+- `lintDebug`、普通 `assembleDebug`、普通 `assembleDebugAndroidTest`、Native `-PenableWhisperNative=true assembleDebug` 与 Native AndroidTest 构建全部成功。
+- Native Debug APK：`app/build/outputs/apk/debug/app-debug.apk`，116,019,973 bytes；AndroidTest APK：`app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`，220,234 bytes。
+- 独立代码复审先发现 canonical 标点、播放器生命周期、旧 instrumentation 合同和极短拆分回退问题；最小修复与聚焦回归后最终复审 `PASS`，无剩余 P1/P2。
+- 未运行 Agent 设备操作或 instrumentation；未取得真实 DeepSeek、真实视频主链路、普通/全屏截图、MediaStore 导出或 Media3 回放证据。
+
+## 7. 最终状态与剩余风险
+
+- 当前状态固定为 `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`，不得提升为 `PASS / DEVICE_VERIFIED`。
+- 真实 UI 的长列表、IME、窄屏、旋转、滚动、全屏控制同步和手势互斥仅完成 instrumentation 编译，尚无设备运行证据。
+- 真实歌词命中质量、DeepSeek v4 响应、导出文件编码/时长和回放仍必须由用户用指定视频终验。
+- `V3-ASR-DIAG-001` 继续保持 `PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`；未补做 small，未改写为 PASS。
+
+## 8. 下一允许动作
+
+用户在真机上使用 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4`，从系统相册入口完成真实 ASR、DeepSeek/本地回退、canonical 纠错、双句拆 cue、主页面编辑、保存恢复、普通/全屏截图、MediaStore 导出和 Media3 回放。没有完整证据时保持当前 PARTIAL_PASS；Agent 不操作设备。

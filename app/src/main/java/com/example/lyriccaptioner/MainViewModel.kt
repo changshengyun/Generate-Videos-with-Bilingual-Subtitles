@@ -13,6 +13,8 @@ import com.example.lyriccaptioner.captions.CaptionTimingEditor
 import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionSplitLine
+import com.example.lyriccaptioner.model.splitCaptionCue
 import com.example.lyriccaptioner.model.clearOverridesForCue
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionBasicStylePreset
@@ -445,7 +447,6 @@ class MainViewModel(
         val jobId = "caption-${elapsedRealtimeMs()}"
         val runner = CompleteCaptionWorkflowRunner()
         captionWorkflowJob = viewModelScope.launch {
-            var rawCaptionsCommitted = false
             try {
                 val outcome = runner.run(
                     recognize = { onStatus -> module.recognize(uri, onStatus) },
@@ -469,20 +470,6 @@ class MainViewModel(
                     },
                     onRecognitionStatus = { status -> mutableState.update { it.copy(status = status) } },
                     onEnhancementState = ::applyEnhancementProgress,
-                    onRawCaptionsReady = { cues ->
-                        rawCaptionsCommitted = true
-                        mutableState.update {
-                            DerivedOutputPolicy.invalidateDerivedOutputs(
-                                it.copy(
-                                    captions = cues,
-                                    selectedCaptionId = cues.firstOrNull()?.id,
-                                    captionProcessing = CaptionProcessingSnapshot(),
-                                    status = "Local Whisper JNI generated ${cues.size} English captions.",
-                                ),
-                            )
-                        }
-                        Log.i(LOG_TAG, "event=asr_completed mode=${module.runtimeStatus.mode} captionCount=${cues.size}")
-                    },
                 )
                 mutableState.update {
                     DerivedOutputPolicy.invalidateDerivedOutputs(
@@ -495,9 +482,9 @@ class MainViewModel(
                             selectedCaptionId = outcome.captions.firstOrNull()?.id,
                             captionProcessing = CaptionProcessingSnapshot.from(outcome),
                             status = if (outcome.source == CaptionResultSource.CLOUD_AI) {
-                                "DeepSeek enhanced ${outcome.captions.size} captions."
+                                "DeepSeek 已生成 ${outcome.captions.size} 条最终双语字幕。"
                             } else {
-                                "Applied local fallback to ${outcome.captions.size} captions."
+                                "已生成 ${outcome.captions.size} 条本地回退字幕；英文未经过标准歌词校正。"
                             },
                         ),
                     )
@@ -513,7 +500,7 @@ class MainViewModel(
                         captionProcessing = it.captionProcessing.copy(state = CaptionEnhancementState.CANCELLED),
                     )
                 }
-                Log.i(LOG_TAG, "event=caption_workflow_cancelled rawCaptionsCommitted=$rawCaptionsCommitted")
+                Log.i(LOG_TAG, "event=caption_workflow_cancelled finalCaptionsCommitted=false")
             } catch (error: CaptionEnhancementException) {
                 mutableState.update {
                     it.copy(
@@ -522,12 +509,11 @@ class MainViewModel(
                         enhancementRunning = false,
                         captionWorkflowStage = CaptionWorkflowStage.FAILED,
                         status = when (error.kind) {
-                            CaptionEnhancementErrorKind.AUTHENTICATION -> "DeepSeek authentication failed. Raw ASR captions were kept."
-                            CaptionEnhancementErrorKind.LOCAL_TRANSLATION -> "Local Chinese fallback failed. Raw ASR captions were kept."
-                            else -> "DeepSeek enhancement failed. Raw ASR captions were kept."
+                            CaptionEnhancementErrorKind.AUTHENTICATION -> "DeepSeek 验证失败；未提交本次识别的原始字幕。"
+                            CaptionEnhancementErrorKind.LOCAL_TRANSLATION -> "本地回退失败；未提交本次识别的原始字幕。"
+                            else -> "字幕增强失败；未提交本次识别的原始字幕。"
                         },
                         captionProcessing = it.captionProcessing.copy(
-                            state = CaptionEnhancementState.RAW_ASR_READY,
                             lastErrorKind = error.kind,
                         ),
                     )
@@ -539,14 +525,10 @@ class MainViewModel(
                         asrRunning = false,
                         enhancementRunning = false,
                         captionWorkflowStage = CaptionWorkflowStage.FAILED,
-                        status = if (rawCaptionsCommitted) {
-                            "AI enhancement failed. Raw ASR captions were kept."
-                        } else {
-                            "ASR failed (${module.runtimeStatus.mode}): ${error.message ?: "unknown error"}"
-                        },
+                        status = "字幕生成失败；未提交本次识别的原始字幕。",
                     )
                 }
-                Log.e(LOG_TAG, "event=caption_workflow_failed rawCaptionsCommitted=$rawCaptionsCommitted", error)
+                Log.e(LOG_TAG, "event=caption_workflow_failed finalCaptionsCommitted=false", error)
             } finally {
                 captionWorkflowJob = null
             }
@@ -689,6 +671,28 @@ class MainViewModel(
                 selectedCaptionId = remaining.firstOrNull()?.id,
                 status = "Caption removed.",
             ))
+        }
+    }
+
+    fun splitCaption(
+        cueId: String,
+        firstEnglish: String,
+        firstChinese: String,
+        secondEnglish: String,
+        secondChinese: String,
+    ) {
+        mutableState.update { current ->
+            runCatching {
+                current.splitCaptionCue(
+                    cueId = cueId,
+                    lines = listOf(
+                        CaptionSplitLine(firstEnglish, firstChinese),
+                        CaptionSplitLine(secondEnglish, secondChinese),
+                    ),
+                )
+            }.getOrElse { error ->
+                current.copy(status = "无法拆分字幕：${error.message ?: "输入无效"}")
+            }
         }
     }
 

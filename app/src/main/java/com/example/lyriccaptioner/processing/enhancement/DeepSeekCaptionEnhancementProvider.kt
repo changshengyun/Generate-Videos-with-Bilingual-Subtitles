@@ -57,11 +57,53 @@ class DeepSeekCaptionEnhancementProvider(
             )
         }
         onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_PARSE)
-        return parseProviderJson { DeepSeekCaptionEnhancementJson.parseEnhancementResponse(finalBody) }.copy(
+        val parsed = parseProviderJson { DeepSeekCaptionEnhancementJson.parseEnhancementResponse(finalBody) }
+        return applyCanonicalLineContract(parsed, lookup.verified).copy(
             processingVersion = PROCESSING_VERSION,
             songMatch = lookup.songMatch,
         )
     }
+
+    private fun applyCanonicalLineContract(
+        response: CaptionEnhancementResponse,
+        verified: VerifiedSongLyrics?,
+    ): CaptionEnhancementResponse {
+        val canonicalById = verified?.cueCanonicalLines.orEmpty()
+        val cues = response.cues.map { cue ->
+            val canonicalLines = canonicalById[cue.sourceId]
+            if (canonicalLines == null) {
+                if (cue.lines.size != 1) throw invalidLineContract()
+                cue
+            } else {
+                if (canonicalLines.size !in 1..2 || cue.lines.size != canonicalLines.size) {
+                    throw invalidLineContract()
+                }
+                val matches = cue.lines.zip(canonicalLines).all { (line, canonical) ->
+                    normalizeCanonical(line.correctedEnglish) == normalizeCanonical(canonical)
+                }
+                if (!matches) throw invalidLineContract()
+                cue.copy(
+                    lines = cue.lines.zip(canonicalLines).map { (line, canonical) ->
+                        line.copy(correctedEnglish = canonical)
+                    },
+                )
+            }
+        }
+        return response.copy(cues = cues)
+    }
+
+    private fun invalidLineContract(): CaptionEnhancementProviderException =
+        CaptionEnhancementProviderException(
+            kind = CaptionEnhancementErrorKind.INVALID_RESPONSE,
+            safeDetail = "Caption enhancement response was invalid.",
+        )
+
+    private fun normalizeCanonical(value: String): String = value
+        .lowercase()
+        .map { if (it.isLetterOrDigit()) it else ' ' }
+        .joinToString("")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 
     private suspend fun findVerifiedLyrics(
         request: CaptionEnhancementRequest,
@@ -224,7 +266,7 @@ class DeepSeekCaptionEnhancementProvider(
     companion object {
         const val ENDPOINT = "https://api.deepseek.com/chat/completions"
         const val MODEL = "deepseek-v4-pro"
-        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v3"
+        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v4"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
@@ -242,24 +284,24 @@ class DeepSeekCaptionEnhancementProvider(
         val VERIFIED_LYRICS_SYSTEM_PROMPT = """
 输入已经包含由外部歌词检索工具取得并经多条 Whisper 字幕验证的歌曲信息、完整英文歌词和可用的 canonical cue 对齐。
 任务必须按以下顺序完成：
-1.先通读整首英文歌词，依据完整歌词和 canonical cue 对齐完成整批英文纠错，确定每个 cue 的 corrected_english。没有对齐的内容只能依据完整歌词保守纠错，不得凭模型记忆补写歌词。
-2.整批英文纠错完成后，再根据 corrected_english 和整首歌曲上下文生成对应的中文歌词。中文应忠实表达歌曲原意，同时采用自然的中文歌词表达；不要逐词直译，也不能把每条字幕孤立翻译。
+1.先通读整首英文歌词。每个 source cue 都带有 1～2 行 canonical_lines；必须逐行原样回填 corrected_english，不得合并、重排或改写 canonical 英文。没有 canonical_lines 的 source cue 只能返回一行并保守纠错，不得凭模型记忆补写歌词。
+2.整批英文确定后，再为每一行生成一一对应的中文歌词。中文应忠实表达歌曲原意，同时采用自然的中文歌词表达；不要逐词直译，也不能把每条字幕孤立翻译。
 3.保持意象、情绪、语气、代词、跨行语义和重复副歌译法一致；不得为了押韵改变原意，不得输出解释、注释或歌词以外的内容。相同 canonical 英文歌词必须返回完全相同的中文。
 只能使用请求中实际提供并经过验证的歌词内容。只有请求明确提供了经过验证的网易云中英对照歌词及来源时，才能采用并声称为网易云版本；未提供时不得凭模型记忆编造或冒充网易云译文。
-不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+不得增加、删除或重排 source cue，也不得修改 source cue 时间。每个 source cue 必须返回与 canonical_lines 数量相同的 1～2 个有序 lines。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
-每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"canonical English line","chinese":"coherent Chinese lyric line"}]}]}.
+每个 source cue 必须包含上面展示的全部四个字段，每个 line 必须包含 corrected_english 和 chinese。不要返回 song_match。
 """.trimIndent()
 
         val UNCONFIRMED_SYSTEM_PROMPT = """
 当前没有从在线歌词来源取得并验证完整歌词，不得声称歌曲已经确认，不得编造 canonical 歌词或网易云中英对照歌词。
 必须先综合整批 Whisper 英文字幕进行保守纠错，确定全部 corrected_english；完成后再根据整批上下文生成自然的中文歌词。
 中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
-不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+不得增加、删除、拆分、合并或重排 source cue，也不得修改时间。由于没有验证歌词，每个 source cue 只能返回一个 line。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
-每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"corrected English line","chinese":"coherent Chinese lyric line"}]}]}.
+每个 source cue 必须包含上面展示的全部四个字段，每个 line 必须包含 corrected_english 和 chinese。不要返回 song_match。
 """.trimIndent()
     }
 }
@@ -296,8 +338,8 @@ internal object DeepSeekCaptionEnhancementJson {
                     "source_id" to verified.candidate.sourceId,
                 ),
                 "complete_english_lyrics" to verified.candidate.completeEnglishLyrics,
-                "cue_canonical_alignments" to verified.cueCanonicalEnglish.map { (id, english) ->
-                    mapOf("id" to id, "canonical_english" to english)
+                "cue_canonical_alignments" to verified.cueCanonicalLines.map { (id, lines) ->
+                    mapOf("source_id" to id, "canonical_lines" to lines)
                 },
                 "request" to requestPayload(request),
             )
@@ -350,11 +392,16 @@ internal object DeepSeekCaptionEnhancementJson {
         val cues = root.requiredArray("cues").values.map { value ->
             val item = value.asObject()
             CaptionEnhancementResponseCue(
-                id = item.requiredString("id"),
+                sourceId = item.requiredString("source_id"),
                 startMs = item.requiredLong("start_ms"),
                 endMs = item.requiredLong("end_ms"),
-                correctedEnglish = item.requiredString("corrected_english"),
-                chinese = item.requiredString("chinese"),
+                lines = item.requiredArray("lines").values.map { lineValue ->
+                    val line = lineValue.asObject()
+                    CaptionEnhancementResponseLine(
+                        correctedEnglish = line.requiredString("corrected_english"),
+                        chinese = line.requiredString("chinese"),
+                    )
+                },
             )
         }
         return CaptionEnhancementResponse(

@@ -15,8 +15,11 @@ data class SongLyricsVerificationMetrics(
 data class VerifiedSongLyrics(
     val candidate: SongLyricsCandidate,
     val metrics: SongLyricsVerificationMetrics,
-    val cueCanonicalEnglish: Map<String, String>,
+    val cueCanonicalLines: Map<String, List<String>>,
 ) {
+    val cueCanonicalEnglish: Map<String, String>
+        get() = cueCanonicalLines.mapValues { (_, lines) -> lines.joinToString(" ") }
+
     override fun toString(): String =
         "VerifiedSongLyrics(sourceId=${candidate.sourceId}, matchedCueCount=${metrics.matchedCueCount}, confidence=${metrics.confidence})"
 }
@@ -71,8 +74,8 @@ class SongLyricsCandidateVerifier {
                 medianSimilarity = median,
                 confidence = confidence,
             ),
-            cueCanonicalEnglish = eligible.mapNotNull { cue ->
-                alignment[cue.id]?.let { cue.id to it.canonicalEnglish }
+            cueCanonicalLines = eligible.mapNotNull { cue ->
+                alignment[cue.id]?.let { cue.id to it.canonicalLines }
             }.toMap(linkedMapOf()),
         )
     }
@@ -80,8 +83,20 @@ class SongLyricsCandidateVerifier {
     private fun tokenizeLyrics(lines: List<String>): List<LyricToken>? {
         val result = ArrayList<LyricToken>()
         lines.forEachIndexed { lineIndex, line ->
-            normalize(line).split(' ').filter(String::isNotBlank).forEach { token ->
-                result += LyricToken(value = token, lineIndex = lineIndex)
+            val matches = WORD_PATTERN.findAll(line).toList()
+            matches.forEachIndexed { tokenIndex, match ->
+                val display = match.value
+                val token = normalize(display)
+                if (token.isBlank()) return@forEachIndexed
+                result += LyricToken(
+                    value = token,
+                    lineIndex = lineIndex,
+                    sourceLine = line,
+                    startIndex = match.range.first,
+                    nextTokenStart = matches.getOrNull(tokenIndex + 1)?.range?.first ?: line.length,
+                    isFirstInLine = tokenIndex == 0,
+                    isLastInLine = tokenIndex == matches.lastIndex,
+                )
                 if (result.size > MAX_LYRIC_TOKENS) return null
             }
         }
@@ -155,7 +170,26 @@ class SongLyricsCandidateVerifier {
                     val start = tokenIndex - length
                     val canonical = lyricTokens.subList(start, tokenIndex).joinToString(" ") { it.value }
                     val cue = cues[cueIndex - 1]
-                    reversed += cue.id to SpanMatch(canonical, similarity(cue.rawEnglish, canonical))
+                    val span = lyricTokens.subList(start, tokenIndex)
+                    val canonicalLines = span
+                        .groupBy(LyricToken::lineIndex)
+                        .values
+                        .map { lineTokens ->
+                            val first = lineTokens.first()
+                            val last = lineTokens.last()
+                            val startIndex = if (first.isFirstInLine) 0 else first.startIndex
+                            val endExclusive = if (last.isLastInLine) {
+                                last.sourceLine.length
+                            } else {
+                                last.nextTokenStart
+                            }
+                            first.sourceLine.substring(startIndex, endExclusive).trim()
+                        }
+                    reversed += cue.id to SpanMatch(
+                        canonicalEnglish = canonical,
+                        canonicalLines = canonicalLines,
+                        similarity = similarity(cue.rawEnglish, canonical),
+                    )
                     cueIndex--
                     tokenIndex = start
                 }
@@ -220,8 +254,21 @@ class SongLyricsCandidateVerifier {
     private fun nearlyEqual(left: Double, right: Double): Boolean =
         kotlin.math.abs(left - right) < SCORE_EPSILON
 
-    private data class LyricToken(val value: String, val lineIndex: Int)
-    private data class SpanMatch(val canonicalEnglish: String, val similarity: Double)
+    private data class LyricToken(
+        val value: String,
+        val lineIndex: Int,
+        val sourceLine: String,
+        val startIndex: Int,
+        val nextTokenStart: Int,
+        val isFirstInLine: Boolean,
+        val isLastInLine: Boolean,
+    )
+
+    private data class SpanMatch(
+        val canonicalEnglish: String,
+        val canonicalLines: List<String>,
+        val similarity: Double,
+    )
 
     companion object {
         const val MIN_ELIGIBLE_CUES = 3
@@ -242,5 +289,6 @@ class SongLyricsCandidateVerifier {
         private const val ACTION_SKIP_TOKEN: Byte = 1
         private const val ACTION_SKIP_CUE: Byte = 2
         private const val ACTION_MATCH: Byte = 3
+        private val WORD_PATTERN = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*")
     }
 }

@@ -1,6 +1,8 @@
 package com.example.lyriccaptioner.processing.enhancement
 
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionCueSplitPolicy
+import com.example.lyriccaptioner.model.CaptionSplitLine
 
 /** Performs the all-or-nothing checks required before applying a provider response. */
 class CaptionEnhancementResponseValidator {
@@ -25,7 +27,7 @@ class CaptionEnhancementResponseValidator {
 
         if (response.cues.size != request.cues.size) reject("Response cue count does not match request.")
         val expectedIds = request.cues.map { it.id }
-        val responseIds = response.cues.map { it.id }
+        val responseIds = response.cues.map { it.sourceId }
         if (responseIds != expectedIds || responseIds.toSet().size != responseIds.size) {
             reject("Response cue ids do not match request.")
         }
@@ -35,17 +37,24 @@ class CaptionEnhancementResponseValidator {
             if (cue.startMs != expected.startMs || cue.endMs != expected.endMs) {
                 reject("Response cue timeline does not match request.")
             }
-            requireIdentifier(cue.id, "cue id")
-            requireText(cue.correctedEnglish, allowBlank = false, "corrected English")
-            requireText(cue.chinese, allowBlank = false, "Chinese translation")
+            requireIdentifier(cue.sourceId, "source cue id")
+            if (cue.lines.size !in 1..2) reject("Response cue must contain one or two lines.")
+            cue.lines.forEach { line ->
+                requireText(line.correctedEnglish, allowBlank = false, "corrected English")
+                requireText(line.chinese, allowBlank = false, "Chinese translation")
+            }
         }
 
         val validatedSongMatch = validateSongMatch(response.songMatch)
-        val captions = response.cues.mapIndexed { index, cue ->
-            rawCaptions[index].copy(
-                english = cue.correctedEnglish,
-                chinese = cue.chinese,
-            )
+        val captions = try {
+            response.cues.flatMapIndexed { index, cue ->
+                CaptionCueSplitPolicy.apply(
+                    parent = rawCaptions[index],
+                    lines = cue.lines.map { line -> CaptionSplitLine(line.correctedEnglish, line.chinese) },
+                )
+            }
+        } catch (_: IllegalArgumentException) {
+            reject("Response cue could not be split within its source timeline.")
         }
         return CaptionEnhancementOutcome(
             captions = captions,

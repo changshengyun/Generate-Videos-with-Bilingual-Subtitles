@@ -29,7 +29,7 @@ class CompleteCaptionWorkflowTest {
     }
 
     @Test
-    fun oneRunCallsAsrThenAiExactlyOnceAndCommitsRawBeforeAi() = runBlocking {
+    fun oneRunCallsAsrThenAiExactlyOnceWithoutExposingRawBatch() = runBlocking {
         val events = mutableListOf<String>()
         var asrCalls = 0
         var aiCalls = 0
@@ -48,7 +48,6 @@ class CompleteCaptionWorkflowTest {
             onStageChanged = { events += "stage:$it" },
             onRecognitionStatus = {},
             onEnhancementState = {},
-            onRawCaptionsReady = { events += "commit:${it.single().id}" },
         )
 
         assertEquals(1, asrCalls)
@@ -58,7 +57,6 @@ class CompleteCaptionWorkflowTest {
             listOf(
                 "stage:LOCAL_RECOGNIZING",
                 "asr",
-                "commit:cue-1",
                 "stage:AI_ENHANCING",
                 "ai:cue-1",
             ),
@@ -67,9 +65,8 @@ class CompleteCaptionWorkflowTest {
     }
 
     @Test
-    fun asrFailureNeverStartsAiOrCommitsRawCaptions() {
+    fun asrFailureNeverStartsAi() {
         var aiCalls = 0
-        var commits = 0
 
         assertThrows(IllegalStateException::class.java) {
             runBlocking {
@@ -82,13 +79,11 @@ class CompleteCaptionWorkflowTest {
                     onStageChanged = {},
                     onRecognitionStatus = {},
                     onEnhancementState = {},
-                    onRawCaptionsReady = { commits += 1 },
                 )
             }
         }
 
         assertEquals(0, aiCalls)
-        assertEquals(0, commits)
     }
 
     @Test
@@ -106,13 +101,12 @@ class CompleteCaptionWorkflowTest {
     }
 
     @Test
-    fun aiFailureHappensOnlyAfterRawBatchWasCommitted() {
+    fun aiFailureDoesNotExposeRawBatch() {
         val events = mutableListOf<String>()
 
         assertThrows(CaptionEnhancementProviderException::class.java) {
             runBlocking {
                 runWorkflow(
-                    onRaw = { events += "raw" },
                     enhance = {
                         events += "ai"
                         throw CaptionEnhancementProviderException(
@@ -124,11 +118,11 @@ class CompleteCaptionWorkflowTest {
             }
         }
 
-        assertEquals(listOf("raw", "ai"), events)
+        assertEquals(listOf("ai"), events)
     }
 
     @Test
-    fun cancellationAfterAsrCommitDoesNotProduceAnEnhancementOutcome() {
+    fun cancellationAfterAsrDoesNotProduceAnEnhancementOutcome() {
         val stages = mutableListOf<CaptionWorkflowStage>()
 
         assertThrows(CancellationException::class.java) {
@@ -153,7 +147,6 @@ class CompleteCaptionWorkflowTest {
 
     private suspend fun runWorkflow(
         onStage: (CaptionWorkflowStage) -> Unit = {},
-        onRaw: (List<CaptionCue>) -> Unit = {},
         enhance: suspend (List<CaptionCue>) -> CaptionEnhancementOutcome,
     ): CaptionEnhancementOutcome = CompleteCaptionWorkflowRunner().run(
         recognize = { rawCues() },
@@ -161,7 +154,6 @@ class CompleteCaptionWorkflowTest {
         onStageChanged = onStage,
         onRecognitionStatus = {},
         onEnhancementState = {},
-        onRawCaptionsReady = onRaw,
     )
 
     private fun rawCues() = listOf(

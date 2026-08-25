@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-25.008`
-- 当前任务：`V4-CAPTION-QUALITY-001 / MATRIX_DEFINED / IN_PROGRESS`
+- `ROADMAP_REV: 2026-08-25.009`
+- 当前任务：`V4-CAPTION-QUALITY-001 / PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -39,7 +39,7 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 | `V4-EDITOR-001` | `PASS / COMPONENT_VERIFIED` | 按当前播放位置在空档新增双语字幕，并保持编辑/恢复/导出一致 |
 | `V4-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED` | 普通与全屏独立控制行已通过组件验证；Pixel 8 因已有 snapshot operation pending 无法启动，未取得截图或 instrumentation 证据 |
 | `V4-E2E-001` | `PARTIAL_PASS / DEVICE_VALIDATION_DEFERRED_BY_USER` | 用户接管真机验收；未取得真实 AI、导出、回放或截图证据，不得写成 PASS |
-| `V4-CAPTION-QUALITY-001` | `IN_PROGRESS / MATRIX_DEFINED` | 唯一最终批次、已验证英文纠错、双句拆 cue、长字幕复核和主页面编辑器整合 |
+| `V4-CAPTION-QUALITY-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v4、唯一最终批次、canonical 英文/双句拆 cue、长字幕复核、主页面逐 cue 编辑和共享播放器已实现；等待用户真机终验 |
 
 ## 执行和提交顺序
 
@@ -65,3 +65,11 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 ## V4 总体验收
 
 正式 V4 PASS 需要真实设备从系统相册入口完成：一次点击识别、本地 ASR、真实 AI 增强、标准英文纠错、融合双句拆 cue、主页面内联编辑、保存恢复、MediaStore 导出和 Media3 回放。缺少真实 AI、真实设备、真实导出或截图证据时，只能标记对应的 `PARTIAL_PASS`。
+
+## V4 字幕质量组件验收快照（2026-08-25）
+
+- `caption-enhancement.v4`、canonical 原文保留、1→2 稳定拆分、RAW_ASR 内部暂存、单一最终批次、长字幕可读性、人工拆分和项目恢复已通过任务相关 JVM 56/56。
+- 全量 `testDebugUnitTest` 362 项中 359 通过；3 项外部 fixture 失败源于隔离 worktree 的父路径搜索不包含原仓库已有 OPUS-MT/Whisper 资产，不是本阶段代码失败，且未为测试复制/下载大型模型。
+- `python tools\asr_evaluate_test.py` 6/6，`lintDebug`、普通/Native Debug 与普通/Native AndroidTest 构建成功。
+- Native Debug APK 116,019,973 bytes；AndroidTest APK 220,234 bytes。独立代码复审最终 `PASS`。
+- instrumentation 已更新并成功编译，覆盖 v4 1→2 验收、内联文本、IME、逐 cue 字体和确认拆分；未在设备运行，因此真实 UI、DeepSeek、截图、导出和回放仍待用户终验。

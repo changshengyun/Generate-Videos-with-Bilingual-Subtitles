@@ -48,8 +48,9 @@ class SongLyricsCandidateVerifierTest {
 
         assertConfirmedAllCues(result, shifted.size)
         requireNotNull(result)
-        assertEquals("the sound that saved a wretch like me", result.cueCanonicalEnglish["cue-1"])
-        assertEquals("am found was blind but now i see", result.cueCanonicalEnglish["cue-3"])
+        assertEquals("the sound That saved a wretch like me!", result.cueCanonicalEnglish["cue-1"])
+        assertEquals(listOf("the sound", "That saved a wretch like me!"), result.cueCanonicalLines["cue-1"])
+        assertEquals("am found; Was blind, but now I see.", result.cueCanonicalEnglish["cue-3"])
     }
 
     @Test
@@ -70,6 +71,10 @@ class SongLyricsCandidateVerifierTest {
         val result = verifier.verify(cues(split), candidate(canonicalLines()))
 
         assertConfirmedAllCues(result, split.size)
+        requireNotNull(result)
+        assertEquals("Amazing grace! How sweet", result.cueCanonicalLines["cue-0"]?.single())
+        assertEquals("the sound", result.cueCanonicalLines["cue-1"]?.single())
+        assertEquals("like me!", result.cueCanonicalLines["cue-3"]?.single())
     }
 
     @Test
@@ -84,6 +89,9 @@ class SongLyricsCandidateVerifierTest {
         val result = verifier.verify(cues(merged), candidate(canonicalLines()))
 
         assertConfirmedAllCues(result, merged.size)
+        requireNotNull(result)
+        assertEquals(2, result.cueCanonicalLines["cue-0"]?.size)
+        assertEquals(canonicalLines().take(2), result.cueCanonicalLines["cue-0"])
     }
 
     @Test

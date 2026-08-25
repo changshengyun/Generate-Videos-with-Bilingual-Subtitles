@@ -4,7 +4,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 
 /** Provider-neutral V3 caption enhancement wire and processing contract. */
 object CaptionEnhancementContract {
-    const val SCHEMA_VERSION = "caption-enhancement.v3"
+    const val SCHEMA_VERSION = "caption-enhancement.v4"
 }
 
 data class CaptionEnhancementRequest(
@@ -35,9 +35,13 @@ data class CaptionEnhancementResponse(
 }
 
 data class CaptionEnhancementResponseCue(
-    val id: String,
+    val sourceId: String,
     val startMs: Long,
     val endMs: Long,
+    val lines: List<CaptionEnhancementResponseLine>,
+)
+
+data class CaptionEnhancementResponseLine(
     val correctedEnglish: String,
     val chinese: String,
 )

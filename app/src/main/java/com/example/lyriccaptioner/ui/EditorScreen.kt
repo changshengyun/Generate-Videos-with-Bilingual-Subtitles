@@ -63,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,6 +102,9 @@ import com.example.lyriccaptioner.captions.CaptionTimeline
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionCue
+import com.example.lyriccaptioner.model.CaptionCueSplitPolicy
+import com.example.lyriccaptioner.model.CaptionReadability
+import com.example.lyriccaptioner.model.CaptionReadabilityIssue
 import com.example.lyriccaptioner.model.CaptionGeometryResolver
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionVerticalAnchor
@@ -130,6 +134,7 @@ import com.example.lyriccaptioner.processing.CaptionRenderSpec
 import com.example.lyriccaptioner.processing.ResolvedCaptionRender
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
+import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -194,7 +199,17 @@ fun EditorScreen(viewModel: MainViewModel) {
         color = Color(0xFF0D0F12),
         contentColor = Color(0xFFF4F5F7),
     ) {
-        Column(
+        if (activeSection == EditorSection.CAPTIONS.index) {
+            CaptionEditorPage(
+                state = state,
+                editorSnapshot = editorSnapshot,
+                playbackPositionMs = playbackPositionMs,
+                onPlaybackPositionChanged = { playbackPositionMs = it },
+                onImportLyrics = { lyricPicker.launch("text/*") },
+                onSectionSelected = { activeSection = it },
+                viewModel = viewModel,
+            )
+        } else Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
@@ -338,51 +353,167 @@ fun EditorScreen(viewModel: MainViewModel) {
                     }
                 }
             }
-            if (showsCaptionList(activeSection)) {
-                if (activeSection != EditorSection.CAPTIONS.index) {
-                    CaptionList(
-                    captions = state.captions,
-                    selectedId = state.selectedCaptionId,
-                    defaultStyle = state.defaultCaptionStyle,
-                    captionLayout = state.captionLayout,
-                    onSelect = viewModel::selectCue,
-                    onEnglishChanged = viewModel::updateEnglishText,
-                    onChineseChanged = viewModel::updateChineseText,
-                    onApplyCandidate = viewModel::applyCorrectionCandidate,
-                    onShiftStart = viewModel::shiftCueStart,
-                    onShiftEnd = viewModel::shiftCueEnd,
-                    onDelete = viewModel::deleteCaption,
-                    onConfirm = viewModel::confirmCue,
-                    onFontSmaller = { cueId, delta -> viewModel.updateCueFontSize(cueId, delta) },
-                    onFontLarger = { cueId, delta -> viewModel.updateCueFontSize(cueId, delta) },
-                    onEnglishColorChanged = viewModel::updateCueEnglishColor,
-                    onChineseColorChanged = viewModel::updateCueChineseColor,
-                    onOutlineColorChanged = viewModel::updateCueOutlineColor,
-                    onFontFamilyChanged = viewModel::updateCueFontFamily,
-                    onToggleBold = { cueId -> viewModel.toggleCueBold(cueId) },
-                    onToggleItalic = { cueId -> viewModel.toggleCueItalic(cueId) },
-                    onAlignmentChanged = viewModel::updateCueAlignment,
-                    onPositionChanged = viewModel::updateCuePosition,
-                    onClearOverride = viewModel::clearCueStyleOverride,
-                    enabled = !state.isWorking,
-                    editorSnapshot = editorSnapshot,
-                        modifier = Modifier.weight(0.28f),
-                    )
-                } else {
-                    DirectCaptionEditPanel(
-                        cue = state.captions.firstOrNull { it.id == state.selectedCaptionId },
-                        defaultStyle = state.defaultCaptionStyle,
-                        enabled = !state.isWorking,
-                        onEnglishChanged = viewModel::updateEnglishText,
-                        onChineseChanged = viewModel::updateChineseText,
-                        onApplyBasicStyle = viewModel::applyCueBasicStyle,
-                        onUnifiedColorChanged = viewModel::updateCueUnifiedTextColor,
-                        onAlignmentChanged = viewModel::updateCueAlignment,
-                        modifier = Modifier.weight(0.38f),
-                    )
-                }
+        }
+    }
+}
+
+@Composable
+private fun CaptionEditorPage(
+    state: EditorState,
+    editorSnapshot: String,
+    playbackPositionMs: Long,
+    onPlaybackPositionChanged: (Long) -> Unit,
+    onImportLyrics: () -> Unit,
+    onSectionSelected: (Int) -> Unit,
+    viewModel: MainViewModel,
+) {
+    val context = LocalContext.current
+    val playableUri = state.videoUri.takeUnless {
+        state.mediaState == MediaState.UNAVAILABLE || state.isWorking
+    }
+    val sharedPlayer = remember(playableUri) {
+        playableUri?.let { uri ->
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(uri))
+                prepare()
             }
         }
+    }
+    val selectionSeekGuard = remember(playableUri) { SelectionSeekGuard() }
+    DisposableEffect(sharedPlayer) {
+        onDispose { sharedPlayer?.release() }
+    }
+    val orderedCaptions = remember(state.captions) {
+        state.captions.sortedWith(compareBy<CaptionCue> { it.startMs }.thenBy { it.endMs }.thenBy { it.id })
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            VideoPreview(
+                videoUri = state.videoUri.takeUnless { state.mediaState == MediaState.UNAVAILABLE },
+                captions = orderedCaptions,
+                selectedCaptionId = state.selectedCaptionId,
+                captionLayout = state.captionLayout,
+                defaultCaptionStyle = state.defaultCaptionStyle,
+                status = state.status,
+                isWorking = state.isWorking,
+                exportState = state.exportState,
+                mediaRevision = state.mediaRevision,
+                directEditMode = true,
+                onSelectCue = viewModel::selectCue,
+                onDeleteCue = viewModel::deleteCaption,
+                onPositionCommitted = viewModel::updateCueDirectPosition,
+                onWidthCommitted = viewModel::updateCueDirectWidth,
+                onFontSizeCommitted = viewModel::updateCueDirectFontSize,
+                onPlaybackPositionChanged = onPlaybackPositionChanged,
+                sharedPlayer = sharedPlayer,
+                selectionSeekGuard = selectionSeekGuard,
+            )
+        }
+        item {
+            WorkbenchTabs(
+                activeSection = EditorSection.CAPTIONS.index,
+                onSectionSelected = onSectionSelected,
+            )
+        }
+        item {
+            WorkflowPanel(title = "字幕编辑", subtitle = "按歌曲时序直接修改全部双语字幕") {
+                ActionRow {
+                    SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) {
+                        viewModel.addCaptionAt(playbackPositionMs)
+                    }
+                    SecondaryAction("导入歌词", orderedCaptions.isNotEmpty() && !state.isWorking, onClick = onImportLyrics)
+                }
+                Text(
+                    text = "点击字幕卡片直接编辑；样式设置在对应字幕下方展开。",
+                    color = Color(0xFF9EA5B1),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        item {
+            CaptionResultSourceBanner(state.captionProcessing.source)
+        }
+        item {
+            Box(
+                modifier = Modifier
+                    .size(1.dp)
+                    .clearAndSetSemantics { contentDescription = "caption_state:$editorSnapshot" },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("字幕列表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("${orderedCaptions.size} 条", color = Color(0xFF9EA5B1))
+            }
+        }
+        if (orderedCaptions.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+                ) {
+                    Text("最终字幕将在增强完成后显示", modifier = Modifier.padding(24.dp), color = Color(0xFF9EA5B1))
+                }
+            }
+        } else {
+            items(orderedCaptions, key = { it.id }) { cue ->
+                CaptionCard(
+                    cue = cue,
+                    selected = cue.id == state.selectedCaptionId,
+                    enabled = !state.isWorking,
+                    onSelect = { viewModel.selectCue(cue.id) },
+                    onEnglishChanged = { viewModel.updateEnglishText(cue.id, it) },
+                    onChineseChanged = { viewModel.updateChineseText(cue.id, it) },
+                    onApplyCandidate = { viewModel.applyCorrectionCandidate(cue.id, it) },
+                    onShiftStart = { viewModel.shiftCueStart(cue.id, it) },
+                    onShiftEnd = { viewModel.shiftCueEnd(cue.id, it) },
+                    onDelete = { viewModel.deleteCaption(cue.id) },
+                    onConfirm = { viewModel.confirmCue(cue.id) },
+                    onSplit = { firstEnglish, firstChinese, secondEnglish, secondChinese ->
+                        viewModel.splitCaption(cue.id, firstEnglish, firstChinese, secondEnglish, secondChinese)
+                    },
+                    defaultStyle = state.defaultCaptionStyle,
+                    captionLayout = state.captionLayout,
+                    onFontSmaller = { viewModel.updateCueFontSize(cue.id, it) },
+                    onFontLarger = { viewModel.updateCueFontSize(cue.id, it) },
+                    onEnglishColorChanged = { viewModel.updateCueEnglishColor(cue.id, it) },
+                    onChineseColorChanged = { viewModel.updateCueChineseColor(cue.id, it) },
+                    onOutlineColorChanged = { viewModel.updateCueOutlineColor(cue.id, it) },
+                    onFontFamilyChanged = { viewModel.updateCueFontFamily(cue.id, it) },
+                    onToggleBold = { viewModel.toggleCueBold(cue.id) },
+                    onToggleItalic = { viewModel.toggleCueItalic(cue.id) },
+                    onAlignmentChanged = { viewModel.updateCueAlignment(cue.id, it) },
+                    onPositionChanged = { viewModel.updateCuePosition(cue.id, it) },
+                    onClearOverride = { viewModel.clearCueStyleOverride(cue.id) },
+                )
+            }
+        }
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun CaptionResultSourceBanner(source: CaptionResultSource) {
+    val (text, color) = when (source) {
+        CaptionResultSource.CLOUD_AI -> "当前成品：DeepSeek 增强字幕" to Color(0xFFB7F36B)
+        CaptionResultSource.LOCAL_FALLBACK -> "当前成品：本地回退；英文未经过标准歌词校正" to Color(0xFFFFC857)
+        CaptionResultSource.RAW_ASR -> "尚无最终增强字幕" to Color(0xFF9EA5B1)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "caption_result_source:$source" },
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+    ) {
+        Text(text, modifier = Modifier.padding(12.dp), color = color, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -1222,6 +1353,8 @@ private fun VideoPreview(
     onWidthCommitted: (String, Float) -> Unit,
     onFontSizeCommitted: (String, Float) -> Unit,
     onPlaybackPositionChanged: (Long) -> Unit,
+    sharedPlayer: ExoPlayer? = null,
+    selectionSeekGuard: SelectionSeekGuard? = null,
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
@@ -1275,6 +1408,8 @@ private fun VideoPreview(
                         onWidthCommitted = onWidthCommitted,
                         onFontSizeCommitted = onFontSizeCommitted,
                         onPlaybackPositionChanged = onPlaybackPositionChanged,
+                        sharedPlayer = sharedPlayer,
+                        selectionSeekGuard = selectionSeekGuard,
                     )
                     Box(
                         modifier = Modifier
@@ -1316,6 +1451,8 @@ private fun VideoPreview(
     }
 }
 
+private class SelectionSeekGuard(var captionId: String? = null)
+
 @Composable
 private fun VideoPlayer(
     uri: Uri,
@@ -1330,6 +1467,8 @@ private fun VideoPlayer(
     onWidthCommitted: (String, Float) -> Unit,
     onFontSizeCommitted: (String, Float) -> Unit,
     onPlaybackPositionChanged: (Long) -> Unit,
+    sharedPlayer: ExoPlayer?,
+    selectionSeekGuard: SelectionSeekGuard?,
 ) {
     val context = LocalContext.current
     var positionMs by remember(uri) { mutableLongStateOf(0L) }
@@ -1339,14 +1478,28 @@ private fun VideoPlayer(
     val timeline = remember(captions) { CaptionTimeline(captions) }
     val currentCue = timeline.cueAt(positionMs)
     val currentRender = currentCue?.let { CaptionRenderResolver.resolve(it, captionLayout, defaultCaptionStyle) }
-    val player = remember(uri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
+    val ownedPlayer = remember(uri, sharedPlayer) {
+        if (sharedPlayer == null) {
+            ExoPlayer.Builder(context).build().apply {
+                setMediaItem(MediaItem.fromUri(uri))
+                prepare()
+            }
+        } else {
+            null
         }
     }
+    val player = sharedPlayer ?: requireNotNull(ownedPlayer)
+    val localSelectionSeekGuard = remember(uri) { SelectionSeekGuard() }
+    val effectiveSelectionSeekGuard = selectionSeekGuard ?: localSelectionSeekGuard
 
     DisposableEffect(player) {
+        player.videoSize.takeIf { it.width > 0 && it.height > 0 }?.let { videoSize ->
+            sourceVideoSize = SourceVideoSize(
+                width = videoSize.width,
+                height = videoSize.height,
+                pixelWidthHeightRatio = videoSize.pixelWidthHeightRatio,
+            )
+        }
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: Media3VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
@@ -1361,14 +1514,17 @@ private fun VideoPlayer(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
-            player.release()
+            if (sharedPlayer == null) player.release()
         }
     }
 
-    LaunchedEffect(selectedCaptionId, captions) {
-        val selectedCue = captions.firstOrNull { it.id == selectedCaptionId }
-        if (selectedCue != null) {
-            player.seekTo(selectedCue.startMs)
+    LaunchedEffect(selectedCaptionId) {
+        if (effectiveSelectionSeekGuard.captionId != selectedCaptionId) {
+            val selectedCue = captions.firstOrNull { it.id == selectedCaptionId }
+            if (selectedCue != null) {
+                player.seekTo(selectedCue.startMs)
+            }
+            effectiveSelectionSeekGuard.captionId = selectedCaptionId
         }
         visibleSelectionId = selectedCaptionId
     }
@@ -2192,6 +2348,7 @@ private fun CaptionCard(
     onShiftEnd: (Long) -> Unit,
     onDelete: () -> Unit,
     onConfirm: () -> Unit,
+    onSplit: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onFontSmaller: (Int) -> Unit,
     onFontLarger: (Int) -> Unit,
     onEnglishColorChanged: (String) -> Unit,
@@ -2204,7 +2361,15 @@ private fun CaptionCard(
     onPositionChanged: (Int) -> Unit,
     onClearOverride: () -> Unit,
 ) {
-    var styleExpanded by remember(cue.id) { mutableStateOf(false) }
+    var styleExpanded by rememberSaveable(cue.id) { mutableStateOf(false) }
+    var splitExpanded by rememberSaveable(cue.id) { mutableStateOf(false) }
+    var firstEnglish by remember(cue.id) { mutableStateOf("") }
+    var firstChinese by remember(cue.id) { mutableStateOf("") }
+    var secondEnglish by remember(cue.id) { mutableStateOf("") }
+    var secondChinese by remember(cue.id) { mutableStateOf("") }
+    val readabilityIssues = remember(cue.english, cue.chinese, cue.startMs, cue.endMs) {
+        CaptionReadability.issues(cue)
+    }
     val containerColor = when {
         cue.confirmed -> Color(0xFF1C3328)
         cue.needsReview -> Color(0xFF3A3020)
@@ -2237,6 +2402,23 @@ private fun CaptionCard(
                     text = "置信度 ${(cue.confidence * 100).toInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                 )
+            }
+            if (readabilityIssues.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "cue_readability_warning:${cue.id}" },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    readabilityIssues.forEach { issue ->
+                        Text(
+                            text = readabilityIssueLabel(issue),
+                            color = Color(0xFFFFC857),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
             }
             TextButton(
                 modifier = Modifier.semantics { contentDescription = "cue_style_toggle:${cue.id}" },
@@ -2295,6 +2477,73 @@ private fun CaptionCard(
                     label = { Text("中文字幕") },
                 singleLine = false,
             )
+            TextButton(
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .semantics { contentDescription = "cue_split_toggle:${cue.id}" },
+                enabled = enabled,
+                onClick = {
+                    if (!splitExpanded) {
+                        val englishParts = CaptionCueSplitPolicy.suggestTextParts(cue.english)
+                        val chineseParts = CaptionCueSplitPolicy.suggestTextParts(cue.chinese)
+                        firstEnglish = englishParts.first
+                        secondEnglish = englishParts.second
+                        firstChinese = chineseParts.first
+                        secondChinese = chineseParts.second
+                    }
+                    splitExpanded = !splitExpanded
+                },
+            ) {
+                Text(if (splitExpanded) "取消拆分" else "拆分字幕")
+            }
+            if (splitExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "cue_split_editor:${cue.id}" },
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("第一段", fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = firstEnglish,
+                        onValueChange = { firstEnglish = it },
+                        label = { Text("第一段英文") },
+                    )
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = firstChinese,
+                        onValueChange = { firstChinese = it },
+                        label = { Text("第一段中文") },
+                    )
+                    Text("第二段", fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = secondEnglish,
+                        onValueChange = { secondEnglish = it },
+                        label = { Text("第二段英文") },
+                    )
+                    OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = secondChinese,
+                        onValueChange = { secondChinese = it },
+                        label = { Text("第二段中文") },
+                    )
+                    Button(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .semantics { contentDescription = "cue_split_confirm:${cue.id}" },
+                        enabled = enabled && listOf(firstEnglish, firstChinese, secondEnglish, secondChinese).all { it.isNotBlank() },
+                        onClick = {
+                            onSplit(firstEnglish, firstChinese, secondEnglish, secondChinese)
+                            splitExpanded = false
+                        },
+                    ) {
+                        Text("确认拆分为两个 cue")
+                    }
+                }
+            }
             if (styleExpanded) {
                 CueStyleControls(
                     cue = cue,
@@ -2339,6 +2588,15 @@ private fun CaptionCard(
             }
         }
     }
+}
+
+private fun readabilityIssueLabel(issue: CaptionReadabilityIssue): String = when (issue) {
+    CaptionReadabilityIssue.ENGLISH_LINE_TOO_LONG -> "英文超过 42 字符"
+    CaptionReadabilityIssue.CHINESE_LINE_TOO_LONG -> "中文超过 16 字"
+    CaptionReadabilityIssue.ENGLISH_READING_TOO_FAST -> "英文阅读速度过快"
+    CaptionReadabilityIssue.CHINESE_READING_TOO_FAST -> "中文阅读速度过快"
+    CaptionReadabilityIssue.DURATION_TOO_SHORT -> "时长少于 0.833 秒"
+    CaptionReadabilityIssue.DURATION_TOO_LONG -> "时长超过 7 秒"
 }
 
 @Composable

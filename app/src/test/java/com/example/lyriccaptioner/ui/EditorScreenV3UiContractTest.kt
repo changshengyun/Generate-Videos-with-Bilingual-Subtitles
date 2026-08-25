@@ -35,11 +35,14 @@ class EditorScreenV3UiContractTest {
     }
 
     @Test
-    fun captionListIsGatedToTheCaptionEditorSection() {
+    fun captionEditorSectionUsesIntegratedChronologicalList() {
         val source = editorScreenSource()
 
-        assertTrue(source.contains("if (showsCaptionList(activeSection))"))
+        assertTrue(source.contains("if (activeSection == EditorSection.CAPTIONS.index)"))
+        assertTrue(source.contains("CaptionEditorPage("))
+        assertTrue(source.contains("items(orderedCaptions"))
         assertTrue(source.contains("contentDescription = \"caption_list\""))
+        assertTrue(source.contains("caption_result_source:"))
     }
 
     @Test
@@ -109,6 +112,19 @@ class EditorScreenV3UiContractTest {
         assertTrue(source.contains(".size(48.dp)"))
         assertTrue(source.contains(".heightIn(min = 48.dp)"))
         assertTrue(source.contains(".imePadding()"))
+    }
+
+    @Test
+    fun integratedEditorKeepsPlayerAcrossLazyItemDisposalAndTextEditsDoNotReseek() {
+        val source = editorScreenSource()
+        val player = source.substringAfter("private fun VideoPlayer")
+            .substringBefore("private fun PlayerControlRow")
+
+        assertTrue(source.contains("val sharedPlayer = remember(playableUri)"))
+        assertTrue(source.contains("selectionSeekGuard = selectionSeekGuard"))
+        assertTrue(player.contains("LaunchedEffect(selectedCaptionId)"))
+        assertFalse(player.contains("LaunchedEffect(selectedCaptionId, captions)"))
+        assertTrue(player.contains("if (sharedPlayer == null) player.release()"))
     }
 
     @Test

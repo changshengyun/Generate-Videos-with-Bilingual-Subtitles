@@ -1,12 +1,12 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-25.013`
+- `STATE_REV: 2026-08-25.014`
 - Repository: `D:\DevData\Codex\.codex\worktrees\c3dc\lyric-captioner-android`
 - Branch: `codex/v4-caption-quality-001`
 - V4 baseline HEAD: `97fc26f87761c1844429d5366e0b3dff18dcf21e`
 - Current task: `V4-CAPTION-QUALITY-001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `CAPTION_QUALITY_AND_EDITOR_INTEGRATION_IN_PROGRESS`
+- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
+- Product status: `CAPTION_QUALITY_AND_EDITOR_INTEGRATION_IMPLEMENTED`
 - Current gate: `USER_LED_DEVICE_VALIDATION / NO_AGENT_DEVICE_ACTION`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Last state sync: 2026-08-25
@@ -20,14 +20,15 @@
 - 用户批准 `V4-CAPTION-QUALITY-001` 修改 enhancement Prompt、响应合同和 cue 拆分策略；仍不授权更换模型、新增依赖、改变媒体/存储架构或破坏性操作。
 - RAW_ASR 只作为内部输入；云端或显式标注的本地回退原子提交唯一最终批次，预览、保存和导出不得混合来源。
 - 真机终验改由用户执行；本阶段 Agent 不连接、安装或操作设备。
+- `V4-CAPTION-QUALITY-001` 已实现 enhancement v4、canonical 原文/双句拆分、唯一最终批次、可读性提示、人工拆分、主页面逐 cue 编辑与共享播放器生命周期；独立复审最终 `PASS`。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
 
 ## 当前验收门禁
 
 - `V4-FLOW-001` 与 `V4-EDITOR-001` 已达到 `PASS / COMPONENT_VERIFIED`。
 - `V4-UI-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED`；Pixel 8 因已有 snapshot pending 无法启动，未取得新截图或 instrumentation 证据。
-- 收尾矩阵：ASR Python 6/6；JVM 352/352；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
-- `docs/CURRENT_TASK.md` 已冻结 `V4-CAPTION-QUALITY-001` 验收矩阵；实施范围包含标准英文纠错、双句拆 cue、长字幕复核和主页面编辑器整合。
+- 本阶段收尾：ASR Python 6/6；任务相关 JVM 56/56；全量 JVM 362 中 359 通过，3 项仅因隔离 worktree 无法发现原仓库已有 OPUS-MT/Whisper 外部 fixture 而失败；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
+- `V4-CAPTION-QUALITY-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`；实现与冻结矩阵逐项证据见 `docs/CURRENT_TASK.md`。
 - 在取得完整主链路证据前仍保持 `COMPONENT_VERIFIED` 证据上限；真实 AI、真实设备、真实导出与回放结果必须按实际执行提升或保留为未完成。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
@@ -37,7 +38,7 @@
 
 ## 下一允许动作
 
-建立 `V4-CAPTION-QUALITY-001` checkpoint，随后实现 enhancement v4 合同、确定性 cue 拆分、唯一最终批次和主页面字幕编辑器；完成聚焦与冻结回归后保持 `PARTIAL_PASS`，等待用户真机终验。
+用户使用指定视频 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 执行真机主链路终验；缺少真实 DeepSeek、截图、MediaStore 导出和 Media3 回放证据时保持当前 PARTIAL_PASS。Agent 不操作设备。
 
 ## 权威资料
 

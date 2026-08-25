@@ -287,8 +287,6 @@ class LocalAiInstrumentation : Instrumentation() {
         check(inputCues.map { it.id } == (1..LYRICS_ACCURACY_CUE_COUNT).map { "srt-$it" }) {
             "Lyrics accuracy fixture cue ids were not deterministic."
         }
-        val inputIds = inputCues.map { it.id }
-        val inputTimeline = inputCues.map { it.startMs to it.endMs }
 
         val keyManager = DeepSeekByokManagerImpl(
             AndroidKeystoreDeepSeekKeyStore(appContext),
@@ -360,18 +358,39 @@ class LocalAiInstrumentation : Instrumentation() {
                 "Misaligned lyrics acceptance did not use verified complete lyrics for stage two."
             }
         }
-        check(outcome.captions.map { it.id } == inputIds) { "Cloud enhancement changed cue ids or order." }
-        check(outcome.captions.map { it.startMs to it.endMs } == inputTimeline) {
-            "Cloud enhancement changed cue timestamps."
+        var outputIndex = 0
+        inputCues.forEach { source ->
+            val first = outcome.captions.getOrNull(outputIndex)
+                ?: error("Cloud enhancement omitted source cue ${source.id}.")
+            if (first.id == source.id) {
+                check(first.startMs == source.startMs && first.endMs == source.endMs) {
+                    "Cloud enhancement changed source cue ${source.id} timeline."
+                }
+                outputIndex += 1
+            } else {
+                val second = outcome.captions.getOrNull(outputIndex + 1)
+                    ?: error("Cloud enhancement returned an incomplete split for ${source.id}.")
+                check(first.id == "${source.id}:1" && second.id == "${source.id}:2") {
+                    "Cloud enhancement returned unstable split ids for ${source.id}."
+                }
+                check(
+                    first.startMs == source.startMs && second.endMs == source.endMs &&
+                        first.endMs <= second.startMs,
+                ) {
+                    "Cloud enhancement split escaped or overlapped source cue ${source.id}."
+                }
+                outputIndex += 2
+            }
         }
+        check(outputIndex == outcome.captions.size) { "Cloud enhancement added unmatched cues." }
         check(outcome.captions.all { it.english.isNotBlank() && it.chinese.isNotBlank() }) {
             "Cloud enhancement returned an incomplete bilingual cue."
         }
 
         val outputSrt = SrtWriter().write(outcome.captions)
         val reparsed = SrtParser().parse(outputSrt)
-        check(reparsed.size == inputCues.size) { "Generated bilingual SRT could not be fully reparsed." }
-        check(reparsed.map { it.startMs to it.endMs } == inputTimeline) {
+        check(reparsed.size == outcome.captions.size) { "Generated bilingual SRT could not be fully reparsed." }
+        check(reparsed.map { it.startMs to it.endMs } == outcome.captions.map { it.startMs to it.endMs }) {
             "Reparsed bilingual SRT changed cue timestamps."
         }
         check(reparsed.all { it.english.isNotBlank() && it.chinese.isNotBlank() }) {
@@ -395,9 +414,9 @@ class LocalAiInstrumentation : Instrumentation() {
         results.putString("lyricsAccuracySongArtist", outcome.songMatch?.artist)
         results.putString("lyricsAccuracySongSource", outcome.songMatch?.source)
         results.putString("lyricsAccuracyProcessingVersion", outcome.processingVersion)
-        results.putString("lyricsAccuracyIds", "preserved")
-        results.putString("lyricsAccuracyOrder", "preserved")
-        results.putString("lyricsAccuracyTimeline", "preserved")
+        results.putString("lyricsAccuracyIds", "stable_one_to_two")
+        results.putString("lyricsAccuracyOrder", "source_order_preserved")
+        results.putString("lyricsAccuracyTimeline", "parent_boundaries_preserved")
         results.putString("lyricsAccuracyBilingual", "all-non-empty")
         results.putString("lyricsAccuracyReparse", "pass")
         results.putString("lyricsAccuracyVerifiedLyrics", verifiedLyricsUsed.get().toString())
@@ -1054,7 +1073,39 @@ class LocalAiInstrumentation : Instrumentation() {
             "Fullscreen control has no visible bounds: $fullscreenBounds"
         }
         clickNode(waitForContentDescription("workbench_subtitles"))
-        waitForContentDescriptionWithScroll("style_controls", 20_000L)
+        val captionStateBeforeEdit = waitForContentDescriptionStartingWith("caption_state:", 20_000L)
+            .contentDescription.toString()
+        val captionCountBeforeSplit = Regex("caption_count=(\\d+)")
+            .find(captionStateBeforeEdit)?.groupValues?.get(1)?.toIntOrNull()
+            ?: error("Caption editor did not expose its measured cue count: $captionStateBeforeEdit")
+        val englishField = waitForEditableNodeWithScroll(20_000L)
+        englishField.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+        englishField.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val editArguments = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                "Edited canonical line for IME coverage",
+            )
+        }
+        check(englishField.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, editArguments)) {
+            "Inline English caption field could not be edited."
+        }
+        check(waitForImeVisible(activity, 5_000L)) { "Inline caption editing did not expose the IME." }
+        hideKeyboard(activity)
+        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_style_toggle:", 20_000L))
+        waitForContentDescriptionStartingWithWithScroll("cue_style_controls:", 20_000L)
+        clickNode(waitForTextWithScroll("等宽", 20_000L))
+        waitForContentDescriptionContaining("cue_style_state:", ":mono:", 20_000L)
+        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_split_toggle:", 20_000L))
+        waitForContentDescriptionStartingWithWithScroll("cue_split_editor:", 20_000L)
+        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_split_confirm:", 20_000L))
+        scrollToTop()
+        waitForContentDescriptionContaining(
+            "caption_state:",
+            "caption_count=${captionCountBeforeSplit + 1}",
+            20_000L,
+        )
+        results.putString("inlineEditor", "text_ime_font_split_confirmed")
         results.putString("subtitleScreenshot", saveScreenshot("ui2-subtitles.png"))
         scrollToTop()
         clickNode(waitForContentDescription("workbench_export"))
@@ -1139,10 +1190,11 @@ class LocalAiInstrumentation : Instrumentation() {
         check(importedCaptionCount == 2) { "Expected two imported captions, got $importedCaptionCount" }
         results.putInt("importedCaptionCount", importedCaptionCount)
 
-        waitForContentDescriptionWithScroll("style_controls", 20_000L)
+        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_style_toggle:", 20_000L))
+        waitForContentDescriptionStartingWithWithScroll("cue_style_controls:", 20_000L)
         clickNode(waitForContentDescriptionWithScroll("英文 #61D6FF", 20_000L))
         val importedStyleState = waitForContentDescriptionContaining(
-            prefix = "style_state:",
+            prefix = "cue_style_state:",
             expected = "#61D6FF",
             timeoutMs = 20_000L,
         ).contentDescription.toString()
@@ -1946,6 +1998,42 @@ class LocalAiInstrumentation : Instrumentation() {
             SystemClock.sleep(250L)
         }
         error("Timed out waiting for a scrollable accessibility node after ${timeoutMs}ms: $description")
+    }
+
+    private fun waitForContentDescriptionStartingWithWithScroll(
+        prefix: String,
+        timeoutMs: Long,
+    ): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findAccessibilityNodeContentDescriptionStartingWith(uiAutomation.rootInActiveWindow, prefix)?.let {
+                return it
+            }
+            findScrollableNode(uiAutomation.rootInActiveWindow)?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(250L)
+        }
+        error("Timed out waiting for a scrollable accessibility node after ${timeoutMs}ms: $prefix")
+    }
+
+    private fun waitForEditableNodeWithScroll(timeoutMs: Long): AccessibilityNodeInfo {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            findEditableNode(uiAutomation.rootInActiveWindow)?.let { return it }
+            findScrollableNode(uiAutomation.rootInActiveWindow)?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+            SystemClock.sleep(250L)
+        }
+        error("Timed out waiting for an inline editable caption field after ${timeoutMs}ms.")
+    }
+
+    private fun waitForImeVisible(activity: Activity, timeoutMs: Long): Boolean {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            val visible = activity.window.decorView.rootWindowInsets
+                ?.isVisible(WindowInsets.Type.ime()) == true
+            if (visible) return true
+            SystemClock.sleep(100L)
+        }
+        return false
     }
 
     private fun scrollToTop() {

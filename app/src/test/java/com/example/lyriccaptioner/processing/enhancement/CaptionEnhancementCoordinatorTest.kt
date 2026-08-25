@@ -83,6 +83,34 @@ class CaptionEnhancementCoordinatorTest {
     }
 
     @Test
+    fun impossibleTwoLineTimelineFallsBackUsingOriginalWhisperEnglish() = runBlocking {
+        val source = listOf(cue(id = "tiny", english = "raw", startMs = 10L, endMs = 11L))
+        val provider = RecordingProvider { request ->
+            validResponse(request).copy(
+                cues = listOf(
+                    CaptionEnhancementResponseCue(
+                        sourceId = "tiny",
+                        startMs = 10L,
+                        endMs = 11L,
+                        lines = listOf(
+                            CaptionEnhancementResponseLine("first", "第一"),
+                            CaptionEnhancementResponseLine("second", "第二"),
+                        ),
+                    ),
+                ),
+            )
+        }
+        val translator = RecordingTranslator()
+
+        val outcome = coordinator(provider, translator).enhance("job-tiny", source)
+
+        assertEquals(CaptionResultSource.LOCAL_FALLBACK, outcome.source)
+        assertEquals(CaptionEnhancementErrorKind.INVALID_RESPONSE, outcome.errorKind)
+        assertEquals(listOf("raw"), outcome.captions.map { it.english })
+        assertEquals(1, translator.translateCalls)
+    }
+
+    @Test
     fun authenticationFailureDoesNotSilentlyDowngradeToLocalTranslation() {
         val provider = RecordingProvider {
             throw CaptionEnhancementProviderException(
@@ -301,11 +329,15 @@ class CaptionEnhancementCoordinatorTest {
         processingVersion = "provider-v1",
         cues = request.cues.mapIndexed { index, cue ->
             CaptionEnhancementResponseCue(
-                id = cue.id,
+                sourceId = cue.id,
                 startMs = cue.startMs,
                 endMs = cue.endMs,
-                correctedEnglish = if (index == 0) "cloud-a" else "cloud-b",
-                chinese = if (index == 0) "translation-a" else "translation-b",
+                lines = listOf(
+                    CaptionEnhancementResponseLine(
+                        correctedEnglish = if (index == 0) "cloud-a" else "cloud-b",
+                        chinese = if (index == 0) "translation-a" else "translation-b",
+                    ),
+                ),
             )
         },
     )

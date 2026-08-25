@@ -30,13 +30,10 @@ internal class CompleteCaptionWorkflowRunner {
         onStageChanged: (CaptionWorkflowStage) -> Unit,
         onRecognitionStatus: (String) -> Unit,
         onEnhancementState: (CaptionEnhancementState) -> Unit,
-        onRawCaptionsReady: (List<CaptionCue>) -> Unit,
     ): CaptionEnhancementOutcome {
         onStageChanged(CaptionWorkflowStage.LOCAL_RECOGNIZING)
         val rawCaptions = recognize(onRecognitionStatus)
         currentCoroutineContext().ensureActive()
-        onRawCaptionsReady(rawCaptions)
-
         onStageChanged(CaptionWorkflowStage.AI_ENHANCING)
         val outcome = enhance(rawCaptions, onEnhancementState)
         currentCoroutineContext().ensureActive()
