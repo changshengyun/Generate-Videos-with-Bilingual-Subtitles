@@ -94,7 +94,10 @@ class CaptionEnhancementResponseValidator {
                 requireText(songMatch.title.orEmpty(), allowBlank = false, "song title")
                 requireText(songMatch.artist.orEmpty(), allowBlank = false, "song artist")
                 requireText(songMatch.source.orEmpty(), allowBlank = false, "song source")
-                requireConfidence(songMatch.confidence, minimum = 0.80f)
+                requireConfidence(
+                    songMatch.confidence,
+                    minimum = SongLyricsCandidateVerifier.MIN_CONFIDENCE.toFloat(),
+                )
             }
 
             SongMatchStatus.UNCONFIRMED -> {

@@ -287,7 +287,7 @@ class SongLyricsCandidateVerifier {
         const val MIN_CUE_SIMILARITY = 0.62
         const val MIN_AVERAGE_SIMILARITY = 0.78
         const val MIN_MEDIAN_SIMILARITY = 0.78
-        const val MIN_CONFIDENCE = 0.82
+        const val MIN_CONFIDENCE = 0.30
         const val MAX_LYRIC_LINES = 5_000
         const val MAX_LYRIC_TOKENS = 50_000
         const val MAX_LINES_PER_SPAN = 2

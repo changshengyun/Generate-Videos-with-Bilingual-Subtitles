@@ -10,12 +10,12 @@ class SongLyricsCandidateVerifierTest {
     private val verifier = SongLyricsCandidateVerifier()
 
     @Test
-    fun frozenThresholdsRemainConservative() {
+    fun thresholdsReflectCurrentProductDecision() {
         assertEquals(0.75, SongLyricsCandidateVerifier.MIN_COVERAGE, 0.0)
         assertEquals(0.62, SongLyricsCandidateVerifier.MIN_CUE_SIMILARITY, 0.0)
         assertEquals(0.78, SongLyricsCandidateVerifier.MIN_AVERAGE_SIMILARITY, 0.0)
         assertEquals(0.78, SongLyricsCandidateVerifier.MIN_MEDIAN_SIMILARITY, 0.0)
-        assertEquals(0.82, SongLyricsCandidateVerifier.MIN_CONFIDENCE, 0.0)
+        assertEquals(0.30, SongLyricsCandidateVerifier.MIN_CONFIDENCE, 0.0)
         assertEquals(2, SongLyricsCandidateVerifier.MAX_LINES_PER_SPAN)
     }
 

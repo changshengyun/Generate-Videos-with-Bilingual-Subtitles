@@ -69,6 +69,26 @@ class CaptionEnhancementContractTest {
     }
 
     @Test
+    fun configuredThirtyPercentConfidenceCanClaimConfirmedIdentity() {
+        val request = request()
+        val response = validResponse(
+            request,
+            songMatch = SongMatch(
+                status = SongMatchStatus.CONFIRMED,
+                title = "Example Song",
+                artist = "Example Artist",
+                confidence = SongLyricsCandidateVerifier.MIN_CONFIDENCE.toFloat(),
+                source = "lrclib:42",
+            ),
+        )
+
+        val validated = validator.validate(request, response, rawCues())
+
+        assertEquals(SongMatchStatus.CONFIRMED, validated.songMatch?.status)
+        assertEquals(0.30f, validated.songMatch?.confidence ?: -1f, 0f)
+    }
+
+    @Test
     fun notFoundSongMatchDoesNotInventSongMetadata() {
         val request = request()
         val response = validResponse(
