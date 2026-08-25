@@ -1,12 +1,12 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-25.014`
+- `STATE_REV: 2026-08-25.015`
 - Repository: `D:\DevData\Codex\.codex\worktrees\c3dc\lyric-captioner-android`
 - Branch: `codex/v4-caption-quality-001`
-- V4 baseline HEAD: `97fc26f87761c1844429d5366e0b3dff18dcf21e`
-- Current task: `V4-CAPTION-QUALITY-001`
-- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
-- Product status: `CAPTION_QUALITY_AND_EDITOR_INTEGRATION_IMPLEMENTED`
+- V4 baseline HEAD: `d410a8da3b57ff7de32d754213b5cc896db34c55`
+- Current task: `V4-CAPTION-REPAIR-001`
+- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- Product status: `TWO_PASS_CAPTION_REPAIR_AND_EDITOR_UX_IN_PROGRESS`
 - Current gate: `USER_LED_DEVICE_VALIDATION / NO_AGENT_DEVICE_ACTION`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Last state sync: 2026-08-25
@@ -21,6 +21,8 @@
 - RAW_ASR 只作为内部输入；云端或显式标注的本地回退原子提交唯一最终批次，预览、保存和导出不得混合来源。
 - 真机终验改由用户执行；本阶段 Agent 不连接、安装或操作设备。
 - `V4-CAPTION-QUALITY-001` 已实现 enhancement v4、canonical 原文/双句拆分、唯一最终批次、可读性提示、人工拆分、主页面逐 cue 编辑与共享播放器生命周期；独立复审最终 `PASS`。
+- 用户真机反馈证明上一阶段仍有英文编辑清空中文、人工拆分边界不可靠、全屏控制不可见、全屏字幕不可编辑和 AI 修复质量不足；上一阶段保持 `PARTIAL_PASS`，新任务 `V4-CAPTION-REPAIR-001` 的矩阵已冻结。
+- 新任务批准在现有 Provider 内执行第一次整批增强、自动拆分和第二次整批局部修复；第二阶段失败保留完整首轮结果待审核，人工单 cue AI 结果必须预览后应用。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
 
 ## 当前验收门禁
@@ -38,7 +40,7 @@
 
 ## 下一允许动作
 
-用户使用指定视频 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 执行真机主链路终验；缺少真实 DeepSeek、截图、MediaStore 导出和 Media3 回放证据时保持当前 PARTIAL_PASS。Agent 不操作设备。
+创建 `V4-CAPTION-REPAIR-001` checkpoint 后实施双阶段 enhancement、人工单 cue AI、样式 Bottom Sheet 和全屏直接编辑；完成组件与构建验证后由用户使用指定视频 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 真机终验。Agent 不操作设备。
 
 ## 权威资料
 
