@@ -12,6 +12,10 @@ data class EditorState(
     val captions: List<CaptionCue> = emptyList(),
     val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
     val selectedCaptionId: String? = null,
+    /** Editor-session scope only; deliberately excluded from project archives. */
+    val layoutEditLocked: Boolean = false,
+    /** Editor-session scope only; deliberately excluded from project archives. */
+    val styleEditLocked: Boolean = false,
     val captionLayout: CaptionLayout = CaptionLayout(),
     val defaultCaptionStyle: DefaultCaptionStyle = DefaultCaptionStyle(),
     val modelState: ModelState = ModelState(),

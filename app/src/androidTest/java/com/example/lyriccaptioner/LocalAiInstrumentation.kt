@@ -1093,11 +1093,13 @@ class LocalAiInstrumentation : Instrumentation() {
         check(waitForImeVisible(activity, 5_000L)) { "Inline caption editing did not expose the IME." }
         hideKeyboard(activity)
         clickNode(waitForContentDescriptionStartingWithWithScroll("cue_style_toggle:", 20_000L))
-        waitForContentDescriptionStartingWithWithScroll("cue_style_bottom_sheet:", 20_000L)
+        waitForContentDescriptionStartingWithWithScroll("cue_style_fixed_panel:", 20_000L)
         waitForContentDescriptionStartingWithWithScroll("cue_style_controls:", 20_000L)
         clickNode(waitForTextWithScroll("等宽", 20_000L))
         waitForContentDescriptionContaining("cue_style_state:", ":mono:", 20_000L)
         uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        waitForContentDescriptionStartingWithWithScroll("cue_style_fixed_panel:", 5_000L)
+        clickNode(waitForContentDescription("style_panel_collapse", 5_000L))
         clickNode(waitForContentDescriptionStartingWithWithScroll("cue_split:", 20_000L))
         scrollToTop()
         waitForContentDescriptionContaining(

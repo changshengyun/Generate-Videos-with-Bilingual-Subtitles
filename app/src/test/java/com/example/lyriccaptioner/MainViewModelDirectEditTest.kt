@@ -21,6 +21,36 @@ import org.junit.Test
 
 class MainViewModelDirectEditTest {
     @Test
+    fun layoutScopeRoutesUnlockedToCurrentCueAndLockedToProjectDefault() {
+        val unlocked = state().withScopedDirectPosition("target", 0.1f, 0.2f)
+        assertEquals(0.1f, unlocked.captions[0].layoutOverride?.xRatio ?: -1f, 0.000001f)
+        assertEquals(CaptionLayout(), unlocked.captionLayout)
+        assertEquals(null, unlocked.captions[1].layoutOverride)
+
+        val locked = state().copy(layoutEditLocked = true)
+            .withScopedDirectPosition("target", 0.1f, 0.2f)
+        assertEquals(0.1f, locked.captionLayout.xRatio, 0.000001f)
+        assertEquals(0.2f, locked.captionLayout.yRatio, 0.000001f)
+        assertEquals(null, locked.captions[0].layoutOverride)
+        assertEquals(null, locked.captions[1].layoutOverride)
+    }
+
+    @Test
+    fun styleScopeRoutesUnlockedToCurrentCueAndLockedToProjectDefault() {
+        val unlocked = state().withScopedStyleFontSize("target", 2)
+        assertTrue(unlocked.captions[0].styleOverride?.fontSizeRatio != null)
+        assertEquals(null, unlocked.captions[1].styleOverride)
+        assertEquals(state().defaultCaptionStyle, unlocked.defaultCaptionStyle)
+
+        val lockedState = state(targetStyle = CaptionStyleOverride(fontSizeRatio = 0.03f, italic = true))
+            .copy(styleEditLocked = true)
+        val locked = lockedState.withScopedStyleFontSize("target", 2)
+        assertTrue(locked.defaultCaptionStyle.fontSizeRatio > lockedState.defaultCaptionStyle.fontSizeRatio)
+        assertEquals(null, locked.captions[0].styleOverride?.fontSizeRatio)
+        assertTrue(locked.captions[0].styleOverride?.italic == true)
+    }
+
+    @Test
     fun positionTargetsStableCueIdAndChangesOnlyResolvedPosition() {
         val original = state(
             selectedCaptionId = "sibling",
