@@ -1,9 +1,9 @@
 # Current Task: V4-CAPTION-REPAIR-001
 
-- `STATE_REV: 2026-08-25.015`
-- `TASK_REV: V4-CAPTION-REPAIR-001.001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `TWO_PASS_CAPTION_REPAIR_AND_EDITOR_UX_IN_PROGRESS`
+- `STATE_REV: 2026-08-25.016`
+- `TASK_REV: V4-CAPTION-REPAIR-001.002`
+- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
+- Product status: `TWO_PASS_CAPTION_REPAIR_AND_EDITOR_UX_IMPLEMENTED`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Device gate: `USER_LED_DEVICE_VALIDATION / NO_AGENT_DEVICE_ACTION`
 
@@ -41,8 +41,17 @@
 
 ## 5. 当前执行状态
 
-- 验收矩阵已冻结，下一步创建阶段 checkpoint 后实施聚焦代码和测试。
+- 已完成 `caption-enhancement.v5`：LRCLIB 候选经本地多 cue 验证后提供 canonical 区间；第一阶段只允许 canonical 英文原样发布，自动 1→2 拆分后使用一次 `caption-local-repair.v1` 整批请求修复全部子 cue。
+- 第一阶段在进入第二阶段或成为失败回退前执行完整响应校验；第二阶段严格校验 ID、数量、顺序和 canonical 合并内容。受控失败只发布完整第一阶段并标记 `FIRST_PASS_REVIEW_REQUIRED`，取消继续传播且不发布中间结果。
+- 处理等级 `TWO_PASS_COMPLETE`、`FIRST_PASS_REVIEW_REQUIRED`、`LOCAL_FALLBACK`、`LEGACY_UNKNOWN` 已采用可选字段向后兼容保存；旧项目缺字段恢复为 `LEGACY_UNKNOWN`。
+- 英文人工编辑保留原中文；人工拆分选择中点附近的标点、连词或词间空格，不切断英文单词；拆出的 cue 可分别请求 AI 建议，建议必须预览后应用且使用 generation 和原始字幕快照防止过期覆盖。
+- 样式编辑已迁入可滚动 Material 3 Bottom Sheet，支持上一条/下一条并即时同步预览；全屏复用同一个 ExoPlayer，控制条固定在视频下方并避开导航栏，字幕可选择、拖动、调宽和缩放字号。系统栏采用固定深色主题对应的图标样式。
+- Android instrumentation 已改为进入字幕页面后验证全屏选择、宽度/字号手柄，并按生产语义操作播放、暂停和真实 Seek 控件边界；已成功构建，未在设备运行。
+- 聚焦 Provider 11/11 通过；完整 JVM 372 项中 369 通过，3 项仍因隔离 worktree 无法发现外部 OPUS-MT/Whisper fixture 失败，与本任务业务改动无关；`python tools\asr_evaluate_test.py` 6/6 通过。
+- `lintDebug`、普通 Debug、普通 AndroidTest、Native Debug 和 Native AndroidTest 构建成功。最终 Native APK：`app/build/outputs/apk/debug/app-debug.apk`，116,019,973 bytes，SHA-256 `F4207AC2A6988C0B4C8D189D04B2DFF498EBAC423672FBB286538A3CE3D3ABC1`；AndroidTest APK：220,623 bytes，SHA-256 `21A6361F2D22EAF84232A6669D1ECD44C54A5731CCBE328B3F4BB068EDFAA5A7`。
+- 独立代码复审最终 `PASS`，未发现剩余 P0–P3 缺陷。阶段 checkpoint 为 `40315fee89efbedb643bb639df6033223444c71e`；功能提交为 `84a645d9c770ed5124def5686f3cf54f53f2bf3a`。未 push。
+- 未运行真机 instrumentation、真实 DeepSeek、真实普通/全屏截图、MediaStore 导出或 Media3 回放，因此严格保持 `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`。
 
 ## 6. 下一允许动作
 
-建立 `V4-CAPTION-REPAIR-001` checkpoint，依次实现双阶段 enhancement、人工编辑能力、样式 Bottom Sheet 和全屏直接编辑；完成聚焦验证后运行冻结回归。真机仍由用户使用 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 终验。
+用户安装最终 Native APK，并使用 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 从系统相册入口终验真实 DeepSeek、融合 cue 双阶段修复、人工拆分与单 cue 建议、Bottom Sheet、普通/全屏控制和直接编辑、保存恢复、MediaStore 导出及 Media3 回放。证据未齐全前不得提升为 PASS。

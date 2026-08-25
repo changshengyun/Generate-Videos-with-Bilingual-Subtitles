@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-25.010`
-- 当前任务：`V4-CAPTION-REPAIR-001 / MATRIX_DEFINED / IN_PROGRESS`
+- `ROADMAP_REV: 2026-08-25.011`
+- 当前任务：`V4-CAPTION-REPAIR-001 / PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -40,7 +40,7 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 | `V4-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED` | 普通与全屏独立控制行已通过组件验证；Pixel 8 因已有 snapshot operation pending 无法启动，未取得截图或 instrumentation 证据 |
 | `V4-E2E-001` | `PARTIAL_PASS / DEVICE_VALIDATION_DEFERRED_BY_USER` | 用户接管真机验收；未取得真实 AI、导出、回放或截图证据，不得写成 PASS |
 | `V4-CAPTION-QUALITY-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v4、唯一最终批次、canonical 英文/双句拆 cue、长字幕复核、主页面逐 cue 编辑和共享播放器已实现；等待用户真机终验 |
-| `V4-CAPTION-REPAIR-001` | `MATRIX_DEFINED / IN_PROGRESS` | 根据用户真机反馈实现双阶段增强、人工单 cue AI 建议、样式 Bottom Sheet、全屏控制与字幕直接编辑；真机终验仍由用户执行 |
+| `V4-CAPTION-REPAIR-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v5、整批子 cue 修复、人工单 cue AI 建议、样式 Bottom Sheet、全屏控制与字幕直接编辑已完成组件/构建验证；等待用户真机终验 |
 
 ## 执行和提交顺序
 
@@ -67,6 +67,14 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 ## V4 总体验收
 
 正式 V4 PASS 需要真实设备从系统相册入口完成：一次点击识别、本地 ASR、真实 AI 增强、标准英文纠错、融合双句拆 cue、主页面内联编辑、保存恢复、MediaStore 导出和 Media3 回放。缺少真实 AI、真实设备、真实导出或截图证据时，只能标记对应的 `PARTIAL_PASS`。
+
+## V4 双阶段字幕修复组件验收快照（2026-08-25）
+
+- `caption-enhancement.v5` 与 `caption-local-repair.v1` 已实现；canonical 英文由 LRCLIB 检索和本地多 cue 对齐决定，自动拆分后的全部子 cue 由一次整批请求修复并整批校验。
+- 英文编辑保留中文，安全拆分不切断单词，单 cue AI 建议预览后应用；样式使用 Bottom Sheet，全屏共享播放器并支持字幕选择、拖动、调宽和缩放。
+- ASR 6/6；聚焦 Provider 11/11；全量 JVM 372 中 369 通过，3 项为隔离 worktree 外部模型 fixture 缺失；lint、普通/Native Debug 和普通/Native AndroidTest 构建成功。
+- Native Debug APK 116,019,973 bytes，SHA-256 `F4207AC2A6988C0B4C8D189D04B2DFF498EBAC423672FBB286538A3CE3D3ABC1`；独立代码复审 `PASS`。
+- instrumentation 已成功构建但未在设备运行；真实 DeepSeek、普通/全屏截图、MediaStore 导出和 Media3 回放仍待用户终验，因此状态保持 `PARTIAL_PASS / COMPONENT_VERIFIED`。
 
 ## V4 字幕质量组件验收快照（2026-08-25）
 

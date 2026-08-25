@@ -1,12 +1,13 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-25.015`
+- `STATE_REV: 2026-08-25.016`
 - Repository: `D:\DevData\Codex\.codex\worktrees\c3dc\lyric-captioner-android`
 - Branch: `codex/v4-caption-quality-001`
 - V4 baseline HEAD: `d410a8da3b57ff7de32d754213b5cc896db34c55`
+- Current implementation HEAD: `84a645d9c770ed5124def5686f3cf54f53f2bf3a`
 - Current task: `V4-CAPTION-REPAIR-001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `TWO_PASS_CAPTION_REPAIR_AND_EDITOR_UX_IN_PROGRESS`
+- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
+- Product status: `TWO_PASS_CAPTION_REPAIR_AND_EDITOR_UX_IMPLEMENTED`
 - Current gate: `USER_LED_DEVICE_VALIDATION / NO_AGENT_DEVICE_ACTION`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Last state sync: 2026-08-25
@@ -23,14 +24,16 @@
 - `V4-CAPTION-QUALITY-001` 已实现 enhancement v4、canonical 原文/双句拆分、唯一最终批次、可读性提示、人工拆分、主页面逐 cue 编辑与共享播放器生命周期；独立复审最终 `PASS`。
 - 用户真机反馈证明上一阶段仍有英文编辑清空中文、人工拆分边界不可靠、全屏控制不可见、全屏字幕不可编辑和 AI 修复质量不足；上一阶段保持 `PARTIAL_PASS`，新任务 `V4-CAPTION-REPAIR-001` 的矩阵已冻结。
 - 新任务批准在现有 Provider 内执行第一次整批增强、自动拆分和第二次整批局部修复；第二阶段失败保留完整首轮结果待审核，人工单 cue AI 结果必须预览后应用。
+- `V4-CAPTION-REPAIR-001` 已实现 enhancement v5、canonical 区间与原文约束、一次整批子 cue 修复、首轮安全回退、处理等级持久化、安全人工拆分、单 cue 建议预览、样式 Bottom Sheet、全屏控制与字幕直接编辑；独立复审 `PASS`。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
 
 ## 当前验收门禁
 
 - `V4-FLOW-001` 与 `V4-EDITOR-001` 已达到 `PASS / COMPONENT_VERIFIED`。
 - `V4-UI-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED`；Pixel 8 因已有 snapshot pending 无法启动，未取得新截图或 instrumentation 证据。
-- 本阶段收尾：ASR Python 6/6；任务相关 JVM 56/56；全量 JVM 362 中 359 通过，3 项仅因隔离 worktree 无法发现原仓库已有 OPUS-MT/Whisper 外部 fixture 而失败；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
+- 本阶段最新收尾：ASR Python 6/6；聚焦 Provider 11/11；全量 JVM 372 中 369 通过，3 项仅因隔离 worktree 无法发现原仓库已有 OPUS-MT/Whisper 外部 fixture 而失败；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
 - `V4-CAPTION-QUALITY-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`；实现与冻结矩阵逐项证据见 `docs/CURRENT_TASK.md`。
+- `V4-CAPTION-REPAIR-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`；Native APK 116,019,973 bytes，SHA-256 `F4207AC2A6988C0B4C8D189D04B2DFF498EBAC423672FBB286538A3CE3D3ABC1`。真实 DeepSeek、设备截图、导出和回放仍由用户终验。
 - 在取得完整主链路证据前仍保持 `COMPONENT_VERIFIED` 证据上限；真实 AI、真实设备、真实导出与回放结果必须按实际执行提升或保留为未完成。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
@@ -40,7 +43,7 @@
 
 ## 下一允许动作
 
-创建 `V4-CAPTION-REPAIR-001` checkpoint 后实施双阶段 enhancement、人工单 cue AI、样式 Bottom Sheet 和全屏直接编辑；完成组件与构建验证后由用户使用指定视频 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 真机终验。Agent 不操作设备。
+用户安装 `app/build/outputs/apk/debug/app-debug.apk`，使用指定视频 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 完成真实 DeepSeek、普通/全屏截图、保存恢复、MediaStore 导出和 Media3 回放终验。Agent 不操作设备；证据未齐全前保持当前部分通过状态。
 
 ## 权威资料
 
