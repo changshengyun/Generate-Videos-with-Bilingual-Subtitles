@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-24.006`
-- 当前任务：`V4-E2E-001 / MATRIX_DEFINED / WAITING_DEVICE_AUTHORIZATION`
+- `ROADMAP_REV: 2026-08-25.007`
+- 当前任务：`V4-E2E-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -38,7 +38,7 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 | `V4-FLOW-001` | `PASS / COMPONENT_VERIFIED` | 一次点击串联本地 ASR、AI 增强和自动进入编辑器 |
 | `V4-EDITOR-001` | `PASS / COMPONENT_VERIFIED` | 按当前播放位置在空档新增双语字幕，并保持编辑/恢复/导出一致 |
 | `V4-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED` | 普通与全屏独立控制行已通过组件验证；Pixel 8 因已有 snapshot operation pending 无法启动，未取得截图或 instrumentation 证据 |
-| `V4-E2E-001` | `WAITING_DEVICE_AUTHORIZATION` | 真实相册导入、ASR、AI、编辑、恢复、导出与 Media3 回放验收 |
+| `V4-E2E-001` | `IN_PROGRESS / PHYSICAL_DEVICE_AUTHORIZED` | 已授权在目标真机执行真实相册导入、ASR、AI、编辑、恢复、导出与 Media3 回放验收 |
 
 ## 执行和提交顺序
 

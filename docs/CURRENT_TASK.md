@@ -1,11 +1,11 @@
 # Current Task: V4-E2E-001
 
-- `STATE_REV: 2026-08-24.011`
+- `STATE_REV: 2026-08-25.012`
 - `TASK_REV: V4-E2E-001.001`
-- Stage state: `MATRIX_DEFINED / WAITING_DEVICE_AUTHORIZATION`
-- Product status: `V4_COMPONENTS_IMPLEMENTED_E2E_PENDING`
+- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- Product status: `V4_E2E_DEVICE_VALIDATION_IN_PROGRESS`
 - Evidence ceiling: `COMPONENT_VERIFIED`
-- Device gate: `EXPLICIT_PHYSICAL_DEVICE_AUTHORIZATION_REQUIRED`
+- Device gate: `PHYSICAL_DEVICE_AUTHORIZED / fcf4b0cb`
 
 ## 1. 阶段目标
 
@@ -21,7 +21,7 @@
 | 退出状态 | 全部真实主链路与边界证据在授权设备上通过，才能标记 `PASS / DEVICE_VERIFIED`。 |
 | 未完成状态 | 缺少设备授权为 `WAITING_DEVICE_AUTHORIZATION`；缺少真实 AI、真实设备、真实导出/回放或 UI 截图任一证据为对应 `PARTIAL_PASS`；外部凭据或 fixture 无法提供时为 `HUMAN_DECISION`。 |
 
-矩阵已冻结，但当前没有执行授权。
+矩阵保持冻结。用户于 2026-08-25 明确授权在已连接目标设备 `fcf4b0cb` 上执行本任务范围内的无损安装、真实产品主链路验证、普通缺陷修复和必要测试；仍禁止清除 App/设备数据、破坏性 Git/文件操作、架构或依赖变更。
 
 ## 3. 已完成实现
 
@@ -43,4 +43,4 @@
 
 ## 5. 下一允许动作
 
-等待用户明确授权 `V4-E2E-001` 的目标设备与真实主链路执行；该授权前不得开展真机安装、数据准备或验收。
+在 `fcf4b0cb` 上使用 `install -r` 保留现有 App 数据与 DeepSeek Key，选择 base 模型并从系统相册入口执行冻结的 V4 真实主链路和边界验收；只在已证明的普通故障范围内实施最小修复。
