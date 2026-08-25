@@ -8,11 +8,11 @@ import org.junit.Test
 
 class CueEditingPolicyTest {
     @Test
-    fun changingEnglishClearsStaleChineseCandidatesAndConfirmation() {
+    fun changingEnglishPreservesChineseAndClearsCandidatesAndConfirmation() {
         val updated = CueEditingPolicy.updateEnglish(sampleCue(), "Changed English")
 
         assertEquals("Changed English", updated.english)
-        assertEquals("", updated.chinese)
+        assertEquals("原中文", updated.chinese)
         assertTrue(updated.correctionCandidates.isEmpty())
         assertFalse(updated.confirmed)
     }
@@ -25,11 +25,11 @@ class CueEditingPolicyTest {
     }
 
     @Test
-    fun applyingEnglishCorrectionAlsoClearsOldChinese() {
+    fun applyingEnglishCorrectionAlsoPreservesExistingChinese() {
         val updated = CueEditingPolicy.applyEnglishCorrection(sampleCue(), "Corrected lyric")
 
         assertEquals("Corrected lyric", updated.english)
-        assertEquals("", updated.chinese)
+        assertEquals("原中文", updated.chinese)
         assertFalse(updated.confirmed)
     }
 

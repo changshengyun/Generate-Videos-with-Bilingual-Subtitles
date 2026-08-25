@@ -90,7 +90,7 @@ class DeepSeekCaptionEnhancementProviderTest {
 中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
 不得增加、删除、拆分、合并或重排 source cue，也不得修改时间。由于没有验证歌词，每个 source cue 只能返回一个 line。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v4","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"corrected English line","chinese":"coherent Chinese lyric line"}]}]}.
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v5-first-pass","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"corrected English line","chinese":"coherent Chinese lyric line"}]}]}.
 每个 source cue 必须包含上面展示的全部四个字段，每个 line 必须包含 corrected_english 和 chinese。不要返回 song_match。
 """.trimIndent(),
             DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT,
@@ -100,13 +100,13 @@ class DeepSeekCaptionEnhancementProviderTest {
     @Test
     fun parseResponseMapsCueContractAndDoesNotTrustModelSongMatch() {
         val body = envelope(
-            """{"schema_version":"caption-enhancement.v4","job_id":"job-1","processing_version":"ignored-model-version","cues":[{"source_id":"cue-1","start_ms":0,"end_ms":1000,"lines":[{"corrected_english":"Hello","chinese":"你好"}]}],"song_match":{"status":"CONFIRMED","title":"Invented","artist":"Invented"}}""",
+            """{"schema_version":"caption-enhancement.v5","job_id":"job-1","processing_version":"ignored-model-version","cues":[{"source_id":"cue-1","start_ms":0,"end_ms":1000,"lines":[{"corrected_english":"Hello","chinese":"你好"}]}],"song_match":{"status":"CONFIRMED","title":"Invented","artist":"Invented"}}""",
         )
 
         val response = DeepSeekCaptionEnhancementJson.parseResponse(body)
 
         assertEquals("job-1", response.jobId)
-        assertEquals("caption-enhancement.v4", response.schemaVersion)
+        assertEquals("caption-enhancement.v5", response.schemaVersion)
         assertEquals("ignored-model-version", response.processingVersion)
         assertEquals("cue-1", response.cues.single().sourceId)
         assertEquals(0L, response.cues.single().startMs)
@@ -192,6 +192,7 @@ class DeepSeekCaptionEnhancementProviderTest {
                     "cues" to responseCues,
                 ),
             ))))
+            add(FakeConnection(500, ""))
         }
         val provider = DeepSeekCaptionEnhancementProvider(
             byokManager = FakeByokManager(),
@@ -237,6 +238,67 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertFalse(finalRequest.contains("complete_english_lyrics"))
     }
 
+    @Test
+    fun automaticSplitRunsOneRepairBatchAndPublishesOnlyValidatedResult() = runBlocking {
+        val lyricLines = lyrics().lineSequence().filter(String::isNotBlank).toList()
+        val request = mergedRequest(lyricLines)
+        val connections = ArrayDeque<FakeConnection>().apply {
+            add(FakeConnection(200, envelope("""{"candidates":[{"title":"Quiet Street","artist":"Example Artist"}]}""")))
+            add(FakeConnection(200, mergedEnhancementEnvelope(request, lyricLines)))
+            add(FakeConnection(200, envelope(encodeJson(
+                mapOf(
+                    "schema_version" to CaptionLocalRepairContract.SCHEMA_VERSION,
+                    "job_id" to "${request.jobId}:repair",
+                    "processing_version" to DeepSeekCaptionEnhancementProvider.PROCESSING_VERSION,
+                    "cues" to listOf(
+                        mapOf("id" to "cue-1:1", "corrected_english" to lyricLines[0], "chinese" to "修复第一句"),
+                        mapOf("id" to "cue-1:2", "corrected_english" to lyricLines[1], "chinese" to "修复第二句"),
+                    ),
+                ),
+            ))))
+        }
+        val provider = provider(connections)
+
+        val response = provider.enhance(request)
+
+        assertEquals(CaptionProcessingLevel.TWO_PASS_COMPLETE, response.processingLevel)
+        assertEquals(listOf("修复第一句", "修复第二句"), response.cues.first().lines.map { it.chinese })
+        assertTrue(connections.isEmpty())
+    }
+
+    @Test
+    fun repairFailureReturnsCompleteFirstPassWithoutPartialMixing() = runBlocking {
+        val lyricLines = lyrics().lineSequence().filter(String::isNotBlank).toList()
+        val request = mergedRequest(lyricLines)
+        val connections = ArrayDeque<FakeConnection>().apply {
+            add(FakeConnection(200, envelope("""{"candidates":[{"title":"Quiet Street","artist":"Example Artist"}]}""")))
+            add(FakeConnection(200, mergedEnhancementEnvelope(request, lyricLines)))
+            add(FakeConnection(500, ""))
+        }
+
+        val response = provider(connections).enhance(request)
+
+        assertEquals(CaptionProcessingLevel.FIRST_PASS_REVIEW_REQUIRED, response.processingLevel)
+        assertEquals(listOf("对应中文", "对应中文"), response.cues.first().lines.map { it.chinese })
+    }
+
+    @Test
+    fun invalidFirstPassIsRejectedBeforeItCanBecomeRepairFallback() {
+        val lyricLines = lyrics().lineSequence().filter(String::isNotBlank).toList()
+        val request = mergedRequest(lyricLines)
+        val invalidFirstPass = mergedEnhancementEnvelope(request, lyricLines)
+            .replace("\\\"start_ms\\\":0", "\\\"start_ms\\\":1")
+        val connections = ArrayDeque<FakeConnection>().apply {
+            add(FakeConnection(200, envelope("""{"candidates":[{"title":"Quiet Street","artist":"Example Artist"}]}""")))
+            add(FakeConnection(200, invalidFirstPass))
+        }
+
+        assertThrows(CaptionEnhancementValidationException::class.java) {
+            runBlocking { provider(connections).enhance(request) }
+        }
+        assertTrue(connections.isEmpty())
+    }
+
     private fun request(): CaptionEnhancementRequest {
         val lines = lyrics().lineSequence().filter { it.isNotBlank() }.toList()
         return CaptionEnhancementRequest(
@@ -247,6 +309,45 @@ class DeepSeekCaptionEnhancementProviderTest {
             },
         )
     }
+
+    private fun mergedRequest(lines: List<String>) = CaptionEnhancementRequest(
+        jobId = "job-merged",
+        schemaVersion = CaptionEnhancementContract.SCHEMA_VERSION,
+        cues = listOf(
+            CaptionEnhancementRequestCue("cue-1", 0L, 2_000L, "Helo from the quiet street We folow every fading light"),
+            CaptionEnhancementRequestCue("cue-2", 2_000L, 3_000L, lines[2]),
+            CaptionEnhancementRequestCue("cue-3", 3_000L, 4_000L, lines[3]),
+            CaptionEnhancementRequestCue("cue-4", 4_000L, 5_000L, lines[4]),
+        ),
+    )
+
+    private fun mergedEnhancementEnvelope(request: CaptionEnhancementRequest, lines: List<String>): String =
+        envelope(encodeJson(
+            mapOf(
+                "schema_version" to request.schemaVersion,
+                "job_id" to request.jobId,
+                "processing_version" to DeepSeekCaptionEnhancementProvider.FIRST_PASS_PROCESSING_VERSION,
+                "cues" to request.cues.mapIndexed { index, cue ->
+                    val canonical = if (index == 0) lines.take(2) else listOf(lines[index + 1])
+                    mapOf(
+                        "source_id" to cue.id,
+                        "start_ms" to cue.startMs,
+                        "end_ms" to cue.endMs,
+                        "lines" to canonical.map { english ->
+                            mapOf("corrected_english" to english, "chinese" to "对应中文")
+                        },
+                    )
+                },
+            ),
+        ))
+
+    private fun provider(connections: ArrayDeque<FakeConnection>) = DeepSeekCaptionEnhancementProvider(
+        byokManager = FakeByokManager(),
+        searchTool = SongLyricsSearchTool {
+            listOf(SongLyricsCandidate("lrclib:42", "Quiet Street", "Example Artist", lyrics()))
+        },
+        connectionFactory = { connections.removeFirst() },
+    )
 
     private fun lyrics() = """
         Hello from the quiet street

@@ -68,7 +68,11 @@ class CaptionEnhancementCoordinator(
             val response = try {
                 // Exactly one provider invocation belongs to one enhancement job.
                 withContext(workerDispatcher) {
-                    provider.enhance(request)
+                    if (provider is StagedCaptionEnhancementProvider) {
+                        provider.enhance(request, onStateChanged)
+                    } else {
+                        provider.enhance(request)
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -101,6 +105,7 @@ class CaptionEnhancementCoordinator(
                 state = CaptionEnhancementState.CLOUD_APPLIED,
                 processingVersion = validated.processingVersion,
                 songMatch = validated.songMatch,
+                processingLevel = validated.processingLevel,
             )
         } catch (_: CancellationException) {
             emit(CaptionEnhancementState.CANCELLED, onStateChanged)
@@ -178,6 +183,7 @@ class CaptionEnhancementCoordinator(
                 source = CaptionResultSource.LOCAL_FALLBACK,
                 state = CaptionEnhancementState.LOCAL_FALLBACK_APPLIED,
                 errorKind = providerError.kind,
+                processingLevel = CaptionProcessingLevel.LOCAL_FALLBACK,
             )
         } catch (_: CancellationException) {
             emit(CaptionEnhancementState.CANCELLED, onStateChanged)

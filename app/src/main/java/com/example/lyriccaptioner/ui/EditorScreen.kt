@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -47,6 +48,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -135,6 +138,8 @@ import com.example.lyriccaptioner.processing.ResolvedCaptionRender
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyState
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
 import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.CaptionProcessingLevel
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -367,6 +372,8 @@ private fun CaptionEditorPage(
     onSectionSelected: (Int) -> Unit,
     viewModel: MainViewModel,
 ) {
+    val cueSuggestion by viewModel.cueSuggestion.collectAsState()
+    var styleCueId by rememberSaveable { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val playableUri = state.videoUri.takeUnless {
         state.mediaState == MediaState.UNAVAILABLE || state.isWorking
@@ -432,14 +439,14 @@ private fun CaptionEditorPage(
                     SecondaryAction("导入歌词", orderedCaptions.isNotEmpty() && !state.isWorking, onClick = onImportLyrics)
                 }
                 Text(
-                    text = "点击字幕卡片直接编辑；样式设置在对应字幕下方展开。",
+                    text = "点击字幕卡片直接编辑；样式从底部面板统一调整。",
                     color = Color(0xFF9EA5B1),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
         item {
-            CaptionResultSourceBanner(state.captionProcessing.source)
+            CaptionResultSourceBanner(state.captionProcessing.source, state.captionProcessing.processingLevel)
         }
         item {
             Box(
@@ -495,25 +502,181 @@ private fun CaptionEditorPage(
                     onAlignmentChanged = { viewModel.updateCueAlignment(cue.id, it) },
                     onPositionChanged = { viewModel.updateCuePosition(cue.id, it) },
                     onClearOverride = { viewModel.clearCueStyleOverride(cue.id) },
+                    onOpenStyle = {
+                        viewModel.selectCue(cue.id)
+                        styleCueId = cue.id
+                    },
+                    onSplitDraft = { viewModel.splitCaptionDraft(cue.id) },
+                    onEnhance = { viewModel.requestCueSuggestion(cue.id) },
+                    aiRunning = cueSuggestion.running && cueSuggestion.cueId == cue.id,
+                    aiError = cueSuggestion.error.takeIf { cueSuggestion.cueId == cue.id },
                 )
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
     }
+    styleCueId?.let { cueId ->
+        val cueIndex = orderedCaptions.indexOfFirst { it.id == cueId }
+        val cue = orderedCaptions.getOrNull(cueIndex)
+        if (cue != null) {
+            CueStyleBottomSheet(
+                cue = cue,
+                index = cueIndex,
+                count = orderedCaptions.size,
+                defaultStyle = state.defaultCaptionStyle,
+                captionLayout = state.captionLayout,
+                enabled = !state.isWorking,
+                onDismiss = { styleCueId = null },
+                onPrevious = {
+                    orderedCaptions.getOrNull(cueIndex - 1)?.let {
+                        styleCueId = it.id
+                        viewModel.selectCue(it.id)
+                    }
+                },
+                onNext = {
+                    orderedCaptions.getOrNull(cueIndex + 1)?.let {
+                        styleCueId = it.id
+                        viewModel.selectCue(it.id)
+                    }
+                },
+                viewModel = viewModel,
+            )
+        }
+    }
+    cueSuggestion.proposal?.let { proposal ->
+        state.captions.firstOrNull { it.id == proposal.cueId }?.let { current ->
+            CueSuggestionDialog(
+                current = current,
+                suggestion = cueSuggestion,
+                onApply = viewModel::applyCueSuggestion,
+                onDismiss = viewModel::dismissCueSuggestion,
+            )
+        }
+    }
 }
 
 @Composable
-private fun CaptionResultSourceBanner(source: CaptionResultSource) {
-    val (text, color) = when (source) {
-        CaptionResultSource.CLOUD_AI -> "当前成品：DeepSeek 增强字幕" to Color(0xFFB7F36B)
-        CaptionResultSource.LOCAL_FALLBACK -> "当前成品：本地回退；英文未经过标准歌词校正" to Color(0xFFFFC857)
-        CaptionResultSource.RAW_ASR -> "尚无最终增强字幕" to Color(0xFF9EA5B1)
+private fun CaptionResultSourceBanner(source: CaptionResultSource, level: CaptionProcessingLevel) {
+    val (text, color) = when {
+        level == CaptionProcessingLevel.TWO_PASS_COMPLETE -> "当前成品：DeepSeek 双阶段增强字幕" to Color(0xFFB7F36B)
+        level == CaptionProcessingLevel.FIRST_PASS_REVIEW_REQUIRED -> "当前成品：首轮增强完成；局部修复未完成，请审核" to Color(0xFFFFC857)
+        source == CaptionResultSource.CLOUD_AI -> "当前成品：DeepSeek 增强字幕" to Color(0xFFB7F36B)
+        source == CaptionResultSource.LOCAL_FALLBACK -> "当前成品：本地回退；英文未经过标准歌词校正" to Color(0xFFFFC857)
+        else -> "尚无最终增强字幕" to Color(0xFF9EA5B1)
     }
     Card(
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = "caption_result_source:$source" },
         colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
     ) {
         Text(text, modifier = Modifier.padding(12.dp), color = color, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CueStyleBottomSheet(
+    cue: CaptionCue,
+    index: Int,
+    count: Int,
+    defaultStyle: DefaultCaptionStyle,
+    captionLayout: CaptionLayout,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    viewModel: MainViewModel,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.semantics { contentDescription = "cue_style_bottom_sheet:${cue.id}" },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.5f)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("第 ${index + 1}/$count 条 · ${formatPlaybackTime(cue.startMs)}", fontWeight = FontWeight.Bold)
+                Row {
+                    TextButton(
+                        modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "上一条字幕" },
+                        enabled = index > 0,
+                        onClick = onPrevious,
+                    ) { Text("←") }
+                    TextButton(
+                        modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "下一条字幕" },
+                        enabled = index < count - 1,
+                        onClick = onNext,
+                    ) { Text("→") }
+                }
+            }
+            CueStyleControls(
+                cue = cue,
+                defaultStyle = defaultStyle,
+                captionLayout = captionLayout,
+                enabled = enabled,
+                onFontSmaller = { viewModel.updateCueFontSize(cue.id, it) },
+                onFontLarger = { viewModel.updateCueFontSize(cue.id, it) },
+                onEnglishColorChanged = { viewModel.updateCueEnglishColor(cue.id, it) },
+                onChineseColorChanged = { viewModel.updateCueChineseColor(cue.id, it) },
+                onOutlineColorChanged = { viewModel.updateCueOutlineColor(cue.id, it) },
+                onFontFamilyChanged = { viewModel.updateCueFontFamily(cue.id, it) },
+                onToggleBold = { viewModel.toggleCueBold(cue.id) },
+                onToggleItalic = { viewModel.toggleCueItalic(cue.id) },
+                onAlignmentChanged = { viewModel.updateCueAlignment(cue.id, it) },
+                onPositionChanged = { viewModel.updateCuePosition(cue.id, it) },
+                onWidthChanged = { delta ->
+                    val resolved = resolveCaptionLayout(captionLayout, cue.layoutOverride)
+                    viewModel.updateCueDirectWidth(cue.id, resolved.widthRatio + delta)
+                },
+                onClearOverride = { viewModel.clearCueStyleOverride(cue.id) },
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun CueSuggestionDialog(
+    current: CaptionCue,
+    suggestion: CaptionCueSuggestionUiState,
+    onApply: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val proposal = suggestion.proposal ?: return
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "cue_ai_suggestion:${current.id}" },
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("AI 增强建议", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("当前英文", color = Color(0xFF9EA5B1))
+                Text(current.english)
+                Text("当前中文", color = Color(0xFF9EA5B1))
+                Text(current.chinese)
+                Text(if (proposal.canonicalVerified) "AI 建议 · 标准歌词已验证" else "AI 建议 · 标准歌词未确认", color = Color(0xFFFFC857))
+                Text(proposal.english)
+                Text(proposal.chinese)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(modifier = Modifier.heightIn(min = 48.dp), onClick = onDismiss) { Text("取消") }
+                    Button(modifier = Modifier.heightIn(min = 48.dp), onClick = onApply) { Text("应用到此字幕") }
+                }
+            }
+        }
     }
 }
 
@@ -1050,6 +1213,7 @@ private fun CueStyleControls(
     onToggleItalic: () -> Unit,
     onAlignmentChanged: (CaptionAlignment) -> Unit,
     onPositionChanged: (Int) -> Unit,
+    onWidthChanged: (Float) -> Unit = {},
     onClearOverride: () -> Unit,
 ) {
     val uiState = captionStyleUiState(defaultStyle, cue)
@@ -1103,6 +1267,11 @@ private fun CueStyleControls(
             Text("位置 ${positionPercent}%", style = MaterialTheme.typography.labelMedium)
             TextButton(enabled = enabled, onClick = { onPositionChanged(-2) }) { Text("下移") }
             TextButton(enabled = enabled, onClick = { onPositionChanged(2) }) { Text("上移") }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("文本框宽度 ${(resolvedLayout.widthRatio * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+            TextButton(enabled = enabled, onClick = { onWidthChanged(-0.05f) }) { Text("变窄") }
+            TextButton(enabled = enabled, onClick = { onWidthChanged(0.05f) }) { Text("变宽") }
         }
         SubtitleColorPalette("英文", style.primaryColorHex, enabled, onEnglishColorChanged)
         SubtitleColorPalette("中文", style.secondaryColorHex, enabled, onChineseColorChanged)
@@ -1626,10 +1795,25 @@ private fun VideoPlayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .imePadding()
                         .semantics { contentDescription = "preview_fullscreen_dialog" },
                 ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
+                        TextButton(
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .semantics { contentDescription = "preview_exit" },
+                            onClick = { fullscreen = false },
+                        ) {
+                            Text("退出", color = Color.White)
+                        }
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1645,44 +1829,48 @@ private fun VideoPlayer(
                             },
                             update = { playerView -> playerView.player = player },
                         )
+                        if (directEditMode) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .semantics { contentDescription = "全屏取消字幕选择" }
+                                    .pointerInput(player, currentCue?.id) {
+                                        detectTapGestures {
+                                            visibleSelectionId = null
+                                            if (player.isPlaying) player.pause() else player.play()
+                                        }
+                                    },
+                            )
+                        }
                         if (currentRender != null && sourceVideoSize != null) {
                             SubtitlePreviewOverlay(
                                 render = currentRender,
                                 sourceVideoSize = sourceVideoSize,
-                                directEditMode = false,
-                                selected = false,
-                                onSelect = {},
-                                onDelete = {},
-                                onPositionCommitted = { _, _, _ -> },
-                                onWidthCommitted = { _, _ -> },
-                                onFontSizeCommitted = { _, _ -> },
+                                directEditMode = directEditMode,
+                                selected = visibleSelectionId == currentRender.caption.id,
+                                onSelect = {
+                                    player.pause()
+                                    visibleSelectionId = currentRender.caption.id
+                                    onSelectCue(currentRender.caption.id)
+                                },
+                                onDelete = {
+                                    visibleSelectionId = null
+                                    onDeleteCue(currentRender.caption.id)
+                                },
+                                onPositionCommitted = onPositionCommitted,
+                                onWidthCommitted = onWidthCommitted,
+                                onFontSizeCommitted = onFontSizeCommitted,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
-                            TextButton(
-                                modifier = Modifier
-                                    .heightIn(min = 48.dp)
-                                    .semantics { contentDescription = "preview_exit" },
-                                onClick = { fullscreen = false },
-                            ) {
-                                Text("退出", color = Color.White)
-                            }
-                        }
                     }
-                    PlayerControlRow(
-                        player = player,
-                        positionMs = positionMs,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    Box(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
+                        PlayerControlRow(
+                            player = player,
+                            positionMs = positionMs,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
         }
@@ -1697,41 +1885,47 @@ private fun PlayerControlRow(
 ) {
     val durationMs = player.duration.takeIf { it > 0L } ?: 0L
     val boundedPositionMs = positionMs.coerceIn(0L, durationMs.coerceAtLeast(0L))
-    Row(
+    Column(
         modifier = modifier
             .background(Color(0xFF111318))
-            .heightIn(min = 56.dp)
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .heightIn(min = 88.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        TextButton(
-            modifier = Modifier
-                .size(48.dp)
-                .semantics { contentDescription = if (player.isPlaying) "暂停预览" else "播放预览" },
-            onClick = { if (player.isPlaying) player.pause() else player.play() },
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(if (player.isPlaying) "Ⅱ" else "▶", color = Color.White)
+            TextButton(
+                modifier = Modifier
+                    .size(48.dp)
+                    .semantics { contentDescription = if (player.isPlaying) "暂停预览" else "播放预览" },
+                onClick = { if (player.isPlaying) player.pause() else player.play() },
+            ) {
+                Text(if (player.isPlaying) "Ⅱ" else "▶", color = Color.White)
+            }
+            Text(
+                text = formatPlaybackTime(boundedPositionMs),
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = formatPlaybackTime(durationMs),
+                color = Color.White,
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
-        Text(
-            text = formatPlaybackTime(boundedPositionMs),
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
-        )
         Slider(
             value = if (durationMs > 0L) boundedPositionMs.toFloat() else 0f,
             onValueChange = { value -> if (durationMs > 0L) player.seekTo(value.toLong()) },
             valueRange = 0f..durationMs.coerceAtLeast(1L).toFloat(),
             enabled = durationMs > 0L,
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
                 .heightIn(min = 48.dp)
                 .semantics { contentDescription = "预览进度条" },
-        )
-        Text(
-            text = formatPlaybackTime(durationMs),
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
         )
     }
 }
@@ -2360,13 +2554,12 @@ private fun CaptionCard(
     onAlignmentChanged: (CaptionAlignment) -> Unit,
     onPositionChanged: (Int) -> Unit,
     onClearOverride: () -> Unit,
+    onOpenStyle: () -> Unit = {},
+    onSplitDraft: () -> Unit = {},
+    onEnhance: () -> Unit = {},
+    aiRunning: Boolean = false,
+    aiError: String? = null,
 ) {
-    var styleExpanded by rememberSaveable(cue.id) { mutableStateOf(false) }
-    var splitExpanded by rememberSaveable(cue.id) { mutableStateOf(false) }
-    var firstEnglish by remember(cue.id) { mutableStateOf("") }
-    var firstChinese by remember(cue.id) { mutableStateOf("") }
-    var secondEnglish by remember(cue.id) { mutableStateOf("") }
-    var secondChinese by remember(cue.id) { mutableStateOf("") }
     val readabilityIssues = remember(cue.english, cue.chinese, cue.startMs, cue.endMs) {
         CaptionReadability.issues(cue)
     }
@@ -2423,9 +2616,9 @@ private fun CaptionCard(
             TextButton(
                 modifier = Modifier.semantics { contentDescription = "cue_style_toggle:${cue.id}" },
                 enabled = enabled,
-                onClick = { styleExpanded = !styleExpanded },
+                onClick = onOpenStyle,
             ) {
-                Text(if (styleExpanded) "收起样式" else "样式/位置")
+                Text("样式/位置")
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TimingControl(
@@ -2477,92 +2670,23 @@ private fun CaptionCard(
                     label = { Text("中文字幕") },
                 singleLine = false,
             )
-            TextButton(
-                modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .semantics { contentDescription = "cue_split_toggle:${cue.id}" },
-                enabled = enabled,
-                onClick = {
-                    if (!splitExpanded) {
-                        val englishParts = CaptionCueSplitPolicy.suggestTextParts(cue.english)
-                        val chineseParts = CaptionCueSplitPolicy.suggestTextParts(cue.chinese)
-                        firstEnglish = englishParts.first
-                        secondEnglish = englishParts.second
-                        firstChinese = chineseParts.first
-                        secondChinese = chineseParts.second
-                    }
-                    splitExpanded = !splitExpanded
-                },
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(if (splitExpanded) "取消拆分" else "拆分字幕")
-            }
-            if (splitExpanded) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "cue_split_editor:${cue.id}" },
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("第一段", fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = firstEnglish,
-                        onValueChange = { firstEnglish = it },
-                        label = { Text("第一段英文") },
-                    )
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = firstChinese,
-                        onValueChange = { firstChinese = it },
-                        label = { Text("第一段中文") },
-                    )
-                    Text("第二段", fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = secondEnglish,
-                        onValueChange = { secondEnglish = it },
-                        label = { Text("第二段英文") },
-                    )
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = secondChinese,
-                        onValueChange = { secondChinese = it },
-                        label = { Text("第二段中文") },
-                    )
-                    Button(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 48.dp)
-                            .semantics { contentDescription = "cue_split_confirm:${cue.id}" },
-                        enabled = enabled && listOf(firstEnglish, firstChinese, secondEnglish, secondChinese).all { it.isNotBlank() },
-                        onClick = {
-                            onSplit(firstEnglish, firstChinese, secondEnglish, secondChinese)
-                            splitExpanded = false
-                        },
-                    ) {
-                        Text("确认拆分为两个 cue")
-                    }
-                }
-            }
-            if (styleExpanded) {
-                CueStyleControls(
-                    cue = cue,
-                    defaultStyle = defaultStyle,
-                    captionLayout = captionLayout,
+                TextButton(
+                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "cue_split:${cue.id}" },
                     enabled = enabled,
-                    onFontSmaller = onFontSmaller,
-                    onFontLarger = onFontLarger,
-                    onEnglishColorChanged = onEnglishColorChanged,
-                    onChineseColorChanged = onChineseColorChanged,
-                    onOutlineColorChanged = onOutlineColorChanged,
-                    onFontFamilyChanged = onFontFamilyChanged,
-                    onToggleBold = onToggleBold,
-                    onToggleItalic = onToggleItalic,
-                    onAlignmentChanged = onAlignmentChanged,
-                    onPositionChanged = onPositionChanged,
-                    onClearOverride = onClearOverride,
-                )
+                    onClick = onSplitDraft,
+                ) { Text("拆分字幕") }
+                TextButton(
+                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "cue_ai_enhance:${cue.id}" },
+                    enabled = enabled && !aiRunning,
+                    onClick = onEnhance,
+                ) { Text(if (aiRunning) "AI 增强中…" else "AI 增强") }
             }
+            aiError?.let { Text(it, color = Color(0xFFFFC857), style = MaterialTheme.typography.labelMedium) }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

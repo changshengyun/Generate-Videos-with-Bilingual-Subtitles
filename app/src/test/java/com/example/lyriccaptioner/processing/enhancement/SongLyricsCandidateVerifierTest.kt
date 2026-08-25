@@ -29,6 +29,7 @@ class SongLyricsCandidateVerifierTest {
         assertEquals(1.0, result.metrics.coverage, 0.0001)
         assertEquals(1.0, result.metrics.averageSimilarity, 0.0001)
         assertEquals(1.0, result.metrics.medianSimilarity, 0.0001)
+        assertEquals(CanonicalLyricsRange(0, 7), result.canonicalRange)
     }
 
     @Test

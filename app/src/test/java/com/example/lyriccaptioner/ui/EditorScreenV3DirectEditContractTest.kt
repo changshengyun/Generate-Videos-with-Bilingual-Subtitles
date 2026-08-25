@@ -20,18 +20,20 @@ class EditorScreenV3DirectEditContractTest {
     }
 
     @Test
-    fun eachCueOwnsTextTimingStyleFontAndSplitControls() {
+    fun eachCueOwnsTextTimingStyleSheetSplitAndAiControls() {
         val source = source()
         val card = source.substringAfter("private fun CaptionCard")
             .substringBefore("private fun readabilityIssueLabel")
 
         assertTrue(card.contains("cue_style_toggle"))
-        assertTrue(card.contains("styleExpanded = !styleExpanded"))
-        assertTrue(card.contains("CueStyleControls("))
-        assertTrue(card.contains("cue_split_toggle"))
-        assertTrue(card.contains("cue_split_confirm"))
+        assertTrue(card.contains("onClick = onOpenStyle"))
+        assertTrue(card.contains("cue_split:"))
+        assertTrue(card.contains("cue_ai_enhance:"))
         assertTrue(card.contains("英文字幕"))
         assertTrue(card.contains("中文字幕"))
+        assertTrue(source.contains("ModalBottomSheet("))
+        assertTrue(source.contains("cue_style_bottom_sheet:"))
+        assertTrue(source.contains("CueSuggestionDialog("))
         assertTrue(source.contains("Text(\"字体\""))
         assertTrue(source.contains("Text(\"A-\""))
         assertTrue(source.contains("Text(\"A+\""))
@@ -44,7 +46,8 @@ class EditorScreenV3DirectEditContractTest {
             "viewModel::updateCueDirectPosition",
             "viewModel::updateCueDirectWidth",
             "viewModel::updateCueDirectFontSize",
-            "viewModel.splitCaption(",
+            "viewModel.splitCaptionDraft(",
+            "viewModel.requestCueSuggestion(",
             "viewModel.updateEnglishText(",
             "viewModel.updateCueFontFamily(",
         ).forEach { call -> assertTrue("missing integrated call: $call", source.contains(call)) }

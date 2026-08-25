@@ -5,7 +5,6 @@ object CueEditingPolicy {
         if (cue.english == text) return cue
         return cue.copy(
             english = text,
-            chinese = "",
             correctionCandidates = emptyList(),
             confirmed = false,
         )

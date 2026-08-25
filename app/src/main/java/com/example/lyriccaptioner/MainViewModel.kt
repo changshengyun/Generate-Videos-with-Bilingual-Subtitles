@@ -15,6 +15,7 @@ import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionSplitLine
 import com.example.lyriccaptioner.model.splitCaptionCue
+import com.example.lyriccaptioner.model.splitCaptionCueDraft
 import com.example.lyriccaptioner.model.clearOverridesForCue
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionBasicStylePreset
@@ -81,6 +82,11 @@ import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementExcep
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementService
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
 import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.CaptionProcessingLevel
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestion
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionRequest
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionService
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionUiState
 import com.example.lyriccaptioner.processing.enhancement.DeepSeekCaptionEnhancementProvider
 import com.example.lyriccaptioner.project.AndroidProjectRepository
 import com.example.lyriccaptioner.project.MediaAccessResult
@@ -124,6 +130,16 @@ internal fun EditorState.updateDirectEditedCue(
     val updatedCaptions = captions.toMutableList().also { it[index] = updatedCue }
     return DerivedOutputPolicy.invalidateDerivedOutputs(copy(captions = updatedCaptions))
 }
+
+internal fun EditorState.withAppliedCueSuggestion(suggestion: CaptionCueSuggestion): EditorState =
+    updateDirectEditedCue(suggestion.cueId) { cue, _ ->
+        cue.copy(
+            english = suggestion.english,
+            chinese = suggestion.chinese,
+            correctionCandidates = emptyList(),
+            confirmed = false,
+        )
+    }
 
 private fun CaptionLayout.minimizedAgainst(defaultLayout: CaptionLayout): CaptionLayoutOverride =
     CaptionLayoutOverride(
@@ -283,6 +299,7 @@ class MainViewModel(
     ),
     private val deepSeekManager: DeepSeekByokManager = createDefaultDeepSeekManager(context),
     private val captionEnhancementService: CaptionEnhancementService? = null,
+    private val captionCueSuggestionService: CaptionCueSuggestionService? = null,
     private val mediaStoreGateway: MediaStoreExportGateway? = null,
 ) : ViewModel() {
     private val appContext = context.applicationContext
@@ -298,15 +315,25 @@ class MainViewModel(
         DeepSeekKeyUiMapper.from(deepSeekManager.status()),
     )
     val deepSeekKeyUi: StateFlow<DeepSeekKeyUiModel> = mutableDeepSeekKeyUi.asStateFlow()
+    private val defaultEnhancementProvider: DeepSeekCaptionEnhancementProvider by lazy {
+        DeepSeekCaptionEnhancementProvider(deepSeekManager)
+    }
     private val enhancementService: CaptionEnhancementService by lazy {
         captionEnhancementService ?: CaptionEnhancementCoordinator(
-            provider = DeepSeekCaptionEnhancementProvider(deepSeekManager),
+            provider = defaultEnhancementProvider,
             localTranslation = translationModule,
         )
     }
+    private val cueSuggestionService: CaptionCueSuggestionService by lazy {
+        captionCueSuggestionService ?: defaultEnhancementProvider
+    }
+    private val mutableCueSuggestion = MutableStateFlow(CaptionCueSuggestionUiState())
+    val cueSuggestion: StateFlow<CaptionCueSuggestionUiState> = mutableCueSuggestion.asStateFlow()
     private var exportJob: Job? = null
     private var captionWorkflowJob: Job? = null
     private var deepSeekKeyOperationJob: Job? = null
+    private var cueSuggestionJob: Job? = null
+    private var cueSuggestionGeneration = 0L
     private var deepSeekKeyOperationGeneration = 0L
 
     init {
@@ -481,10 +508,18 @@ class MainViewModel(
                             captions = outcome.captions,
                             selectedCaptionId = outcome.captions.firstOrNull()?.id,
                             captionProcessing = CaptionProcessingSnapshot.from(outcome),
-                            status = if (outcome.source == CaptionResultSource.CLOUD_AI) {
-                                "DeepSeek 已生成 ${outcome.captions.size} 条最终双语字幕。"
-                            } else {
-                                "已生成 ${outcome.captions.size} 条本地回退字幕；英文未经过标准歌词校正。"
+                            status = when (outcome.processingLevel) {
+                                CaptionProcessingLevel.TWO_PASS_COMPLETE ->
+                                    "DeepSeek 双阶段增强完成，共 ${outcome.captions.size} 条最终双语字幕。"
+                                CaptionProcessingLevel.FIRST_PASS_REVIEW_REQUIRED ->
+                                    "已保留 ${outcome.captions.size} 条首轮完整字幕；局部修复未完成，请人工审核。"
+                                CaptionProcessingLevel.LOCAL_FALLBACK ->
+                                    "已生成 ${outcome.captions.size} 条本地回退字幕；英文未经过标准歌词校正。"
+                                CaptionProcessingLevel.LEGACY_UNKNOWN -> if (outcome.source == CaptionResultSource.CLOUD_AI) {
+                                    "DeepSeek 已生成 ${outcome.captions.size} 条最终双语字幕。"
+                                } else {
+                                    "已生成 ${outcome.captions.size} 条本地回退字幕。"
+                                }
                             },
                         ),
                     )
@@ -547,6 +582,12 @@ class MainViewModel(
             current.copy(
                 captionProcessing = current.captionProcessing.copy(state = processingState),
                 status = when (processingState) {
+                    CaptionEnhancementState.SONG_IDENTIFYING -> "正在综合整批字幕识别歌曲..."
+                    CaptionEnhancementState.LYRICS_RETRIEVING -> "正在检索并验证标准歌词..."
+                    CaptionEnhancementState.FIRST_PASS_ENHANCING -> "正在执行第一次整批字幕增强..."
+                    CaptionEnhancementState.AUTO_SPLITTING -> "正在按真实歌词行拆分字幕..."
+                    CaptionEnhancementState.LOCAL_REPAIRING -> "正在整批修复拆分后的字幕..."
+                    CaptionEnhancementState.FINAL_VALIDATING -> "正在校验双阶段最终字幕..."
                     CaptionEnhancementState.CLOUD_PENDING -> "Sending subtitle cues to DeepSeek..."
                     CaptionEnhancementState.CLOUD_VALIDATING -> "Validating enhanced subtitle batch..."
                     CaptionEnhancementState.LOCAL_FALLBACK_APPLIED -> "DeepSeek unavailable; applying local Chinese fallback..."
@@ -694,6 +735,105 @@ class MainViewModel(
                 current.copy(status = "无法拆分字幕：${error.message ?: "输入无效"}")
             }
         }
+    }
+
+    fun splitCaptionDraft(cueId: String) {
+        mutableState.update { it.splitCaptionCueDraft(cueId) }
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+    }
+
+    fun requestCueSuggestion(cueId: String) {
+        if (cueSuggestionJob?.isActive == true) return
+        val snapshot = state.value
+        val expectedCaptions = snapshot.captions
+        val ordered = expectedCaptions.sortedWith(
+            compareBy<CaptionCue> { it.startMs }.thenBy { it.endMs }.thenBy { it.id },
+        )
+        val index = ordered.indexOfFirst { it.id == cueId }
+        if (index < 0) return
+        if (deepSeekKeyUi.value.state != DeepSeekKeyState.CONFIGURED) {
+            mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                cueId = cueId,
+                error = "请先保存并验证 DeepSeek API Key。",
+            )
+            return
+        }
+        val target = ordered[index]
+        val splitSuffix = target.id.substringAfterLast(':', missingDelimiterValue = "")
+        val parentId = target.id.substringBeforeLast(':', missingDelimiterValue = "")
+        val siblingId = when (splitSuffix) {
+            "1" -> "$parentId:2"
+            "2" -> "$parentId:1"
+            else -> null
+        }
+        val sibling = siblingId?.let { id -> ordered.firstOrNull { it.id == id } }
+        val request = CaptionCueSuggestionRequest(
+            jobId = "cue-suggestion-${elapsedRealtimeMs()}",
+            target = target,
+            sibling = sibling,
+            previous = ordered.getOrNull(index - 1),
+            next = ordered.getOrNull(index + 1),
+            batch = ordered,
+            songMatch = snapshot.captionProcessing.songMatch,
+        )
+        val generation = ++cueSuggestionGeneration
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+            cueId = cueId,
+            running = true,
+            expectedCaptions = expectedCaptions,
+        )
+        cueSuggestionJob = viewModelScope.launch {
+            try {
+                val suggestion = cueSuggestionService.suggest(request)
+                if (generation != cueSuggestionGeneration) return@launch
+                if (state.value.captions == expectedCaptions) {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                        cueId = cueId,
+                        proposal = suggestion,
+                        expectedCaptions = expectedCaptions,
+                    )
+                } else {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                        cueId = cueId,
+                        error = "字幕已发生变化，请重新增强。",
+                    )
+                }
+            } catch (_: CancellationException) {
+                if (generation == cueSuggestionGeneration) {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+                }
+            } catch (_: Throwable) {
+                if (generation == cueSuggestionGeneration) {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                        cueId = cueId,
+                        error = "AI 增强失败，当前字幕未被修改。",
+                    )
+                }
+            } finally {
+                if (generation == cueSuggestionGeneration) cueSuggestionJob = null
+            }
+        }
+    }
+
+    fun applyCueSuggestion() {
+        val suggestionState = cueSuggestion.value
+        val proposal = suggestionState.proposal ?: return
+        if (state.value.captions != suggestionState.expectedCaptions) {
+            mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                cueId = proposal.cueId,
+                error = "字幕或上下文已发生变化，请重新增强。",
+            )
+            return
+        }
+        mutableState.update { it.withAppliedCueSuggestion(proposal) }
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+    }
+
+    fun dismissCueSuggestion() {
+        cueSuggestionGeneration += 1L
+        cueSuggestionJob?.cancel()
+        cueSuggestionJob = null
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
     }
 
     fun exportVideo() {

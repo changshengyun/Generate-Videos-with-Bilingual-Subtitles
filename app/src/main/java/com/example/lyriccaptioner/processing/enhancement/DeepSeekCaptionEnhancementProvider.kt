@@ -1,5 +1,6 @@
 package com.example.lyriccaptioner.processing.enhancement
 
+import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -24,10 +25,14 @@ class DeepSeekCaptionEnhancementProvider(
     private val verifier: SongLyricsCandidateVerifier = SongLyricsCandidateVerifier(),
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
     private val onDiagnosticStage: (DeepSeekEnhancementStage) -> Unit = {},
-) : CaptionEnhancementProvider {
-    override suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse {
+) : StagedCaptionEnhancementProvider, CaptionCueSuggestionService {
+    override suspend fun enhance(
+        request: CaptionEnhancementRequest,
+        onStateChanged: (CaptionEnhancementState) -> Unit,
+    ): CaptionEnhancementResponse {
         currentCoroutineContext().ensureActive()
         val identities = if (request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES) {
+            onStateChanged(CaptionEnhancementState.SONG_IDENTIFYING)
             onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_REQUEST)
             val body = byokManager.withDecryptedKey { apiKey ->
                 executeRequest(
@@ -42,9 +47,11 @@ class DeepSeekCaptionEnhancementProvider(
         }
         currentCoroutineContext().ensureActive()
 
+        onStateChanged(CaptionEnhancementState.LYRICS_RETRIEVING)
         onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_SEARCH)
         val lookup = findVerifiedLyrics(request, identities)
         currentCoroutineContext().ensureActive()
+        onStateChanged(CaptionEnhancementState.FIRST_PASS_ENHANCING)
         onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_REQUEST)
         val finalBody = byokManager.withDecryptedKey { apiKey ->
             executeRequest(
@@ -58,9 +65,91 @@ class DeepSeekCaptionEnhancementProvider(
         }
         onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_PARSE)
         val parsed = parseProviderJson { DeepSeekCaptionEnhancementJson.parseEnhancementResponse(finalBody) }
-        return applyCanonicalLineContract(parsed, lookup.verified).copy(
-            processingVersion = PROCESSING_VERSION,
+        val firstPass = applyCanonicalLineContract(parsed, lookup.verified).copy(
+            processingVersion = FIRST_PASS_PROCESSING_VERSION,
             songMatch = lookup.songMatch,
+            processingLevel = CaptionProcessingLevel.FIRST_PASS_REVIEW_REQUIRED,
+        )
+        validateFirstPassStructure(request, firstPass)
+        onStateChanged(CaptionEnhancementState.AUTO_SPLITTING)
+        val repairRequest = CaptionLocalRepairBatchPolicy.build(request, firstPass, lookup.verified)
+            ?: return firstPass.copy(
+                processingVersion = PROCESSING_VERSION,
+                processingLevel = CaptionProcessingLevel.TWO_PASS_COMPLETE,
+            )
+        return try {
+            currentCoroutineContext().ensureActive()
+            onStateChanged(CaptionEnhancementState.LOCAL_REPAIRING)
+            onDiagnosticStage(DeepSeekEnhancementStage.LOCAL_REPAIR_REQUEST)
+            val repairBody = byokManager.withDecryptedKey { apiKey ->
+                executeRequest(
+                    apiKey = apiKey,
+                    requestBody = DeepSeekCaptionEnhancementJson.localRepairRequestBody(
+                        request = repairRequest,
+                        verified = lookup.verified,
+                    ),
+                )
+            }
+            onDiagnosticStage(DeepSeekEnhancementStage.LOCAL_REPAIR_PARSE)
+            val repairResponse = parseProviderJson {
+                DeepSeekCaptionEnhancementJson.parseLocalRepairResponse(repairBody)
+            }
+            onStateChanged(CaptionEnhancementState.FINAL_VALIDATING)
+            CaptionLocalRepairBatchPolicy.apply(repairRequest, repairResponse, firstPass)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: CaptionEnhancementException) {
+            firstPass
+        }
+    }
+
+    override suspend fun suggest(request: CaptionCueSuggestionRequest): CaptionCueSuggestion {
+        currentCoroutineContext().ensureActive()
+        val batchRequest = CaptionEnhancementRequest(
+            jobId = request.jobId,
+            schemaVersion = CaptionEnhancementContract.SCHEMA_VERSION,
+            cues = request.batch.map { cue ->
+                CaptionEnhancementRequestCue(cue.id, cue.startMs, cue.endMs, cue.english)
+            },
+        )
+        val confirmed = request.songMatch?.takeIf { it.status == SongMatchStatus.CONFIRMED }
+        val verified = if (confirmed?.title != null && confirmed.artist != null) {
+            findVerifiedLyrics(
+                request = batchRequest,
+                identities = listOf(SongIdentityCandidate(confirmed.title, confirmed.artist)),
+            ).verified
+        } else {
+            null
+        }
+        val canonical = verified?.cueCanonicalLines?.get(request.target.id)?.singleOrNull()
+        val body = byokManager.withDecryptedKey { apiKey ->
+            executeRequest(
+                apiKey = apiKey,
+                requestBody = DeepSeekCaptionEnhancementJson.cueSuggestionRequestBody(
+                    request = request,
+                    verified = verified,
+                    canonical = canonical,
+                ),
+            )
+        }
+        val parsed = parseProviderJson { DeepSeekCaptionEnhancementJson.parseLocalRepairResponse(body) }
+        if (parsed.schemaVersion != CaptionLocalRepairContract.SCHEMA_VERSION ||
+            parsed.jobId != request.jobId || parsed.cues.size != 1 ||
+            parsed.cues.single().id != request.target.id
+        ) {
+            throw invalidLineContract()
+        }
+        val cue = parsed.cues.single()
+        requireText(cue.correctedEnglish, allowBlank = false, "suggested English")
+        requireText(cue.chinese, allowBlank = false, "suggested Chinese")
+        if (canonical != null && normalizeCanonical(cue.correctedEnglish) != normalizeCanonical(canonical)) {
+            throw invalidLineContract()
+        }
+        return CaptionCueSuggestion(
+            cueId = request.target.id,
+            english = canonical ?: cue.correctedEnglish.trim(),
+            chinese = cue.chinese.trim(),
+            canonicalVerified = canonical != null,
         )
     }
 
@@ -90,6 +179,23 @@ class DeepSeekCaptionEnhancementProvider(
             }
         }
         return response.copy(cues = cues)
+    }
+
+    private fun validateFirstPassStructure(
+        request: CaptionEnhancementRequest,
+        firstPass: CaptionEnhancementResponse,
+    ) {
+        val rawCaptions = request.cues.map { cue ->
+            CaptionCue(
+                id = cue.id,
+                startMs = cue.startMs,
+                endMs = cue.endMs,
+                english = cue.rawEnglish,
+                chinese = "",
+                confidence = 1f,
+            )
+        }
+        CaptionEnhancementResponseValidator().validate(request, firstPass, rawCaptions)
     }
 
     private fun invalidLineContract(): CaptionEnhancementProviderException =
@@ -266,7 +372,8 @@ class DeepSeekCaptionEnhancementProvider(
     companion object {
         const val ENDPOINT = "https://api.deepseek.com/chat/completions"
         const val MODEL = "deepseek-v4-pro"
-        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v4"
+        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v5-two-pass"
+        const val FIRST_PASS_PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v5-first-pass"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
@@ -290,7 +397,7 @@ class DeepSeekCaptionEnhancementProvider(
 只能使用请求中实际提供并经过验证的歌词内容。只有请求明确提供了经过验证的网易云中英对照歌词及来源时，才能采用并声称为网易云版本；未提供时不得凭模型记忆编造或冒充网易云译文。
 不得增加、删除或重排 source cue，也不得修改 source cue 时间。每个 source cue 必须返回与 canonical_lines 数量相同的 1～2 个有序 lines。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"canonical English line","chinese":"coherent Chinese lyric line"}]}]}.
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$FIRST_PASS_PROCESSING_VERSION","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"canonical English line","chinese":"coherent Chinese lyric line"}]}]}.
 每个 source cue 必须包含上面展示的全部四个字段，每个 line 必须包含 corrected_english 和 chinese。不要返回 song_match。
 """.trimIndent()
 
@@ -300,8 +407,23 @@ class DeepSeekCaptionEnhancementProvider(
 中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
 不得增加、删除、拆分、合并或重排 source cue，也不得修改时间。由于没有验证歌词，每个 source cue 只能返回一个 line。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"corrected English line","chinese":"coherent Chinese lyric line"}]}]}.
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$FIRST_PASS_PROCESSING_VERSION","cues":[{"source_id":"<copy input cue id>","start_ms":0,"end_ms":1,"lines":[{"corrected_english":"corrected English line","chinese":"coherent Chinese lyric line"}]}]}.
 每个 source cue 必须包含上面展示的全部四个字段，每个 line 必须包含 corrected_english 和 chinese。不要返回 song_match。
+""".trimIndent()
+
+        val LOCAL_REPAIR_SYSTEM_PROMPT = """
+你是英文歌曲字幕的局部修复助手。输入是第一次整批增强后由同一个父 cue 拆出的全部子 cue。
+逐条检查拆分是否留下半句、重复词、漏词或中英文错配，同时结合父 cue 原始识别、兄弟 cue、前后歌词和已验证 canonical 行理解上下文。
+如果提供 canonical_english，corrected_english 必须逐字原样返回该行，不得依靠模型记忆改写；中文要像自然的中文歌词，忠实、连贯，不做逐词机器翻译。
+不得增加、删除、合并或重排 cue，不得修改 id。每个输入 cue 必须且只能返回一条结果。
+只返回 JSON：{"schema_version":"${CaptionLocalRepairContract.SCHEMA_VERSION}","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input cue id>","corrected_english":"...","chinese":"..."}]}。
+""".trimIndent()
+
+        val CUE_SUGGESTION_SYSTEM_PROMPT = """
+你是英文歌曲字幕的人工复核助手。用户正在复核其中一个 cue，输入会提供当前 cue、可能的兄弟 cue、前后 cue、整批英文和可选的已验证 canonical 行。
+修复当前 cue 的错词、漏词、多词和不完整句式，并生成自然、忠实、连贯的中文歌词。不要逐词机器翻译，不要输出解释。
+如果 canonical_english 非空，英文必须逐字原样采用 canonical；否则只能依据输入做保守修复，不得凭模型记忆声称找到了标准歌词。
+只能返回目标 cue，不能修改兄弟或前后 cue。只返回 JSON：{"schema_version":"${CaptionLocalRepairContract.SCHEMA_VERSION}","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<target id>","corrected_english":"...","chinese":"..."}]}。
 """.trimIndent()
     }
 }
@@ -315,6 +437,8 @@ enum class DeepSeekEnhancementStage {
     VERIFIED_LYRICS_SELECTED,
     WHOLE_SONG_REQUEST,
     WHOLE_SONG_PARSE,
+    LOCAL_REPAIR_REQUEST,
+    LOCAL_REPAIR_PARSE,
 }
 
 internal object DeepSeekCaptionEnhancementJson {
@@ -338,6 +462,10 @@ internal object DeepSeekCaptionEnhancementJson {
                     "source_id" to verified.candidate.sourceId,
                 ),
                 "complete_english_lyrics" to verified.candidate.completeEnglishLyrics,
+                "canonical_range" to mapOf(
+                    "start_line_inclusive" to verified.canonicalRange.startLineInclusive,
+                    "end_line_inclusive" to verified.canonicalRange.endLineInclusive,
+                ),
                 "cue_canonical_alignments" to verified.cueCanonicalLines.map { (id, lines) ->
                     mapOf("source_id" to id, "canonical_lines" to lines)
                 },
@@ -362,6 +490,64 @@ internal object DeepSeekCaptionEnhancementJson {
             maxTokens = (request.cues.size * 192).coerceIn(768, 16_384),
         )
     }
+
+    fun localRepairRequestBody(
+        request: CaptionLocalRepairRequest,
+        verified: VerifiedSongLyrics?,
+    ): String = completionRequest(
+        systemPrompt = DeepSeekCaptionEnhancementProvider.LOCAL_REPAIR_SYSTEM_PROMPT,
+        userPayload = mapOf(
+            "schema_version" to CaptionLocalRepairContract.SCHEMA_VERSION,
+            "job_id" to request.jobId,
+            "song" to verified?.let {
+                mapOf(
+                    "title" to it.candidate.title,
+                    "artist" to it.candidate.artist,
+                    "source_id" to it.candidate.sourceId,
+                )
+            },
+            "cues" to request.cues.map { cue ->
+                mapOf(
+                    "id" to cue.id,
+                    "parent_source_id" to cue.parentSourceId,
+                    "sibling_id" to cue.siblingId,
+                    "parent_raw_english" to cue.parentRawEnglish,
+                    "current_english" to cue.english,
+                    "current_chinese" to cue.chinese,
+                    "previous_english" to cue.previousEnglish,
+                    "next_english" to cue.nextEnglish,
+                    "canonical_english" to cue.canonicalEnglish,
+                )
+            },
+        ),
+        maxTokens = (request.cues.size * 160).coerceIn(512, 8_192),
+    )
+
+    fun cueSuggestionRequestBody(
+        request: CaptionCueSuggestionRequest,
+        verified: VerifiedSongLyrics?,
+        canonical: String?,
+    ): String = completionRequest(
+        systemPrompt = DeepSeekCaptionEnhancementProvider.CUE_SUGGESTION_SYSTEM_PROMPT,
+        userPayload = mapOf(
+            "schema_version" to CaptionLocalRepairContract.SCHEMA_VERSION,
+            "job_id" to request.jobId,
+            "song" to verified?.let {
+                mapOf("title" to it.candidate.title, "artist" to it.candidate.artist)
+            },
+            "target" to mapOf(
+                "id" to request.target.id,
+                "current_english" to request.target.english,
+                "current_chinese" to request.target.chinese,
+                "canonical_english" to canonical,
+            ),
+            "sibling" to request.sibling?.let { mapOf("id" to it.id, "english" to it.english, "chinese" to it.chinese) },
+            "previous" to request.previous?.let { mapOf("id" to it.id, "english" to it.english) },
+            "next" to request.next?.let { mapOf("id" to it.id, "english" to it.english) },
+            "batch_english" to request.batch.map { mapOf("id" to it.id, "english" to it.english) },
+        ),
+        maxTokens = 512,
+    )
 
     /** Kept as a compatibility shim for focused tests and probe tooling. */
     fun requestBody(request: CaptionEnhancementRequest): String =
@@ -410,6 +596,23 @@ internal object DeepSeekCaptionEnhancementJson {
             processingVersion = root.requiredString("processing_version"),
             cues = cues,
             songMatch = null,
+        )
+    }
+
+    fun parseLocalRepairResponse(body: String): CaptionLocalRepairResponse {
+        val root = parseAssistantJson(body)
+        return CaptionLocalRepairResponse(
+            schemaVersion = root.requiredString("schema_version"),
+            jobId = root.requiredString("job_id"),
+            processingVersion = root.requiredString("processing_version"),
+            cues = root.requiredArray("cues").values.map { value ->
+                val item = value.asObject()
+                CaptionLocalRepairResponseCue(
+                    id = item.requiredString("id"),
+                    correctedEnglish = item.requiredString("corrected_english"),
+                    chinese = item.requiredString("chinese"),
+                )
+            },
         )
     }
 

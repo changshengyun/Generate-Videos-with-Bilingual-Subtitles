@@ -7,6 +7,7 @@ import com.example.lyriccaptioner.model.ProjectSnapshot
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementErrorKind
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
 import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.CaptionProcessingLevel
 import com.example.lyriccaptioner.processing.enhancement.SongMatch
 import com.example.lyriccaptioner.processing.enhancement.SongMatchStatus
 import org.junit.Assert.assertEquals
@@ -36,6 +37,7 @@ class ProjectArchiveV3ContractTest {
                     confidence = 0.61f,
                     source = "licensed-catalog",
                 ),
+                processingLevel = CaptionProcessingLevel.FIRST_PASS_REVIEW_REQUIRED,
             ),
         )
 
@@ -60,6 +62,7 @@ captions=
         assertEquals(null, restored.captionProcessing.processingVersion)
         assertEquals(null, restored.captionProcessing.lastErrorKind)
         assertEquals(null, restored.captionProcessing.songMatch)
+        assertEquals(CaptionProcessingLevel.LEGACY_UNKNOWN, restored.captionProcessing.processingLevel)
     }
 
     @Test

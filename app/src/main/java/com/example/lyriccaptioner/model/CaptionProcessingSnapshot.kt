@@ -4,6 +4,7 @@ import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementError
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementOutcome
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
 import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.CaptionProcessingLevel
 import com.example.lyriccaptioner.processing.enhancement.SongMatch
 
 /** Persistable, non-sensitive summary of the most recent caption processing batch. */
@@ -13,6 +14,7 @@ data class CaptionProcessingSnapshot(
     val processingVersion: String? = null,
     val lastErrorKind: CaptionEnhancementErrorKind? = null,
     val songMatch: SongMatch? = null,
+    val processingLevel: CaptionProcessingLevel = CaptionProcessingLevel.LEGACY_UNKNOWN,
 ) {
     companion object {
         fun from(outcome: CaptionEnhancementOutcome): CaptionProcessingSnapshot =
@@ -22,6 +24,7 @@ data class CaptionProcessingSnapshot(
                 processingVersion = outcome.processingVersion,
                 lastErrorKind = outcome.errorKind,
                 songMatch = outcome.songMatch,
+                processingLevel = outcome.processingLevel,
             )
     }
 }

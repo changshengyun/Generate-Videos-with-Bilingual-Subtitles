@@ -4,7 +4,7 @@ import com.example.lyriccaptioner.model.CaptionCue
 
 /** Provider-neutral V3 caption enhancement wire and processing contract. */
 object CaptionEnhancementContract {
-    const val SCHEMA_VERSION = "caption-enhancement.v4"
+    const val SCHEMA_VERSION = "caption-enhancement.v5"
 }
 
 data class CaptionEnhancementRequest(
@@ -29,6 +29,7 @@ data class CaptionEnhancementResponse(
     val processingVersion: String,
     val cues: List<CaptionEnhancementResponseCue>,
     val songMatch: SongMatch? = null,
+    val processingLevel: CaptionProcessingLevel = CaptionProcessingLevel.LEGACY_UNKNOWN,
 ) {
     override fun toString(): String =
         "CaptionEnhancementResponse(jobId=$jobId, schemaVersion=$schemaVersion, processingVersion=$processingVersion, cueCount=${cues.size}, songMatch=${songMatch?.status})"
@@ -50,6 +51,16 @@ fun interface CaptionEnhancementProvider {
     suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse
 }
 
+interface StagedCaptionEnhancementProvider : CaptionEnhancementProvider {
+    suspend fun enhance(
+        request: CaptionEnhancementRequest,
+        onStateChanged: (CaptionEnhancementState) -> Unit,
+    ): CaptionEnhancementResponse
+
+    override suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse =
+        enhance(request, {})
+}
+
 /** Application-facing boundary for one complete, atomic caption enhancement batch. */
 interface CaptionEnhancementService {
     suspend fun enhance(
@@ -65,8 +76,21 @@ enum class CaptionResultSource {
     LOCAL_FALLBACK,
 }
 
+enum class CaptionProcessingLevel {
+    TWO_PASS_COMPLETE,
+    FIRST_PASS_REVIEW_REQUIRED,
+    LOCAL_FALLBACK,
+    LEGACY_UNKNOWN,
+}
+
 enum class CaptionEnhancementState {
     RAW_ASR_READY,
+    SONG_IDENTIFYING,
+    LYRICS_RETRIEVING,
+    FIRST_PASS_ENHANCING,
+    AUTO_SPLITTING,
+    LOCAL_REPAIRING,
+    FINAL_VALIDATING,
     CLOUD_PENDING,
     CLOUD_VALIDATING,
     CLOUD_APPLIED,
@@ -106,6 +130,7 @@ data class CaptionEnhancementOutcome(
     val processingVersion: String? = null,
     val errorKind: CaptionEnhancementErrorKind? = null,
     val songMatch: SongMatch? = null,
+    val processingLevel: CaptionProcessingLevel = CaptionProcessingLevel.LEGACY_UNKNOWN,
 ) {
     override fun toString(): String =
         "CaptionEnhancementOutcome(source=$source, state=$state, cueCount=${captions.size}, processingVersion=$processingVersion, errorKind=$errorKind, songMatch=${songMatch?.status})"

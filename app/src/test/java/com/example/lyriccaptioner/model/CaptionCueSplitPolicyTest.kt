@@ -104,6 +104,29 @@ class CaptionCueSplitPolicyTest {
         assertEquals(ExportState.IDLE, updated.exportState)
     }
 
+    @Test
+    fun draftSplitUsesSafeEnglishWordBoundaryAndChineseRatio() {
+        val parent = cue(startMs = 0L, endMs = 4_000L).copy(
+            english = "I found the light, and then I found my way",
+            chinese = "我找到了光，也找到了方向",
+        )
+
+        val lines = CaptionCueSplitPolicy.suggestDraftLines(parent)!!
+
+        assertEquals(2, lines.size)
+        assertEquals(parent.english, lines.joinToString(" ") { it.english }.replace("  ", " "))
+        assertTrue(lines.all { it.english.isNotBlank() && it.chinese.isNotBlank() })
+        assertFalse(lines.first().english.last().isLetter() && lines.last().english.first().isLetter() &&
+            !parent.english.contains("${lines.first().english} ${lines.last().english}"))
+    }
+
+    @Test
+    fun draftSplitRefusesSingleEnglishTokenInsteadOfCuttingIt() {
+        val parent = cue().copy(english = "supercalifragilisticexpialidocious", chinese = "很长的词")
+
+        assertNull(CaptionCueSplitPolicy.suggestDraftLines(parent))
+    }
+
     private fun cue(startMs: Long = 0L, endMs: Long = 2_000L) = CaptionCue(
         id = "source",
         startMs = startMs,

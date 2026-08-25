@@ -33,6 +33,7 @@ import com.example.lyriccaptioner.model.ratioToLegacyFontSize
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementErrorKind
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
 import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.CaptionProcessingLevel
 import com.example.lyriccaptioner.processing.enhancement.SongMatch
 import com.example.lyriccaptioner.processing.enhancement.SongMatchStatus
 import java.util.Base64
@@ -73,6 +74,7 @@ class ProjectArchive(
         appendField("captionState", snapshot.captionProcessing.state.name)
         appendField("captionSource", snapshot.captionProcessing.source.name)
         appendField("captionProcessingVersion", snapshot.captionProcessing.processingVersion?.let(::encode))
+        appendField("captionProcessingLevel", snapshot.captionProcessing.processingLevel.name)
         appendField("captionErrorKind", snapshot.captionProcessing.lastErrorKind?.name)
         appendField("songMatchStatus", snapshot.captionProcessing.songMatch?.status?.name)
         appendField("songMatchTitle", snapshot.captionProcessing.songMatch?.title?.let(::encode))
@@ -788,6 +790,7 @@ class ProjectArchive(
             processingVersion = decodeOptionalNullable("captionProcessingVersion"),
             lastErrorKind = errorKind,
             songMatch = songMatch,
+            processingLevel = optionalEnum("captionProcessingLevel", CaptionProcessingLevel.LEGACY_UNKNOWN),
         )
     }
 

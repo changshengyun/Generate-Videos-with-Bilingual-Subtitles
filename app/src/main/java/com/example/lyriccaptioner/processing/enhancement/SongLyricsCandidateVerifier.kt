@@ -16,6 +16,7 @@ data class VerifiedSongLyrics(
     val candidate: SongLyricsCandidate,
     val metrics: SongLyricsVerificationMetrics,
     val cueCanonicalLines: Map<String, List<String>>,
+    val canonicalRange: CanonicalLyricsRange,
 ) {
     val cueCanonicalEnglish: Map<String, String>
         get() = cueCanonicalLines.mapValues { (_, lines) -> lines.joinToString(" ") }
@@ -64,6 +65,9 @@ class SongLyricsCandidateVerifier {
             return null
         }
 
+        val matchedLineIndices = alignment.values.flatMap { it.lineIndices.toList() }
+        if (matchedLineIndices.isEmpty()) return null
+
         return VerifiedSongLyrics(
             candidate = candidate,
             metrics = SongLyricsVerificationMetrics(
@@ -77,6 +81,10 @@ class SongLyricsCandidateVerifier {
             cueCanonicalLines = eligible.mapNotNull { cue ->
                 alignment[cue.id]?.let { cue.id to it.canonicalLines }
             }.toMap(linkedMapOf()),
+            canonicalRange = CanonicalLyricsRange(
+                startLineInclusive = matchedLineIndices.min(),
+                endLineInclusive = matchedLineIndices.max(),
+            ),
         )
     }
 
@@ -189,6 +197,7 @@ class SongLyricsCandidateVerifier {
                         canonicalEnglish = canonical,
                         canonicalLines = canonicalLines,
                         similarity = similarity(cue.rawEnglish, canonical),
+                        lineIndices = span.first().lineIndex..span.last().lineIndex,
                     )
                     cueIndex--
                     tokenIndex = start
@@ -268,6 +277,7 @@ class SongLyricsCandidateVerifier {
         val canonicalEnglish: String,
         val canonicalLines: List<String>,
         val similarity: Double,
+        val lineIndices: IntRange,
     )
 
     companion object {
@@ -292,3 +302,8 @@ class SongLyricsCandidateVerifier {
         private val WORD_PATTERN = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*")
     }
 }
+
+data class CanonicalLyricsRange(
+    val startLineInclusive: Int,
+    val endLineInclusive: Int,
+)

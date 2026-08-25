@@ -1093,12 +1093,12 @@ class LocalAiInstrumentation : Instrumentation() {
         check(waitForImeVisible(activity, 5_000L)) { "Inline caption editing did not expose the IME." }
         hideKeyboard(activity)
         clickNode(waitForContentDescriptionStartingWithWithScroll("cue_style_toggle:", 20_000L))
+        waitForContentDescriptionStartingWithWithScroll("cue_style_bottom_sheet:", 20_000L)
         waitForContentDescriptionStartingWithWithScroll("cue_style_controls:", 20_000L)
         clickNode(waitForTextWithScroll("等宽", 20_000L))
         waitForContentDescriptionContaining("cue_style_state:", ":mono:", 20_000L)
-        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_split_toggle:", 20_000L))
-        waitForContentDescriptionStartingWithWithScroll("cue_split_editor:", 20_000L)
-        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_split_confirm:", 20_000L))
+        uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        clickNode(waitForContentDescriptionStartingWithWithScroll("cue_split:", 20_000L))
         scrollToTop()
         waitForContentDescriptionContaining(
             "caption_state:",
@@ -1114,12 +1114,20 @@ class LocalAiInstrumentation : Instrumentation() {
         scrollToTop()
         clickNode(waitForContentDescription("workbench_import"))
         results.putString("normalScreenshot", saveScreenshot("preview-normal.png"))
-        clickNode(fullscreen)
+        clickNode(waitForContentDescription("workbench_subtitles"))
+        scrollToTop()
+        clickNode(waitForContentDescription("preview_fullscreen", 20_000L))
         val dialog = waitForContentDescription("preview_fullscreen_dialog", 10_000L)
         val dialogBounds = Rect().also(dialog::getBoundsInScreen)
         check(dialogBounds.width() > 0 && dialogBounds.height() > 0) {
             "Fullscreen preview dialog has no visible bounds: $dialogBounds"
         }
+        val selectableCaption = waitForContentDescriptionStartingWith("选择字幕:", 10_000L)
+        clickNode(selectableCaption)
+        waitForContentDescriptionStartingWith("已选中字幕:", 10_000L)
+        waitForContentDescription("左右拉伸字幕宽度", 10_000L)
+        waitForContentDescription("缩放字幕字号", 10_000L)
+        results.putString("fullscreenDirectEdit", "selection_width_font_handles_confirmed")
         results.putString("fullscreenScreenshot", saveScreenshot("preview-fullscreen.png"))
         exerciseMedia3Controls(results)
         check(findAccessibilityNode(uiAutomation.rootInActiveWindow, "Demo") == null) {
@@ -1952,10 +1960,15 @@ class LocalAiInstrumentation : Instrumentation() {
     }
 
     private fun exerciseMedia3Controls(results: Bundle) {
-        clickNode(waitForContentDescription("Play", 10_000L))
+        clickNode(waitForContentDescription("播放预览", 10_000L))
         SystemClock.sleep(750L)
-        clickNode(waitForContentDescription("Pause", 5_000L))
-        tapScreen(810, 1990)
+        clickNode(waitForContentDescription("暂停预览", 5_000L))
+        val seekBar = waitForContentDescription("预览进度条", 5_000L)
+        val seekBounds = Rect().also(seekBar::getBoundsInScreen)
+        check(seekBounds.width() > 0 && seekBounds.height() > 0) {
+            "Fullscreen seek bar has no visible bounds: $seekBounds"
+        }
+        tapScreen(seekBounds.centerX(), seekBounds.centerY())
         results.putString("media3Controls", "play_pause_seekbar_tap")
         check(uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)) {
             "Media3 preview back action was not dispatched."

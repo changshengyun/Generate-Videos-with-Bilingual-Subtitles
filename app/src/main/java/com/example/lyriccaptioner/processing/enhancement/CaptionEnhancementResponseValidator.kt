@@ -62,6 +62,7 @@ class CaptionEnhancementResponseValidator {
             state = CaptionEnhancementState.CLOUD_APPLIED,
             processingVersion = response.processingVersion,
             songMatch = validatedSongMatch,
+            processingLevel = response.processingLevel,
         )
     }
 
