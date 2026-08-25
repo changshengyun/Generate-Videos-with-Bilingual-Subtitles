@@ -1,9 +1,9 @@
 # Current Task: V4-EDITOR-CONTROL-001
 
-- `STATE_REV: 2026-08-26.017`
-- `TASK_REV: V4-EDITOR-CONTROL-001.001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `EDITOR_SCOPE_LOCKS_PERSISTENT_PANEL_AND_MERGE_IN_PROGRESS`
+- `STATE_REV: 2026-08-26.018`
+- `TASK_REV: V4-EDITOR-CONTROL-001.002`
+- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED`
+- Product status: `EDITOR_CONTROLS_IMPLEMENTED / NOT_INSTALLED`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Device gate: `NOT_INSTALLED / USER_DEVICE_VALIDATION_PENDING / NO_AGENT_DEVICE_ACTION`
 
@@ -40,8 +40,35 @@
 
 ## 5. 当前执行状态
 
-- 验收矩阵已冻结；下一步创建阶段 checkpoint，再实现纯策略、ViewModel 分流和 Compose UI。
+- checkpoint：`2cb1b2d`（`冻结编辑控制改进验收矩阵`）。
+- 功能提交：`2a60171`（`实现字幕编辑锁定与合并`）。
+- 已实现普通/全屏共享布局锁与独立样式锁；两种锁均只改变后续编辑范围，不持久化到项目归档。
+- 全局编辑更新项目默认值并按属性清除 cue override；单条编辑保留其他 cue 和无关属性覆盖。
+- 样式区域已由 `ModalBottomSheet` 改为固定非模态 `Surface`：主页面保持可操作，拖动只调整 1/3～1/2 屏高度，系统返回不关闭，只有收起箭头关闭。
+- 已实现与上一条/下一条原子合并，包括首尾禁用、兄弟 ID 恢复、冲突回退、文本/时间/置信度/样式继承、AI 临时状态清理和旧导出失效。
+- 独立只读代码复审最终 `PASS`，未发现剩余 P1/P2 finding。
 
-## 6. 下一允许动作
+## 6. 验证证据
 
-创建 `V4-EDITOR-CONTROL-001` checkpoint，依次实现编辑范围策略、合并策略、普通/全屏锁、固定样式面板和聚焦验证。最终只生成并交付 Native APK，不执行 `adb install`。
+- `python tools\asr_evaluate_test.py`：6/6 通过。
+- 聚焦 JVM：24/24 通过，覆盖锁分流、属性级 override 清理、安全布局边界、合并策略和固定面板 UI 源合同。
+- 全量 `testDebugUnitTest`：382 项中 379 通过；3 项失败均为隔离 worktree 无法发现原仓库已有 OPUS-MT/Whisper 外部 fixture，不是本阶段代码回归。
+- `lintDebug`、普通 Debug、Native Debug、AndroidTest 构建全部成功；最终改动后再次执行 `lintDebug`、`assembleDebugAndroidTest` 与 `-PenableWhisperNative=true assembleDebug` 成功。
+- Native APK：`app/build/outputs/apk/debug/app-debug.apk`，116,019,973 bytes（110.65 MiB），SHA-256 `10AFAE4F4B2E05CAC04629A39A87BE2A4D10105CEB2A4F921F65C74AA90CF76D`；包含 arm64-v8a 与 x86_64 Whisper native library。
+- 未执行 instrumentation 运行、安装或任何 ADB/手机操作，因此不具备真机 UI、保存恢复或产品链路证据。
+
+## 7. 验收矩阵结论
+
+| 项目 | 结果 |
+|---|---|
+| 两个独立锁、单条/全局分流、属性级 override 清理 | `PASS / COMPONENT_VERIFIED` |
+| 固定非模态面板、48dp 拖动区、IME/Insets 源合同、仅箭头收起 | `PASS / COMPONENT_VERIFIED` |
+| 相邻合并方向、边界、ID、文本、时间、置信度、样式、导出失效 | `PASS / COMPONENT_VERIFIED` |
+| 冻结回归、Native APK、独立复审 | `PASS` |
+| 真机交互、旋转、保存恢复和产品入口验证 | `PENDING / USER_DEVICE_VALIDATION` |
+
+最终状态为 `PARTIAL_PASS / COMPONENT_VERIFIED / NOT_INSTALLED`，未越过冻结证据上限。
+
+## 8. 下一允许动作
+
+交付未安装的 Native APK，由用户自行安装并验证普通/全屏锁同步、固定面板交互、样式全局/单条范围、相邻合并、旋转与保存恢复。Agent 继续禁止安装或操作设备，除非用户后续明确授权新动作。

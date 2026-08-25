@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-26.012`
-- 当前任务：`V4-EDITOR-CONTROL-001 / MATRIX_DEFINED / IN_PROGRESS`
+- `ROADMAP_REV: 2026-08-26.013`
+- 当前任务：`V4-EDITOR-CONTROL-001 / PARTIAL_PASS / COMPONENT_VERIFIED / NOT_INSTALLED`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -41,7 +41,7 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 | `V4-E2E-001` | `PARTIAL_PASS / DEVICE_VALIDATION_DEFERRED_BY_USER` | 用户接管真机验收；未取得真实 AI、导出、回放或截图证据，不得写成 PASS |
 | `V4-CAPTION-QUALITY-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v4、唯一最终批次、canonical 英文/双句拆 cue、长字幕复核、主页面逐 cue 编辑和共享播放器已实现；等待用户真机终验 |
 | `V4-CAPTION-REPAIR-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v5、整批子 cue 修复、人工单 cue AI 建议、样式 Bottom Sheet、全屏控制与字幕直接编辑已完成组件/构建验证；等待用户真机终验 |
-| `V4-EDITOR-CONTROL-001` | `MATRIX_DEFINED / IN_PROGRESS` | 实现普通/全屏布局锁、样式整体锁、固定式非模态样式面板和相邻字幕合并；不修改 AI 链路，不同步手机 |
+| `V4-EDITOR-CONTROL-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / NOT_INSTALLED` | 普通/全屏布局锁、独立样式锁、固定式非模态样式面板和相邻字幕合并已完成组件/构建验证；未修改 AI 链路，等待用户真机交互验证 |
 
 ## 执行和提交顺序
 
@@ -69,6 +69,15 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 ## V4 总体验收
 
 正式 V4 PASS 需要真实设备从系统相册入口完成：一次点击识别、本地 ASR、真实 AI 增强、标准英文纠错、融合双句拆 cue、主页面内联编辑、保存恢复、MediaStore 导出和 Media3 回放。缺少真实 AI、真实设备、真实导出或截图证据时，只能标记对应的 `PARTIAL_PASS`。
+
+## V4 编辑控制组件验收快照（2026-08-26）
+
+- 普通/全屏共享布局锁和独立样式锁已实现；全局写入只清除对应属性 override，单条写入不影响其他 cue。
+- 样式面板已改为固定非模态 `Surface`，仅收起箭头关闭，支持 1/3～1/2 屏高度拖动、48dp 热区、IME 避让和面板内上一条/下一条切换。
+- 相邻字幕支持与上一条/下一条合并；时间、文本、置信度、ID、样式继承、AI 临时状态与导出失效规则已由纯策略测试覆盖。
+- 聚焦 JVM 24/24、ASR 6/6；全量 JVM 382 项中 379 通过，3 项为隔离 worktree 外部模型 fixture 缺失；lint、普通/Native Debug 和 AndroidTest 构建成功；独立复审 `PASS`。
+- Native Debug APK 116,019,973 bytes（110.65 MiB），SHA-256 `10AFAE4F4B2E05CAC04629A39A87BE2A4D10105CEB2A4F921F65C74AA90CF76D`。
+- APK 未安装，instrumentation 未在设备运行；真机锁同步、固定面板交互、旋转、保存恢复与产品入口验证由用户后续执行，状态保持 `PARTIAL_PASS / COMPONENT_VERIFIED / NOT_INSTALLED`。
 
 ## V4 双阶段字幕修复组件验收快照（2026-08-25）
 
