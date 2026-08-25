@@ -1,6 +1,8 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-26.013`
+- `ROADMAP_REV: 2026-08-26.014`
+- 发布版本：`V4.1`
+- 发布分支：`codex/v4.1`
 - 当前任务：`V4-EDITOR-CONTROL-001 / PARTIAL_PASS / COMPONENT_VERIFIED / NOT_INSTALLED`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
@@ -23,6 +25,12 @@
 ```
 
 V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路线不变。用户批准的 `V4-CAPTION-QUALITY-001` 仅在 enhancement 边界内升级 Prompt、响应合同和 cue 拆分时间策略，以支持标准英文纠错、双句拆 cue 和唯一最终字幕批次。
+
+## V4.1 发布边界
+
+- V4.1 包含截至 `436f5f84116a8dd65a74594fa4a712853295cc2e` 的全部已验证修改：一键 Whisper → AI → 编辑主链路、字幕质量与拆分、双阶段字幕修复、人工单 cue 建议、普通/全屏直接编辑、编辑锁、固定样式面板和相邻字幕合并。
+- V4.1 保持 `PARTIAL_PASS / COMPONENT_VERIFIED`；真实 DeepSeek、真机交互、导出、回放和截图证据仍以当时已记录门禁为准。
+- V4.2 的字幕仲裁与全屏 Seek 后续修改不属于 V4.1 远端发布。
 
 ## V3 历史边界
 

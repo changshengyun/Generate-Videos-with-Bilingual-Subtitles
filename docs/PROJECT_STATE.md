@@ -1,8 +1,10 @@
 # LyricCaptioner V4 Project State
 
 - `STATE_REV: 2026-08-26.018`
-- Repository: `D:\DevData\Codex\.codex\worktrees\c3dc\lyric-captioner-android`
-- Branch: `codex/v4-caption-quality-001`
+- Product version: `V4.1`
+- Repository: `D:\DevData\Codex\.codex\worktrees\c704\lyric-captioner-android`
+- Branch: `codex/v4.1`
+- Release target: `origin/codex/v4.1`
 - V4 baseline HEAD: `d410a8da3b57ff7de32d754213b5cc896db34c55`
 - Current implementation HEAD: `2a60171`
 - Current task: `V4-EDITOR-CONTROL-001`
@@ -14,6 +16,7 @@
 
 ## 当前决定
 
+- V4.1 的产品内容边界为 `436f5f84116a8dd65a74594fa4a712853295cc2e`；本次发布提交只增加版本说明和三份活动状态文档，不包含 V4.2 字幕仲裁/全屏 Seek 修改。
 - V4 是新的当前产品版本；V3 只保留历史证据。
 - V3 未完成的生产 base 验证固定记录为 `V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`，不补做、不改写为 PASS，也不阻塞 V4。
 - 唯一产品主链路为：相册导入 → 一次点击开始识别 → 本地 Whisper → 自动 AI 增强 → 自动进入字幕编辑 → 添加或编辑字幕 → 预览并导出。

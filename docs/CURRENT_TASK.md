@@ -2,6 +2,8 @@
 
 - `STATE_REV: 2026-08-26.018`
 - `TASK_REV: V4-EDITOR-CONTROL-001.002`
+- Release version: `V4.1`
+- Release branch: `codex/v4.1`
 - Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED`
 - Product status: `EDITOR_CONTROLS_IMPLEMENTED / NOT_INSTALLED`
 - Evidence ceiling: `COMPONENT_VERIFIED`
@@ -72,3 +74,8 @@
 ## 8. 下一允许动作
 
 交付未安装的 Native APK，由用户自行安装并验证普通/全屏锁同步、固定面板交互、样式全局/单条范围、相邻合并、旋转与保存恢复。Agent 继续禁止安装或操作设备，除非用户后续明确授权新动作。
+
+## 9. V4.1 发布说明
+
+- V4.1 以 `436f5f84116a8dd65a74594fa4a712853295cc2e` 为产品内容边界，包含字幕质量、双阶段修复、人工单 cue 建议、全屏直接编辑、编辑锁、固定样式面板和相邻字幕合并。
+- 后续字幕仲裁、AI 3/AI 4 和全屏 Seek 修复属于 V4.2，不包含在本次 V4.1 远端提交。
