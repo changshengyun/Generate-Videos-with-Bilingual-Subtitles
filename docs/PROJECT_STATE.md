@@ -1,14 +1,14 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-25.016`
+- `STATE_REV: 2026-08-26.017`
 - Repository: `D:\DevData\Codex\.codex\worktrees\c3dc\lyric-captioner-android`
 - Branch: `codex/v4-caption-quality-001`
 - V4 baseline HEAD: `d410a8da3b57ff7de32d754213b5cc896db34c55`
-- Current implementation HEAD: `84a645d9c770ed5124def5686f3cf54f53f2bf3a`
-- Current task: `V4-CAPTION-REPAIR-001`
-- Stage state: `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
-- Product status: `TWO_PASS_CAPTION_REPAIR_AND_EDITOR_UX_IMPLEMENTED`
-- Current gate: `USER_LED_DEVICE_VALIDATION / NO_AGENT_DEVICE_ACTION`
+- Current implementation HEAD: `3fa18cc0b696f81aaea52ea44f230272952b71db`
+- Current task: `V4-EDITOR-CONTROL-001`
+- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- Product status: `EDITOR_SCOPE_LOCKS_PERSISTENT_PANEL_AND_MERGE_IN_PROGRESS`
+- Current gate: `NOT_INSTALLED / USER_DEVICE_VALIDATION_PENDING / NO_AGENT_DEVICE_ACTION`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Last state sync: 2026-08-25
 
@@ -25,6 +25,8 @@
 - 用户真机反馈证明上一阶段仍有英文编辑清空中文、人工拆分边界不可靠、全屏控制不可见、全屏字幕不可编辑和 AI 修复质量不足；上一阶段保持 `PARTIAL_PASS`，新任务 `V4-CAPTION-REPAIR-001` 的矩阵已冻结。
 - 新任务批准在现有 Provider 内执行第一次整批增强、自动拆分和第二次整批局部修复；第二阶段失败保留完整首轮结果待审核，人工单 cue AI 结果必须预览后应用。
 - `V4-CAPTION-REPAIR-001` 已实现 enhancement v5、canonical 区间与原文约束、一次整批子 cue 修复、首轮安全回退、处理等级持久化、安全人工拆分、单 cue 建议预览、样式 Bottom Sheet、全屏控制与字幕直接编辑；独立复审 `PASS`。
+- `3fa18cc` 已按用户决定把最终歌词匹配置信度门槛调整为 30%；新任务不再修改歌曲匹配、AI Prompt、LRCLIB、canonical 或处理等级。
+- `V4-EDITOR-CONTROL-001` 验收矩阵已冻结，只实现两个独立编辑锁、固定式非模态样式面板和相邻字幕合并；最终不安装手机。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
 
 ## 当前验收门禁
@@ -43,7 +45,7 @@
 
 ## 下一允许动作
 
-用户安装 `app/build/outputs/apk/debug/app-debug.apk`，使用指定视频 `D:\DevEnv\Projects\sorce\5e4c3cd7073a9e9b03df1fbf8af6d928.mp4` 完成真实 DeepSeek、普通/全屏截图、保存恢复、MediaStore 导出和 Media3 回放终验。Agent 不操作设备；证据未齐全前保持当前部分通过状态。
+创建 `V4-EDITOR-CONTROL-001` checkpoint 后实现编辑范围策略、固定样式面板和字幕合并，完成组件/构建验证并交付 Native APK。Agent 不安装或操作设备。
 
 ## 权威资料
 

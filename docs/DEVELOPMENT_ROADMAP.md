@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-25.011`
-- 当前任务：`V4-CAPTION-REPAIR-001 / PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING`
+- `ROADMAP_REV: 2026-08-26.012`
+- 当前任务：`V4-EDITOR-CONTROL-001 / MATRIX_DEFINED / IN_PROGRESS`
 - V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
 
 ## 文档职责
@@ -41,6 +41,7 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 | `V4-E2E-001` | `PARTIAL_PASS / DEVICE_VALIDATION_DEFERRED_BY_USER` | 用户接管真机验收；未取得真实 AI、导出、回放或截图证据，不得写成 PASS |
 | `V4-CAPTION-QUALITY-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v4、唯一最终批次、canonical 英文/双句拆 cue、长字幕复核、主页面逐 cue 编辑和共享播放器已实现；等待用户真机终验 |
 | `V4-CAPTION-REPAIR-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / USER_DEVICE_VALIDATION_PENDING` | enhancement v5、整批子 cue 修复、人工单 cue AI 建议、样式 Bottom Sheet、全屏控制与字幕直接编辑已完成组件/构建验证；等待用户真机终验 |
+| `V4-EDITOR-CONTROL-001` | `MATRIX_DEFINED / IN_PROGRESS` | 实现普通/全屏布局锁、样式整体锁、固定式非模态样式面板和相邻字幕合并；不修改 AI 链路，不同步手机 |
 
 ## 执行和提交顺序
 
@@ -51,6 +52,7 @@ V4 保持 Whisper 模型、Media3、FFmpegKit、存储架构和导出技术路�
 5. `V4-E2E-001` 因用户接管真机测试保留为部分通过。
 6. `V4-CAPTION-QUALITY-001` 按新冻结矩阵实现并完成组件/构建验证；真实设备证据由用户终验补齐。
 7. `V4-CAPTION-REPAIR-001` 修复用户真机发现的问题，并升级为一次工作流内的整批增强、自动拆分和第二次局部修复。
+8. `V4-EDITOR-CONTROL-001` 在既有编辑器模型内补充单条/全局编辑范围、固定样式面板和字幕合并，最终只交付未安装 APK。
 
 提交信息使用中文，默认不 push。每次只精确暂存当前阶段文件；所有进入 V4 前的未跟踪或脏内容必须保留。
 
