@@ -1,8 +1,8 @@
 # Current Task: V4-SIMP-001
 
-- `STATE_REV: 2026-08-26.012`
-- `TASK_REV: V4-SIMP-001.001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- `STATE_REV: 2026-08-26.013`
+- `TASK_REV: V4-SIMP-001.002`
+- Stage state: `PASS / COMPONENT_VERIFIED`
 - Product status: `V4_COMPONENTS_IMPLEMENTED_E2E_PENDING`
 - Evidence ceiling: `COMPONENT_VERIFIED`
 - Device gate: `EXPLICIT_PHYSICAL_DEVICE_AUTHORIZATION_REQUIRED`
@@ -31,8 +31,14 @@
 - `V4-FLOW-001`：`990207b`，`PASS / COMPONENT_VERIFIED`。
 - `V4-EDITOR-001`：`a342db9`，`PASS / COMPONENT_VERIFIED`。
 - `V4-UI-001`：`d4ef61d`，`PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED`。
+- `V4-SIMP-001`：本阶段功能 commit，`PASS / COMPONENT_VERIFIED`。证据：
+  - 拆分结果：`EditorScreen.kt` 从 2365 行/35 个顶层声明变为 290 行（仅主入口 + `uniqueDocumentName`），同包新建 8 文件：`CaptionListPanel.kt`(322)、`CaptionStyleControls.kt`(359)、`DeepSeekKeySettingsPanel.kt`(171)、`DirectCaptionEditPanel.kt`(228)、`EditorSupport.kt`(62)、`SubtitlePreviewOverlay.kt`(350)、`VideoPreviewPlayer.kt`(444)、`WorkbenchPanels.kt`(314)；41 处 `private` → `internal`；纯机械搬移（完整性校验：拆分前后代码行 2177/2177 精确匹配，差异仅为可见性声明与乱码修复）。
+  - 乱码修复：`DefaultCaptionStyleControls` 中 4 个按钮文案修复为「取消粗体/粗体/取消斜体/斜体」。
+  - 契约测试适配：2 个测试的源码读取改为 ui 目录全部 .kt 按文件名排序拼接（断言范围实际扩大到整个 ui 包）；4 处断言字符串同步 `private` → `internal`；`useController = false` 计数仍为 2、`PlayerControlRow(` 计数减 1 仍为 2、`DirectEditPanelTab` 边界提取逻辑在拼接文本中仍精确命中。
+  - 验证证据：`testDebugUnitTest` 58 suites / 352 tests / 0 failures（与基线一致）；`lintDebug`、普通 `assembleDebug`、`-PenableWhisperNative=true assembleDebug`、`-PenableWhisperNative=true assembleDebugAndroidTest` 全部 BUILD SUCCESSFUL；`python tools\asr_evaluate_test.py` 6/6 OK。
+  - UI instrumentation/截图：模拟器维持 `SIMULATOR_BLOCKED`（Pixel 8 snapshot pending，同 V4-UI-001 降级原因），本次为无行为变化纯搬移，按矩阵约定不强制 UI 证据。
 - V3 缺口继续固定为 `V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`。
 
 ## 5. 下一允许动作
 
-执行 V4-SIMP-001 拆分、乱码修复、契约测试适配与全量验证；完成后恢复等待 `V4-E2E-001` 真机授权。
+阶段完成。恢复等待 `V4-E2E-001` 真机授权；授权前不得连接、安装或操作真机。

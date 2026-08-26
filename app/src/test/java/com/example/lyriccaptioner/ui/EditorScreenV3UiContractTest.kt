@@ -11,7 +11,9 @@ import org.junit.Test
  * the Compose UI test artifact in the JVM test configuration, so these checks
  * keep the product-level semantics executable without starting an Android UI.
  * They intentionally fail if a future UI reintroduces app chrome or private
- * media details into accessibility output.
+ * media details into accessibility output. The editor shell is split across
+ * the ui package, so the source under test is the concatenation of every
+ * .kt file in that directory.
  */
 class EditorScreenV3UiContractTest {
     @Test
@@ -104,7 +106,7 @@ class EditorScreenV3UiContractTest {
         assertEquals(2, Regex("useController = false").findAll(source).count())
         assertFalse(source.contains("useController = true"))
         assertEquals(2, Regex("PlayerControlRow\\(").findAll(source).count() - 1)
-        assertTrue(source.contains("private fun PlayerControlRow"))
+        assertTrue(source.contains("internal fun PlayerControlRow"))
         assertTrue(source.contains("contentDescription = \"预览进度条\""))
         assertTrue(source.contains(".size(48.dp)"))
         assertTrue(source.contains(".heightIn(min = 48.dp)"))
@@ -141,15 +143,18 @@ class EditorScreenV3UiContractTest {
 
     private fun editorScreenSource(): String {
         val root = File(System.getProperty("user.dir") ?: ".")
-        val sourceFile = sequenceOf(
+        val sourceDir = sequenceOf(
             root,
             root.parentFile,
             root.parentFile?.parentFile,
         ).filterNotNull()
-            .map { File(it, "app/src/main/java/com/example/lyriccaptioner/ui/EditorScreen.kt") }
+            .map { File(it, "app/src/main/java/com/example/lyriccaptioner/ui") }
             .firstOrNull(File::exists)
-            ?: error("EditorScreen.kt not found from ${root.absolutePath}")
-        return sourceFile.readText()
+            ?: error("ui source directory not found from ${root.absolutePath}")
+        return sourceDir.listFiles { file -> file.extension == "kt" }
+            ?.sortedBy { it.name }
+            ?.joinToString("") { it.readText() }
+            ?: error("no .kt sources under ${sourceDir.absolutePath}")
     }
 
     private fun localAiInstrumentationSource(): String {

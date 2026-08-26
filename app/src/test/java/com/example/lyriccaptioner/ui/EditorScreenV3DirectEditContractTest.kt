@@ -9,10 +9,10 @@ class EditorScreenV3DirectEditContractTest {
     @Test
     fun directEditorUsesOnlyKeyboardAndStyleTabs() {
         val source = source()
-        val tabContract = source.substringAfter("private enum class DirectEditPanelTab")
+        val tabContract = source.substringAfter("internal enum class DirectEditPanelTab")
             .substringBefore("@OptIn(ExperimentalLayoutApi::class)")
-        val panel = source.substringAfter("private fun DirectCaptionEditPanel")
-            .substringBefore("private fun DirectStyleGroupTitle")
+        val panel = source.substringAfter("internal fun DirectCaptionEditPanel")
+            .substringBefore("internal fun DirectStyleGroupTitle")
 
         assertTrue(tabContract.contains("KEYBOARD(\"键盘\")"))
         assertTrue(tabContract.contains("STYLE(\"样式\")"))
@@ -65,11 +65,14 @@ class EditorScreenV3DirectEditContractTest {
 
     private fun source(): String {
         val root = File(System.getProperty("user.dir") ?: ".")
-        return sequenceOf(root, root.parentFile, root.parentFile?.parentFile)
+        val sourceDir = sequenceOf(root, root.parentFile, root.parentFile?.parentFile)
             .filterNotNull()
-            .map { File(it, "app/src/main/java/com/example/lyriccaptioner/ui/EditorScreen.kt") }
+            .map { File(it, "app/src/main/java/com/example/lyriccaptioner/ui") }
             .firstOrNull(File::exists)
-            ?.readText()
-            ?: error("EditorScreen.kt not found from ${root.absolutePath}")
+            ?: error("ui source directory not found from ${root.absolutePath}")
+        return sourceDir.listFiles { file -> file.extension == "kt" }
+            ?.sortedBy { it.name }
+            ?.joinToString("") { it.readText() }
+            ?: error("no .kt sources under ${sourceDir.absolutePath}")
     }
 }

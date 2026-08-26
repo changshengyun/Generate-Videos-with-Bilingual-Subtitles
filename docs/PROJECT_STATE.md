@@ -1,11 +1,11 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-26.012`
+- `STATE_REV: 2026-08-26.013`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `migration/lyric-captioner-history`
 - V4 baseline HEAD: `daf38c884b5b8b9f6b7f1b0517232871f9113417`
-- Current task: `V4-SIMP-001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- Current task: `V4-E2E-001`
+- Stage state: `WAITING_DEVICE_AUTHORIZATION`
 - Product status: `V4_COMPONENTS_IMPLEMENTED_E2E_PENDING`
 - Current gate: `PHYSICAL_DEVICE_AUTHORIZATION_REQUIRED`（E2E 专用；不阻塞无行为变化的代码简化）
 - Evidence ceiling: `COMPONENT_VERIFIED`
@@ -28,6 +28,7 @@
 - `V4-FLOW-001` 与 `V4-EDITOR-001` 已达到 `PASS / COMPONENT_VERIFIED`。
 - `V4-UI-001` 达到 `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED`；Pixel 8 因已有 snapshot pending 无法启动，未取得新截图或 instrumentation 证据。
 - 收尾矩阵：ASR Python 6/6；JVM 352/352；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
+- `V4-SIMP-001` 已完成并达到 `PASS / COMPONENT_VERIFIED`：`EditorScreen.kt` 拆分为同包 8 文件（2365 → 290 行，主入口保留）并修复 4 处乱码文案；41 处 `private` → `internal`；2 个源码契约测试改为读取 ui 目录拼接文本，断言强度不降低；JVM 352/352、lint、普通/Native Debug 与 AndroidTest 构建、ASR Python 6/6 全部通过；纯机械搬移，行为与语义契约完全不变。
 - `docs/CURRENT_TASK.md` 已冻结 `V4-SIMP-001` 验收矩阵；阶段内不操作真机或模拟器。
 - 当前禁止真机操作，最高只能记录 `COMPONENT_VERIFIED`；真实 AI、真实设备、真实导出与回放证据仍未获得。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
@@ -38,7 +39,7 @@
 
 ## 下一允许动作
 
-执行 `V4-SIMP-001`（拆分 EditorScreen.kt、修复乱码、适配契约测试、全量 JVM/lint/构建验证）；完成后恢复等待 `V4-E2E-001` 真机授权。授权前不得连接、安装或操作真机。
+等待 `V4-E2E-001` 真机授权。授权前不得连接、安装或操作真机。
 
 ## 权威资料
 
