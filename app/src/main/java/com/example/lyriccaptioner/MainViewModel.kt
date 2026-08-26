@@ -15,11 +15,14 @@ import com.example.lyriccaptioner.captions.SrtParser
 import com.example.lyriccaptioner.captions.SrtWriter
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.clearOverridesForCue
+import com.example.lyriccaptioner.model.clearAllCaptionOverrides
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionLayoutOverride
+import com.example.lyriccaptioner.model.CaptionMergeDirection
 import com.example.lyriccaptioner.model.CaptionProcessingSnapshot
+import com.example.lyriccaptioner.model.CaptionSplitLine
 import com.example.lyriccaptioner.model.CaptionStyleOverride
 import com.example.lyriccaptioner.model.CaptionWorkflowStage
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
@@ -41,6 +44,23 @@ import com.example.lyriccaptioner.model.withDirectEditFontSize
 import com.example.lyriccaptioner.model.withDirectEditWidth
 import com.example.lyriccaptioner.model.withFontSizeRatio
 import com.example.lyriccaptioner.model.insertCaptionAt
+import com.example.lyriccaptioner.model.mergeCaptionCue
+import com.example.lyriccaptioner.model.splitCaptionCue
+import com.example.lyriccaptioner.model.splitCaptionCueDraft
+import com.example.lyriccaptioner.model.withGlobalAlignment
+import com.example.lyriccaptioner.model.withGlobalBasicStyle
+import com.example.lyriccaptioner.model.withGlobalBoldToggled
+import com.example.lyriccaptioner.model.withGlobalChineseColor
+import com.example.lyriccaptioner.model.withGlobalDirectFontSize
+import com.example.lyriccaptioner.model.withGlobalDirectPosition
+import com.example.lyriccaptioner.model.withGlobalDirectWidth
+import com.example.lyriccaptioner.model.withGlobalEnglishColor
+import com.example.lyriccaptioner.model.withGlobalFontFamily
+import com.example.lyriccaptioner.model.withGlobalFontSizeDelta
+import com.example.lyriccaptioner.model.withGlobalItalicToggled
+import com.example.lyriccaptioner.model.withGlobalOutlineColor
+import com.example.lyriccaptioner.model.withGlobalVerticalPosition
+import com.example.lyriccaptioner.model.withGlobalWidthDelta
 import com.example.lyriccaptioner.model.withUnifiedTextColor
 import com.example.lyriccaptioner.model.validated
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
@@ -75,6 +95,10 @@ import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiMappe
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekKeyUiModel
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekModelsAuthenticationProbe
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementCoordinator
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestion
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionRequest
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionService
+import com.example.lyriccaptioner.processing.enhancement.CaptionCueSuggestionUiState
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementErrorKind
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementException
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementService
@@ -123,6 +147,34 @@ internal fun EditorState.updateDirectEditedCue(
     val updatedCaptions = captions.toMutableList().also { it[index] = updatedCue }
     return DerivedOutputPolicy.invalidateDerivedOutputs(copy(captions = updatedCaptions))
 }
+
+internal fun EditorState.withAppliedCueSuggestion(suggestion: CaptionCueSuggestion): EditorState =
+    updateDirectEditedCue(suggestion.cueId) { cue, _ ->
+        cue.copy(
+            english = suggestion.english,
+            chinese = suggestion.chinese,
+            correctionCandidates = emptyList(),
+            confirmed = false,
+        )
+    }
+
+internal fun EditorState.withScopedDirectPosition(
+    cueId: String,
+    xRatio: Float,
+    yRatio: Float,
+): EditorState = if (layoutEditLocked) {
+    withGlobalDirectPosition(xRatio, yRatio)
+} else {
+    withCueDirectPosition(cueId, xRatio, yRatio)
+}
+
+internal fun EditorState.withScopedDirectWidth(cueId: String, widthRatio: Float): EditorState =
+    if (layoutEditLocked) withGlobalDirectWidth(widthRatio)
+    else withCueDirectWidth(cueId, widthRatio)
+
+internal fun EditorState.withScopedDirectFontSize(cueId: String, fontSizeRatio: Float): EditorState =
+    if (layoutEditLocked) withGlobalDirectFontSize(fontSizeRatio)
+    else withCueDirectFontSize(cueId, fontSizeRatio)
 
 private fun CaptionLayout.minimizedAgainst(defaultLayout: CaptionLayout): CaptionLayoutOverride =
     CaptionLayoutOverride(
@@ -282,6 +334,7 @@ class MainViewModel(
     ),
     private val deepSeekManager: DeepSeekByokManager = createDefaultDeepSeekManager(context),
     private val captionEnhancementService: CaptionEnhancementService? = null,
+    private val captionCueSuggestionService: CaptionCueSuggestionService? = null,
     private val mediaStoreGateway: MediaStoreExportGateway? = null,
 ) : ViewModel() {
     private val appContext = context.applicationContext
@@ -299,10 +352,20 @@ class MainViewModel(
     val deepSeekKeyUi: StateFlow<DeepSeekKeyUiModel> = mutableDeepSeekKeyUi.asStateFlow()
     private val enhancementService: CaptionEnhancementService by lazy {
         captionEnhancementService ?: CaptionEnhancementCoordinator(
-            provider = DeepSeekCaptionEnhancementProvider(deepSeekManager),
+            provider = defaultEnhancementProvider,
             localTranslation = translationModule,
         )
     }
+    private val defaultEnhancementProvider: DeepSeekCaptionEnhancementProvider by lazy {
+        DeepSeekCaptionEnhancementProvider(deepSeekManager)
+    }
+    private val cueSuggestionService: CaptionCueSuggestionService by lazy {
+        captionCueSuggestionService ?: defaultEnhancementProvider
+    }
+    private val mutableCueSuggestion = MutableStateFlow(CaptionCueSuggestionUiState())
+    val cueSuggestion: StateFlow<CaptionCueSuggestionUiState> = mutableCueSuggestion.asStateFlow()
+    private var cueSuggestionJob: Job? = null
+    private var cueSuggestionGeneration = 0L
     private var exportJob: Job? = null
     private var captionWorkflowJob: Job? = null
     private var deepSeekKeyOperationJob: Job? = null
@@ -926,44 +989,84 @@ class MainViewModel(
     }
 
     /** Cue-card API: every write is explicitly bound to the card's stable cue id. */
-    fun updateCueFontSize(cueId: String, delta: Int) = updateCueStyle(cueId) { cue, override ->
-        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-        override.withFontSizeRatio(adjustCaptionFontSizeRatio(resolved.fontSizeRatio, delta))
+    fun updateCueFontSize(cueId: String, delta: Int) {
+        mutableState.update { current ->
+            if (current.styleEditLocked) {
+                current.withGlobalFontSizeDelta(delta)
+            } else current.updateDirectEditedCue(cueId) { cue, snapshot ->
+                val resolved = resolveCaptionStyle(snapshot.defaultCaptionStyle, cue.styleOverride)
+                cue.copy(
+                    styleOverride = (cue.styleOverride ?: CaptionStyleOverride())
+                        .withFontSizeRatio(adjustCaptionFontSizeRatio(resolved.fontSizeRatio, delta)),
+                )
+            }
+        }
     }
 
-    fun updateCueEnglishColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->
-        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-        override.copy(primaryColorHex = normalizeSubtitleColor(colorHex, resolved.primaryColorHex))
+    fun updateCueEnglishColor(cueId: String, colorHex: String) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalEnglishColor(colorHex) }
+        } else updateCueStyle(cueId) { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(primaryColorHex = normalizeSubtitleColor(colorHex, resolved.primaryColorHex))
+        }
     }
 
-    fun updateCueChineseColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->
-        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-        override.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, resolved.secondaryColorHex))
+    fun updateCueChineseColor(cueId: String, colorHex: String) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalChineseColor(colorHex) }
+        } else updateCueStyle(cueId) { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(secondaryColorHex = normalizeSubtitleColor(colorHex, resolved.secondaryColorHex))
+        }
     }
 
-    fun updateCueOutlineColor(cueId: String, colorHex: String) = updateCueStyle(cueId) { cue, override ->
-        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-        override.copy(outlineColorHex = normalizeSubtitleColor(colorHex, resolved.outlineColorHex))
+    fun updateCueOutlineColor(cueId: String, colorHex: String) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalOutlineColor(colorHex) }
+        } else updateCueStyle(cueId) { cue, override ->
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(outlineColorHex = normalizeSubtitleColor(colorHex, resolved.outlineColorHex))
+        }
     }
 
-    fun updateCueFontFamily(cueId: String, fontFamily: String) = updateCueStyle(cueId) { cue, override ->
-        val supported = setOf(SUBTITLE_FONT_SANS, SUBTITLE_FONT_SERIF, SUBTITLE_FONT_MONO)
-        val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
-        override.copy(fontFamily = fontFamily.takeIf { it in supported } ?: resolved.fontFamily)
+    fun updateCueFontFamily(cueId: String, fontFamily: String) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalFontFamily(fontFamily) }
+        } else updateCueStyle(cueId) { cue, override ->
+            val supported = setOf(SUBTITLE_FONT_SANS, SUBTITLE_FONT_SERIF, SUBTITLE_FONT_MONO)
+            val resolved = resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride)
+            override.copy(fontFamily = fontFamily.takeIf { it in supported } ?: resolved.fontFamily)
+        }
     }
 
-    fun toggleCueBold(cueId: String) = updateCueStyle(cueId) { cue, override ->
-        override.copy(bold = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).bold)
+    fun toggleCueBold(cueId: String) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalBoldToggled() }
+        } else updateCueStyle(cueId) { cue, override ->
+            override.copy(bold = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).bold)
+        }
     }
 
-    fun toggleCueItalic(cueId: String) = updateCueStyle(cueId) { cue, override ->
-        override.copy(italic = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).italic)
+    fun toggleCueItalic(cueId: String) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalItalicToggled() }
+        } else updateCueStyle(cueId) { cue, override ->
+            override.copy(italic = !resolveCaptionStyle(state.value.defaultCaptionStyle, cue.styleOverride).italic)
+        }
     }
 
-    fun updateCueAlignment(cueId: String, alignment: CaptionAlignment) =
-        updateCueStyle(cueId) { _, override -> override.copy(alignment = alignment) }
+    fun updateCueAlignment(cueId: String, alignment: CaptionAlignment) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalAlignment(alignment) }
+        } else updateCueStyle(cueId) { _, override -> override.copy(alignment = alignment) }
+    }
 
     fun updateCuePosition(cueId: String, delta: Int) {
+        if (state.value.styleEditLocked) {
+            mutableState.update { it.withGlobalVerticalPosition(delta) }
+            return
+        }
         val current = state.value
         val cue = current.captions.firstOrNull { it.id == cueId } ?: return
         val resolved = resolveCaptionLayout(
@@ -978,19 +1081,22 @@ class MainViewModel(
     }
 
     fun updateCueDirectPosition(cueId: String, xRatio: Float, yRatio: Float) {
-        mutableState.update { it.withCueDirectPosition(cueId, xRatio, yRatio) }
+        mutableState.update { it.withScopedDirectPosition(cueId, xRatio, yRatio) }
     }
 
     fun updateCueDirectWidth(cueId: String, widthRatio: Float) {
-        mutableState.update { it.withCueDirectWidth(cueId, widthRatio) }
+        mutableState.update { it.withScopedDirectWidth(cueId, widthRatio) }
     }
 
     fun updateCueDirectFontSize(cueId: String, fontSizeRatio: Float) {
-        mutableState.update { it.withCueDirectFontSize(cueId, fontSizeRatio) }
+        mutableState.update { it.withScopedDirectFontSize(cueId, fontSizeRatio) }
     }
 
     fun applyCueBasicStyle(cueId: String, preset: CaptionBasicStylePreset) {
-        mutableState.update { it.withCueBasicStyle(cueId, preset) }
+        mutableState.update {
+            if (it.styleEditLocked) it.withGlobalBasicStyle(preset)
+            else it.withCueBasicStyle(cueId, preset)
+        }
     }
 
     fun updateCueUnifiedTextColor(cueId: String, colorHex: String) {
@@ -999,10 +1105,157 @@ class MainViewModel(
 
     fun clearCueStyleOverride(cueId: String) {
         mutableState.update { current ->
-            DerivedOutputPolicy.invalidateDerivedOutputs(
+            if (current.styleEditLocked) current.clearAllCaptionOverrides()
+            else DerivedOutputPolicy.invalidateDerivedOutputs(
                 current.copy(captions = current.captions.clearOverridesForCue(cueId)),
             )
         }
+    }
+
+    fun updateCueWidthFromStylePanel(cueId: String, delta: Float) {
+        val current = state.value
+        if (current.styleEditLocked) {
+            mutableState.update { it.withGlobalWidthDelta(delta) }
+            return
+        }
+        val cue = current.captions.firstOrNull { it.id == cueId } ?: return
+        val resolved = resolveCaptionLayout(current.captionLayout, cue.layoutOverride)
+        mutableState.update { it.withCueDirectWidth(cueId, resolved.widthRatio + delta) }
+    }
+
+    fun toggleLayoutEditLocked() {
+        mutableState.update { it.copy(layoutEditLocked = !it.layoutEditLocked) }
+    }
+
+    fun toggleStyleEditLocked() {
+        mutableState.update { it.copy(styleEditLocked = !it.styleEditLocked) }
+    }
+
+    fun splitCaption(
+        cueId: String,
+        firstEnglish: String,
+        firstChinese: String,
+        secondEnglish: String,
+        secondChinese: String,
+    ) {
+        mutableState.update { current ->
+            runCatching {
+                current.splitCaptionCue(
+                    cueId = cueId,
+                    lines = listOf(
+                        CaptionSplitLine(firstEnglish, firstChinese),
+                        CaptionSplitLine(secondEnglish, secondChinese),
+                    ),
+                )
+            }.getOrElse { error ->
+                current.copy(status = "无法拆分字幕：${error.message ?: "输入无效"}")
+            }
+        }
+    }
+
+    fun splitCaptionDraft(cueId: String) {
+        mutableState.update { it.splitCaptionCueDraft(cueId) }
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+    }
+
+    fun mergeCaption(cueId: String, direction: CaptionMergeDirection) {
+        cueSuggestionJob?.cancel()
+        cueSuggestionJob = null
+        mutableState.update { it.mergeCaptionCue(cueId, direction) }
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+    }
+
+    fun requestCueSuggestion(cueId: String) {
+        if (cueSuggestionJob?.isActive == true) return
+        val snapshot = state.value
+        val expectedCaptions = snapshot.captions
+        val ordered = expectedCaptions.sortedWith(
+            compareBy<CaptionCue> { it.startMs }.thenBy { it.endMs }.thenBy { it.id },
+        )
+        val index = ordered.indexOfFirst { it.id == cueId }
+        if (index < 0) return
+        if (deepSeekKeyUi.value.state != DeepSeekKeyState.CONFIGURED) {
+            mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                cueId = cueId,
+                error = "请先保存并验证 DeepSeek API Key。",
+            )
+            return
+        }
+        val target = ordered[index]
+        val splitSuffix = target.id.substringAfterLast(':', missingDelimiterValue = "")
+        val parentId = target.id.substringBeforeLast(':', missingDelimiterValue = "")
+        val siblingId = when (splitSuffix) {
+            "1" -> "$parentId:2"
+            "2" -> "$parentId:1"
+            else -> null
+        }
+        val sibling = siblingId?.let { id -> ordered.firstOrNull { it.id == id } }
+        val request = CaptionCueSuggestionRequest(
+            jobId = "cue-suggestion-${elapsedRealtimeMs()}",
+            target = target,
+            sibling = sibling,
+            previous = ordered.getOrNull(index - 1),
+            next = ordered.getOrNull(index + 1),
+            batch = ordered,
+        )
+        val generation = ++cueSuggestionGeneration
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+            cueId = cueId,
+            running = true,
+            expectedCaptions = expectedCaptions,
+        )
+        cueSuggestionJob = viewModelScope.launch {
+            try {
+                val suggestion = cueSuggestionService.suggest(request)
+                if (generation != cueSuggestionGeneration) return@launch
+                if (state.value.captions == expectedCaptions) {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                        cueId = cueId,
+                        proposal = suggestion,
+                        expectedCaptions = expectedCaptions,
+                    )
+                } else {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                        cueId = cueId,
+                        error = "字幕已发生变化，请重新增强。",
+                    )
+                }
+            } catch (_: CancellationException) {
+                if (generation == cueSuggestionGeneration) {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+                }
+            } catch (_: Throwable) {
+                if (generation == cueSuggestionGeneration) {
+                    mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                        cueId = cueId,
+                        error = "AI 增强失败，当前字幕未被修改。",
+                    )
+                }
+            } finally {
+                if (generation == cueSuggestionGeneration) cueSuggestionJob = null
+            }
+        }
+    }
+
+    fun applyCueSuggestion() {
+        val suggestionState = cueSuggestion.value
+        val proposal = suggestionState.proposal ?: return
+        if (state.value.captions != suggestionState.expectedCaptions) {
+            mutableCueSuggestion.value = CaptionCueSuggestionUiState(
+                cueId = proposal.cueId,
+                error = "字幕或上下文已发生变化，请重新增强。",
+            )
+            return
+        }
+        mutableState.update { it.withAppliedCueSuggestion(proposal) }
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
+    }
+
+    fun dismissCueSuggestion() {
+        cueSuggestionGeneration += 1L
+        cueSuggestionJob?.cancel()
+        cueSuggestionJob = null
+        mutableCueSuggestion.value = CaptionCueSuggestionUiState()
     }
 
     fun updateSelectedCueEnglishColor(colorHex: String) {

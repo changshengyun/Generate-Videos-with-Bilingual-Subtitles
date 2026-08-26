@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,10 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import com.example.lyriccaptioner.model.CaptionAlignment
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
+import com.example.lyriccaptioner.model.CaptionReadability
+import com.example.lyriccaptioner.model.CaptionReadabilityIssue
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
 
 @Composable
@@ -64,6 +64,12 @@ internal fun CaptionList(
     onAlignmentChanged: (String, CaptionAlignment) -> Unit,
     onPositionChanged: (String, Int) -> Unit,
     onClearOverride: (String) -> Unit,
+    onOpenStyle: (String) -> Unit = {},
+    onSplitDraft: (String) -> Unit = {},
+    onMerge: (String) -> Unit = {},
+    onEnhance: (String) -> Unit = {},
+    aiRunningCueId: String? = null,
+    aiError: String? = null,
     enabled: Boolean,
     editorSnapshot: String,
     modifier: Modifier = Modifier,
@@ -110,6 +116,7 @@ internal fun CaptionList(
                 items(captions, key = { it.id }) { cue ->
                     CaptionCard(
                         cue = cue,
+                        positionLabel = "第 ${captions.indexOf(cue) + 1}/${captions.size} 段",
                         selected = cue.id == selectedId,
                         enabled = enabled,
                         onSelect = { onSelect(cue.id) },
@@ -133,6 +140,12 @@ internal fun CaptionList(
                         onAlignmentChanged = { alignment -> onAlignmentChanged(cue.id, alignment) },
                         onPositionChanged = { delta -> onPositionChanged(cue.id, delta) },
                         onClearOverride = { onClearOverride(cue.id) },
+                        onOpenStyle = { onOpenStyle(cue.id) },
+                        onSplitDraft = { onSplitDraft(cue.id) },
+                        onMerge = { onMerge(cue.id) },
+                        onEnhance = { onEnhance(cue.id) },
+                        aiRunning = aiRunningCueId == cue.id,
+                        aiError = aiError.takeIf { aiRunningCueId == cue.id },
                     )
                 }
             }
@@ -144,6 +157,7 @@ internal fun CaptionList(
 @Composable
 internal fun CaptionCard(
     cue: CaptionCue,
+    positionLabel: String? = null,
     selected: Boolean,
     enabled: Boolean,
     defaultStyle: DefaultCaptionStyle,
@@ -167,8 +181,16 @@ internal fun CaptionCard(
     onAlignmentChanged: (CaptionAlignment) -> Unit,
     onPositionChanged: (Int) -> Unit,
     onClearOverride: () -> Unit,
+    onOpenStyle: () -> Unit = {},
+    onSplitDraft: () -> Unit = {},
+    onMerge: () -> Unit = {},
+    onEnhance: () -> Unit = {},
+    aiRunning: Boolean = false,
+    aiError: String? = null,
 ) {
-    var styleExpanded by remember(cue.id) { mutableStateOf(false) }
+    val readabilityIssues = remember(cue.english, cue.chinese, cue.startMs, cue.endMs) {
+        CaptionReadability.issues(cue)
+    }
     val containerColor = when {
         cue.confirmed -> Color(0xFF1C3328)
         cue.needsReview -> Color(0xFF3A3020)
@@ -194,7 +216,8 @@ internal fun CaptionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "${cue.startMs / 1000.0}s - ${cue.endMs / 1000.0}s",
+                    text = listOfNotNull(positionLabel, "${cue.startMs / 1000.0}s - ${cue.endMs / 1000.0}s")
+                        .joinToString("  "),
                     style = MaterialTheme.typography.labelMedium,
                 )
                 Text(
@@ -202,12 +225,29 @@ internal fun CaptionCard(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
+            if (readabilityIssues.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "cue_readability_warning:${cue.id}" },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    readabilityIssues.forEach { issue ->
+                        Text(
+                            text = readabilityIssueLabel(issue),
+                            color = Color(0xFFFFC857),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            }
             TextButton(
                 modifier = Modifier.semantics { contentDescription = "cue_style_toggle:${cue.id}" },
                 enabled = enabled,
-                onClick = { styleExpanded = !styleExpanded },
+                onClick = onOpenStyle,
             ) {
-                Text(if (styleExpanded) "收起样式" else "样式/位置")
+                Text("样式/位置")
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 TimingControl(
@@ -259,25 +299,28 @@ internal fun CaptionCard(
                     label = { Text("中文字幕") },
                 singleLine = false,
             )
-            if (styleExpanded) {
-                CueStyleControls(
-                    cue = cue,
-                    defaultStyle = defaultStyle,
-                    captionLayout = captionLayout,
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(
+                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "cue_split:${cue.id}" },
                     enabled = enabled,
-                    onFontSmaller = onFontSmaller,
-                    onFontLarger = onFontLarger,
-                    onEnglishColorChanged = onEnglishColorChanged,
-                    onChineseColorChanged = onChineseColorChanged,
-                    onOutlineColorChanged = onOutlineColorChanged,
-                    onFontFamilyChanged = onFontFamilyChanged,
-                    onToggleBold = onToggleBold,
-                    onToggleItalic = onToggleItalic,
-                    onAlignmentChanged = onAlignmentChanged,
-                    onPositionChanged = onPositionChanged,
-                    onClearOverride = onClearOverride,
-                )
+                    onClick = onSplitDraft,
+                ) { Text("拆分字幕") }
+                TextButton(
+                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "cue_merge:${cue.id}" },
+                    enabled = enabled,
+                    onClick = onMerge,
+                ) { Text("合并字幕") }
+                TextButton(
+                    modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "cue_ai_enhance:${cue.id}" },
+                    enabled = enabled && !aiRunning,
+                    onClick = onEnhance,
+                ) { Text(if (aiRunning) "AI 增强中…" else "AI 增强") }
             }
+            aiError?.let { Text(it, color = Color(0xFFFFC857), style = MaterialTheme.typography.labelMedium) }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -325,4 +368,13 @@ internal fun TimingControl(
         TextButton(enabled = enabled, onClick = onEarlier) { Text("−0.1 秒") }
         TextButton(enabled = enabled, onClick = onLater) { Text("＋0.1 秒") }
     }
+}
+
+internal fun readabilityIssueLabel(issue: CaptionReadabilityIssue): String = when (issue) {
+    CaptionReadabilityIssue.ENGLISH_LINE_TOO_LONG -> "英文超过 42 字符"
+    CaptionReadabilityIssue.CHINESE_LINE_TOO_LONG -> "中文超过 16 字"
+    CaptionReadabilityIssue.ENGLISH_READING_TOO_FAST -> "英文阅读速度过快"
+    CaptionReadabilityIssue.CHINESE_READING_TOO_FAST -> "中文阅读速度过快"
+    CaptionReadabilityIssue.DURATION_TOO_SHORT -> "时长少于 0.833 秒"
+    CaptionReadabilityIssue.DURATION_TOO_LONG -> "时长超过 7 秒"
 }

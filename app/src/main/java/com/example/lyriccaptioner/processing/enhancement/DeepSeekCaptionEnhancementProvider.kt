@@ -1,5 +1,6 @@
 package com.example.lyriccaptioner.processing.enhancement
 
+import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.processing.enhancement.byok.DeepSeekByokManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ class DeepSeekCaptionEnhancementProvider(
     private val verifier: SongLyricsCandidateVerifier = SongLyricsCandidateVerifier(),
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
     private val onDiagnosticStage: (DeepSeekEnhancementStage) -> Unit = {},
-) : CaptionEnhancementProvider {
+) : CaptionEnhancementProvider, CaptionCueSuggestionService {
     override suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse {
         currentCoroutineContext().ensureActive()
         val identities = if (request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES) {
@@ -61,6 +62,19 @@ class DeepSeekCaptionEnhancementProvider(
             processingVersion = PROCESSING_VERSION,
             songMatch = lookup.songMatch,
         )
+    }
+
+    override suspend fun suggest(request: CaptionCueSuggestionRequest): CaptionCueSuggestion {
+        currentCoroutineContext().ensureActive()
+        val body = byokManager.withDecryptedKey { apiKey ->
+            executeRequest(
+                apiKey = apiKey,
+                requestBody = DeepSeekCaptionEnhancementJson.cueSuggestionRequestBody(request),
+            )
+        }
+        return parseProviderJson {
+            DeepSeekCaptionEnhancementJson.parseCueSuggestionResponse(body, request)
+        }
     }
 
     private suspend fun findVerifiedLyrics(
@@ -296,6 +310,12 @@ cues 中的 confidence 是该条 Whisper 识别的置信度：数值越低说明
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
 每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent()
+
+        val CUE_SUGGESTION_SYSTEM_PROMPT = """
+你是人工复核阶段的单条字幕建议助手。只依据目标 cue、兄弟 cue、前后 cue 和整批当前字幕，保守修复目标英文并生成自然、忠实、连贯的中文歌词。
+不得搜索、声称或强制采用标准歌词；不得修改其他 cue；不得输出解释。
+只返回 JSON：{"schema_version":"${CaptionCueSuggestionContract.SCHEMA_VERSION}","job_id":"<copy input>","cue":{"cue_id":"<target id>","english":"...","chinese":"..."}}。
+""".trimIndent()
     }
 }
 
@@ -402,6 +422,47 @@ internal object DeepSeekCaptionEnhancementJson {
     }
 
     fun parseResponse(body: String): CaptionEnhancementResponse = parseEnhancementResponse(body)
+
+    fun cueSuggestionRequestBody(request: CaptionCueSuggestionRequest): String = completionRequest(
+        systemPrompt = DeepSeekCaptionEnhancementProvider.CUE_SUGGESTION_SYSTEM_PROMPT,
+        userPayload = mapOf(
+            "schema_version" to CaptionCueSuggestionContract.SCHEMA_VERSION,
+            "job_id" to request.jobId,
+            "target" to suggestionCuePayload(request.target),
+            "sibling" to request.sibling?.let(::suggestionCuePayload),
+            "previous" to request.previous?.let(::suggestionCuePayload),
+            "next" to request.next?.let(::suggestionCuePayload),
+            "batch" to request.batch.map(::suggestionCuePayload),
+        ),
+        maxTokens = 512,
+    )
+
+    fun parseCueSuggestionResponse(
+        body: String,
+        request: CaptionCueSuggestionRequest,
+    ): CaptionCueSuggestion {
+        val root = parseAssistantJson(body)
+        if (root.requiredString("schema_version") != CaptionCueSuggestionContract.SCHEMA_VERSION ||
+            root.requiredString("job_id") != request.jobId
+        ) {
+            throw JsonParseException("Invalid cue suggestion contract")
+        }
+        val cue = root.requiredObject("cue")
+        val cueId = cue.requiredString("cue_id")
+        val english = cue.requiredString("english").trim()
+        val chinese = cue.requiredString("chinese").trim()
+        if (cueId != request.target.id) throw JsonParseException("Cue suggestion target changed")
+        requireIdentifier(cueId, "suggestion cue id")
+        requireText(english, allowBlank = false, "suggested English")
+        requireText(chinese, allowBlank = false, "suggested Chinese")
+        return CaptionCueSuggestion(cueId, english, chinese)
+    }
+
+    private fun suggestionCuePayload(cue: CaptionCue): Map<String, Any> = mapOf(
+        "cue_id" to cue.id,
+        "english" to cue.english,
+        "chinese" to cue.chinese,
+    )
 
     private fun parseAssistantJson(body: String): JsonObject {
         val envelope = StrictJsonParser(body).parseObjectDocument()

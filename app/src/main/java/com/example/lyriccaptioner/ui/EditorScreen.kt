@@ -3,10 +3,12 @@ package com.example.lyriccaptioner.ui
 import android.Manifest
 import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,13 +29,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.lyriccaptioner.MainViewModel
+import com.example.lyriccaptioner.model.CaptionMergeDirection
 import com.example.lyriccaptioner.model.CaptionWorkflowStage
 import com.example.lyriccaptioner.model.ExportState
 import com.example.lyriccaptioner.model.MediaState
@@ -52,7 +58,12 @@ private fun uniqueDocumentName(requestedName: String): String {
 fun EditorScreen(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsState()
     val deepSeekKeyUi by viewModel.deepSeekKeyUi.collectAsState()
+    val cueSuggestion by viewModel.cueSuggestion.collectAsState()
+    var styleCueId by rememberSaveable { mutableStateOf<String?>(null) }
+    var mergeCueId by rememberSaveable { mutableStateOf<String?>(null) }
+    var stylePanelHeightFraction by rememberSaveable { mutableStateOf(0.40f) }
     val context = LocalContext.current
+    val density = LocalDensity.current
     val editorSnapshot = buildEditorSnapshot(state)
     var videoImportMode by remember { mutableStateOf(VideoImportMode.NEW_VIDEO) }
     var activeSection by remember { mutableStateOf(EditorSection.IMPORT.index) }
@@ -100,11 +111,15 @@ fun EditorScreen(viewModel: MainViewModel) {
     ) { uri: Uri? ->
         if (uri != null) viewModel.exportSrt(uri)
     }
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF0D0F12),
-        contentColor = Color(0xFFF4F5F7),
-    ) {
+    BackHandler(enabled = styleCueId != null) { Unit }
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val panelHeight = maxHeight * stylePanelHeightFraction
+        val maxHeightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color(0xFF0D0F12),
+            contentColor = Color(0xFFF4F5F7),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -278,6 +293,15 @@ fun EditorScreen(viewModel: MainViewModel) {
                     onAlignmentChanged = viewModel::updateCueAlignment,
                     onPositionChanged = viewModel::updateCuePosition,
                     onClearOverride = viewModel::clearCueStyleOverride,
+                    onOpenStyle = { cueId ->
+                        viewModel.selectCue(cueId)
+                        styleCueId = cueId
+                    },
+                    onSplitDraft = viewModel::splitCaptionDraft,
+                    onMerge = { cueId -> mergeCueId = cueId },
+                    onEnhance = viewModel::requestCueSuggestion,
+                    aiRunningCueId = if (cueSuggestion.running) cueSuggestion.cueId else null,
+                    aiError = cueSuggestion.error,
                     enabled = !state.isWorking,
                     editorSnapshot = editorSnapshot,
                         modifier = Modifier.weight(0.28f),
@@ -295,6 +319,78 @@ fun EditorScreen(viewModel: MainViewModel) {
                         modifier = Modifier.weight(0.38f),
                     )
                 }
+            }
+        }
+        }
+        val orderedCaptions = state.captions.sortedWith(
+            compareBy({ it.startMs }, { it.endMs }, { it.id }),
+        )
+        styleCueId?.let { cueId ->
+            val cueIndex = orderedCaptions.indexOfFirst { it.id == cueId }
+            val cue = orderedCaptions.getOrNull(cueIndex)
+            if (cue != null) {
+                CueStylePanel(
+                    cue = cue,
+                    index = cueIndex,
+                    count = orderedCaptions.size,
+                    defaultStyle = state.defaultCaptionStyle,
+                    captionLayout = state.captionLayout,
+                    styleEditLocked = state.styleEditLocked,
+                    hasAnyOverride = state.captions.any { it.styleOverride != null || it.layoutOverride != null },
+                    enabled = !state.isWorking,
+                    onCollapse = { styleCueId = null },
+                    onToggleStyleLock = viewModel::toggleStyleEditLocked,
+                    onHeightDrag = { dragAmount ->
+                        stylePanelHeightFraction =
+                            (stylePanelHeightFraction - dragAmount / maxHeightPx).coerceIn(0.33f, 0.50f)
+                    },
+                    onPrevious = {
+                        orderedCaptions.getOrNull(cueIndex - 1)?.let {
+                            styleCueId = it.id
+                            viewModel.selectCue(it.id)
+                        }
+                    },
+                    onNext = {
+                        orderedCaptions.getOrNull(cueIndex + 1)?.let {
+                            styleCueId = it.id
+                            viewModel.selectCue(it.id)
+                        }
+                    },
+                    panelHeight = panelHeight,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth(),
+                    viewModel = viewModel,
+                )
+            }
+        }
+        mergeCueId?.let { cueId ->
+            val cueIndex = orderedCaptions.indexOfFirst { it.id == cueId }
+            if (cueIndex >= 0) {
+                MergeCaptionDialog(
+                    cue = orderedCaptions[cueIndex],
+                    canMergePrevious = cueIndex > 0,
+                    canMergeNext = cueIndex < orderedCaptions.lastIndex,
+                    onMergePrevious = {
+                        viewModel.mergeCaption(cueId, CaptionMergeDirection.PREVIOUS)
+                        mergeCueId = null
+                    },
+                    onMergeNext = {
+                        viewModel.mergeCaption(cueId, CaptionMergeDirection.NEXT)
+                        mergeCueId = null
+                    },
+                    onDismiss = { mergeCueId = null },
+                )
+            }
+        }
+        cueSuggestion.proposal?.let { proposal ->
+            state.captions.firstOrNull { it.id == proposal.cueId }?.let { current ->
+                CueSuggestionDialog(
+                    current = current,
+                    suggestion = cueSuggestion,
+                    onApply = viewModel::applyCueSuggestion,
+                    onDismiss = viewModel::dismissCueSuggestion,
+                )
             }
         }
     }

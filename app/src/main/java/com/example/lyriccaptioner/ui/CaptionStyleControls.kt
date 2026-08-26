@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +30,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.lyriccaptioner.model.CaptionAlignment
+import com.example.lyriccaptioner.model.CaptionBasicStylePreset
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
@@ -36,6 +38,7 @@ import com.example.lyriccaptioner.model.SUBTITLE_FONT_MONO
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SANS
 import com.example.lyriccaptioner.model.SUBTITLE_FONT_SERIF
 import com.example.lyriccaptioner.model.resolveCaptionLayout
+import com.example.lyriccaptioner.model.resolveCaptionStyle
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -131,7 +134,10 @@ internal fun CueStyleControls(
     cue: CaptionCue,
     defaultStyle: DefaultCaptionStyle,
     captionLayout: CaptionLayout,
+    globalMode: Boolean = false,
+    globalHasOverride: Boolean = false,
     enabled: Boolean,
+    onBasicStyle: (CaptionBasicStylePreset) -> Unit = {},
     onFontSmaller: (Int) -> Unit,
     onFontLarger: (Int) -> Unit,
     onEnglishColorChanged: (String) -> Unit,
@@ -142,11 +148,12 @@ internal fun CueStyleControls(
     onToggleItalic: () -> Unit,
     onAlignmentChanged: (CaptionAlignment) -> Unit,
     onPositionChanged: (Int) -> Unit,
+    onWidthChanged: (Float) -> Unit = {},
     onClearOverride: () -> Unit,
 ) {
     val uiState = captionStyleUiState(defaultStyle, cue)
-    val style = uiState.resolved
-    val resolvedLayout = resolveCaptionLayout(captionLayout, cue.layoutOverride)
+    val style = if (globalMode) resolveCaptionStyle(defaultStyle, null) else uiState.resolved
+    val resolvedLayout = if (globalMode) captionLayout else resolveCaptionLayout(captionLayout, cue.layoutOverride)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -165,10 +172,24 @@ internal fun CueStyleControls(
                 },
         )
         Text(
-            text = if (uiState.hasOverride) "已覆盖，未设置字段继承项目默认" else "继承项目默认样式",
+            text = when {
+                globalMode -> "修改项目默认样式；对应的单条覆盖将被清除"
+                uiState.hasOverride -> "已覆盖，未设置字段继承项目默认"
+                else -> "继承项目默认样式"
+            },
             color = Color(0xFF9EA5B1),
             style = MaterialTheme.typography.labelMedium,
         )
+        Text("基础样式", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            directBasicStyles.forEach { (preset, label) ->
+                OutlinedButton(
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    enabled = enabled,
+                    onClick = { onBasicStyle(preset) },
+                ) { Text(label) }
+            }
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             TextButton(enabled = enabled, onClick = { onFontSmaller(-2) }) { Text("A-") }
             TextButton(enabled = enabled, onClick = { onFontLarger(2) }) { Text("A+") }
@@ -196,15 +217,20 @@ internal fun CueStyleControls(
             TextButton(enabled = enabled, onClick = { onPositionChanged(-2) }) { Text("下移") }
             TextButton(enabled = enabled, onClick = { onPositionChanged(2) }) { Text("上移") }
         }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("文本框宽度 ${(resolvedLayout.widthRatio * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+            TextButton(enabled = enabled, onClick = { onWidthChanged(-0.05f) }) { Text("变窄") }
+            TextButton(enabled = enabled, onClick = { onWidthChanged(0.05f) }) { Text("变宽") }
+        }
         SubtitleColorPalette("英文", style.primaryColorHex, enabled, onEnglishColorChanged)
         SubtitleColorPalette("中文", style.secondaryColorHex, enabled, onChineseColorChanged)
         SubtitleColorPalette("描边", style.outlineColorHex, enabled, onOutlineColorChanged)
         OutlinedButton(
             modifier = Modifier.semantics { contentDescription = "clear_cue_style_override:${cue.id}" },
-            enabled = enabled && uiState.hasOverride,
+            enabled = enabled && if (globalMode) globalHasOverride else uiState.hasOverride,
             onClick = onClearOverride,
         ) {
-            Text("清除单条覆盖")
+            Text(if (globalMode) "清除全部字幕覆盖" else "清除单条覆盖")
         }
     }
 }
