@@ -167,12 +167,12 @@ class CaptionEnhancementCoordinatorTest {
                             provider = provider,
                             translator = translator,
                             workerDispatcher = workerDispatcher,
-                        ).enhance("job-cancel-preprocessing", largeCueBatch(4_000)) { state ->
+                        ).enhance("job-cancel-preprocessing", largeCueBatch(4_000), onStateChanged = { state ->
                             states += state
                             if (state == CaptionEnhancementState.RAW_ASR_READY) {
                                 rawReady.complete(Unit)
                             }
-                        }
+                        })
                     } catch (_: CancellationException) {
                         callerReceivedCancellation = true
                     }
@@ -258,9 +258,9 @@ class CaptionEnhancementCoordinatorTest {
                     provider = provider,
                     translator = RecordingTranslator(),
                     workerDispatcher = workerDispatcher,
-                ).enhance("job-large-batch", source) {
+                ).enhance("job-large-batch", source, onStateChanged = {
                     stateThreads += Thread.currentThread().name
-                }
+                })
                 heartbeat.join()
 
                 assertEquals(4_000, outcome.captions.size)

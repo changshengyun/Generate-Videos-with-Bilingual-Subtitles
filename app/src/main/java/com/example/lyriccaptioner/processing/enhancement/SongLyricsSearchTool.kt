@@ -29,8 +29,14 @@ data class SongLyricsCandidate(
         "SongLyricsCandidate(sourceId=$sourceId, title=$title, artist=$artist, lyricLength=${completeEnglishLyrics.length})"
 }
 
-fun interface SongLyricsSearchTool {
+interface SongLyricsSearchTool {
     suspend fun search(candidate: SongIdentityCandidate): List<SongLyricsCandidate>
+
+    /**
+     * Fuzzy full-text lookup used when metadata search cannot find the song, e.g. because the
+     * ASR-mangled title does not exist. Implementations that do not support it return no result.
+     */
+    suspend fun searchByLyricText(queryText: String): List<SongLyricsCandidate> = emptyList()
 }
 
 enum class SongLyricsSearchFailureKind {
@@ -54,11 +60,29 @@ class LrclibSongLyricsSearchTool(
     override suspend fun search(candidate: SongIdentityCandidate): List<SongLyricsCandidate> =
         withContext(Dispatchers.IO) { execute(candidate) }
 
+    override suspend fun searchByLyricText(queryText: String): List<SongLyricsCandidate> =
+        withContext(Dispatchers.IO) { executeByQuery(queryText) }
+
     private fun execute(candidate: SongIdentityCandidate): List<SongLyricsCandidate> {
         validateCandidate(candidate)
         val url = URL(
             "$SEARCH_ENDPOINT?track_name=${encode(candidate.title)}&artist_name=${encode(candidate.artist)}",
         )
+        return execute(url)
+    }
+
+    private fun executeByQuery(queryText: String): List<SongLyricsCandidate> {
+        val query = queryText.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .joinToString(" ")
+            .take(MAX_QUERY_TEXT_LENGTH)
+            .trim()
+        if (query.isEmpty()) return emptyList()
+        return execute(URL("$SEARCH_ENDPOINT?q=${encode(query)}"))
+    }
+
+    private fun execute(url: URL): List<SongLyricsCandidate> {
         check(url.protocol == "https" && url.host == SEARCH_HOST) { "Unexpected lyrics search origin." }
         val connection = try {
             connectionFactory(url)
@@ -177,6 +201,7 @@ class LrclibSongLyricsSearchTool(
         const val MAX_RESPONSE_BYTES = 2 * 1_024 * 1_024
         const val MAX_CANDIDATES = 20
         const val MAX_METADATA_LENGTH = 300
+        const val MAX_QUERY_TEXT_LENGTH = 300
         const val MAX_LYRICS_LENGTH = 250_000
         const val MIN_COMPLETE_LYRIC_LINES = 3
     }

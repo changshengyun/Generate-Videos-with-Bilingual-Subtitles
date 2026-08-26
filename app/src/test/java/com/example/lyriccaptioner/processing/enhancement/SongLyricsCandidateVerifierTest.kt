@@ -156,6 +156,55 @@ class SongLyricsCandidateVerifierTest {
         assertNull(verifier.verify(cues(canonicalLines().take(2)), candidate(canonicalLines())))
     }
 
+    @Test
+    fun tinyBatchToleratesOneUnmatchedCue() {
+        val lines = canonicalLines().take(3)
+        val threeCues = cues(
+            listOf(
+                lines[0],
+                lines[1],
+                "Completely unrelated mumbled background noise",
+            ),
+        )
+
+        val result = verifier.verify(threeCues, candidate(lines))
+
+        assertNotNull(result)
+        requireNotNull(result)
+        assertEquals(2, result.metrics.matchedCueCount)
+        assertTrue(result.metrics.confidence >= SongLyricsCandidateVerifier.SMALL_BATCH_MIN_CONFIDENCE)
+    }
+
+    @Test
+    fun tinyBatchStillRejectsMostlyContradictoryCues() {
+        val lines = canonicalLines().take(3)
+        val threeCues = cues(
+            listOf(
+                lines[0],
+                "Thunder rolls across the mountain",
+                "Strangers wait beside the station",
+            ),
+        )
+
+        assertNull(verifier.verify(threeCues, candidate(lines)))
+    }
+
+    @Test
+    fun fiveCueBatchWithTwoContradictoryCuesIsStillRejected() {
+        val lines = canonicalLines().take(5)
+        val mixed = cues(
+            listOf(
+                lines[0],
+                lines[1],
+                lines[2],
+                "Thunder rolls across the mountain",
+                "Strangers wait beside the station",
+            ),
+        )
+
+        assertNull(verifier.verify(mixed, candidate(lines)))
+    }
+
     private fun assertConfirmedAllCues(result: VerifiedSongLyrics?, expectedCueCount: Int) {
         assertNotNull(result)
         requireNotNull(result)

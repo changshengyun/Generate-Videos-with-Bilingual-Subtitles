@@ -11,9 +11,10 @@ data class CaptionEnhancementRequest(
     val jobId: String,
     val schemaVersion: String,
     val cues: List<CaptionEnhancementRequestCue>,
+    val mediaDurationMs: Long? = null,
 ) {
     override fun toString(): String =
-        "CaptionEnhancementRequest(jobId=$jobId, schemaVersion=$schemaVersion, cueCount=${cues.size})"
+        "CaptionEnhancementRequest(jobId=$jobId, schemaVersion=$schemaVersion, cueCount=${cues.size}, mediaDurationMs=$mediaDurationMs)"
 }
 
 data class CaptionEnhancementRequestCue(
@@ -21,6 +22,7 @@ data class CaptionEnhancementRequestCue(
     val startMs: Long,
     val endMs: Long,
     val rawEnglish: String,
+    val confidence: Float? = null,
 )
 
 data class CaptionEnhancementResponse(
@@ -52,6 +54,7 @@ interface CaptionEnhancementService {
         jobId: String,
         captions: List<CaptionCue>,
         onStateChanged: (CaptionEnhancementState) -> Unit = {},
+        mediaDurationMs: Long? = null,
     ): CaptionEnhancementOutcome
 }
 

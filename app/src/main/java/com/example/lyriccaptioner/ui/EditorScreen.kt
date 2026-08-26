@@ -95,6 +95,11 @@ fun EditorScreen(viewModel: MainViewModel) {
     ) { uri: Uri? ->
         if (uri != null) viewModel.saveProjectArchive(uri)
     }
+    val srtCreator = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/x-subrip"),
+    ) { uri: Uri? ->
+        if (uri != null) viewModel.exportSrt(uri)
+    }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color(0xFF0D0F12),
@@ -236,6 +241,9 @@ fun EditorScreen(viewModel: MainViewModel) {
                         ActionRow {
                             SecondaryAction("保存项目", state.captions.isNotEmpty() && !state.isWorking, accessibilityId = "save_project") {
                                 projectCreator.launch(uniqueDocumentName("lyric-captioner-project.lcp"))
+                            }
+                            SecondaryAction("导出SRT字幕", state.captions.isNotEmpty() && !state.isWorking, accessibilityId = "export_srt") {
+                                srtCreator.launch(uniqueDocumentName("lyric-captioner-subtitles.srt"))
                             }
                             if (state.exportState == ExportState.RUNNING) {
                                 SecondaryAction("取消导出", true, onClick = viewModel::cancelExport)

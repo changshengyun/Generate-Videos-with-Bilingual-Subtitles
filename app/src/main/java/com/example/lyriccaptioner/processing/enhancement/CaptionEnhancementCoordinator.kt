@@ -41,13 +41,14 @@ class CaptionEnhancementCoordinator(
     suspend fun enhance(
         jobId: String,
         captions: List<CaptionCue>,
-    ): CaptionEnhancementOutcome = enhance(jobId, captions, {})
+    ): CaptionEnhancementOutcome = enhance(jobId, captions, {}, null)
 
     override
     suspend fun enhance(
         jobId: String,
         captions: List<CaptionCue>,
         onStateChanged: (CaptionEnhancementState) -> Unit,
+        mediaDurationMs: Long?,
     ): CaptionEnhancementOutcome {
         // Keep this snapshot untouched throughout the operation. TranslationModule already
         // performs an atomic batch commit, and passing this list prevents cloud corrections from
@@ -56,7 +57,11 @@ class CaptionEnhancementCoordinator(
         val (originalCaptions, request) = try {
             withContext(workerDispatcher) {
                 val snapshot = captions.toList()
-                snapshot to mapper.map(jobId = jobId, captions = snapshot)
+                snapshot to mapper.map(
+                    jobId = jobId,
+                    captions = snapshot,
+                    mediaDurationMs = mediaDurationMs,
+                )
             }
         } catch (_: CancellationException) {
             emit(CaptionEnhancementState.CANCELLED, onStateChanged)

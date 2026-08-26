@@ -7,8 +7,12 @@ class CaptionEnhancementRequestMapper {
     fun map(
         jobId: String,
         captions: List<CaptionCue>,
+        mediaDurationMs: Long? = null,
     ): CaptionEnhancementRequest {
         requireIdentifier(jobId, "job id")
+        if (mediaDurationMs != null && mediaDurationMs < 0L) {
+            throw CaptionEnhancementValidationException("Invalid media duration.")
+        }
         if (captions.isEmpty()) {
             throw CaptionEnhancementValidationException("Caption enhancement request must contain at least one cue.")
         }
@@ -21,12 +25,17 @@ class CaptionEnhancementRequestMapper {
             }
             requireTimeline(cue.startMs, cue.endMs)
             requireText(cue.english, allowBlank = false, "raw English")
+            val confidence = cue.confidence
+            if (!confidence.isFinite() || confidence !in 0f..1f) {
+                throw CaptionEnhancementValidationException("Invalid cue confidence.")
+            }
 
             CaptionEnhancementRequestCue(
                 id = cue.id,
                 startMs = cue.startMs,
                 endMs = cue.endMs,
                 rawEnglish = cue.english,
+                confidence = confidence,
             )
         }
 
@@ -34,6 +43,7 @@ class CaptionEnhancementRequestMapper {
             jobId = jobId,
             schemaVersion = CaptionEnhancementContract.SCHEMA_VERSION,
             cues = requestCues,
+            mediaDurationMs = mediaDurationMs,
         )
     }
 }

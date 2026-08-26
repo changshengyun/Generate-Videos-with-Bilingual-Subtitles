@@ -74,6 +74,12 @@ class CaptionEnhancementResponseValidator {
             if (raw.id != cue.id || raw.startMs != cue.startMs || raw.endMs != cue.endMs || raw.english != cue.rawEnglish) {
                 reject("Request does not match the local Whisper batch.")
             }
+            if (cue.confidence != null && cue.confidence != raw.confidence) {
+                reject("Request cue confidence does not match the local Whisper batch.")
+            }
+        }
+        if (request.mediaDurationMs != null && request.mediaDurationMs < 0L) {
+            reject("Invalid media duration.")
         }
     }
 

@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.lyriccaptioner.captions.CaptionTimingEditor
 import com.example.lyriccaptioner.captions.LyricLineAligner
 import com.example.lyriccaptioner.captions.SrtParser
+import com.example.lyriccaptioner.captions.SrtWriter
 import com.example.lyriccaptioner.model.CaptionCue
 import com.example.lyriccaptioner.model.clearOverridesForCue
 import com.example.lyriccaptioner.model.CaptionAlignment
@@ -450,7 +451,7 @@ class MainViewModel(
                 val outcome = runner.run(
                     recognize = { onStatus -> module.recognize(uri, onStatus) },
                     enhance = { captions, onStateChanged ->
-                        enhancementService.enhance(jobId, captions, onStateChanged)
+                        enhancementService.enhance(jobId, captions, onStateChanged, snapshot.videoDurationMs?.takeIf { it > 0L })
                     },
                     onStageChanged = { stage ->
                         mutableState.update {
@@ -1055,6 +1056,36 @@ class MainViewModel(
             DerivedOutputPolicy.invalidateDerivedOutputs(
                 current.copy(captions = current.captions.clearOverridesForCue(selectedId)),
             )
+        }
+    }
+
+    fun exportSrt(destinationUri: Uri) {
+        val snapshot = currentSnapshot()
+        if (snapshot.captions.isEmpty()) {
+            Log.w(LOG_TAG, "event=srt_export_rejected reason=no_captions destinationUntouched=true")
+            mutableState.update { it.copy(status = "No subtitles available. Import or create subtitles before exporting SRT.") }
+            return
+        }
+        viewModelScope.launch {
+            mutableState.update { it.copy(isWorking = true, status = "Exporting SRT subtitles...") }
+            val saved = withContext(Dispatchers.IO) {
+                try {
+                    val content = SrtWriter().write(snapshot.captions)
+                    appContext.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                        output.write(content.toByteArray(Charsets.UTF_8))
+                    } ?: error("The selected destination cannot be opened.")
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (saved) {
+                Log.i(LOG_TAG, "event=srt_export_completed captionCount=${snapshot.captions.size}")
+                mutableState.update { it.copy(isWorking = false, status = "SRT subtitles saved.") }
+            } else {
+                Log.w(LOG_TAG, "event=srt_export_failed")
+                mutableState.update { it.copy(isWorking = false, status = "Could not save SRT subtitles.") }
+            }
         }
     }
 

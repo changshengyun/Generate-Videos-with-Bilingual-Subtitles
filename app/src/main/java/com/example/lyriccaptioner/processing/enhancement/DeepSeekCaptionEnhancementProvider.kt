@@ -67,10 +67,6 @@ class DeepSeekCaptionEnhancementProvider(
         request: CaptionEnhancementRequest,
         identities: List<SongIdentityCandidate>,
     ): LyricsLookupOutcome {
-        if (identities.isEmpty()) {
-            return LyricsLookupOutcome(songMatch = SongMatch(status = SongMatchStatus.NOT_FOUND))
-        }
-
         var best: VerifiedSongLyrics? = null
         var foundLyrics = false
         var searchUnavailable = false
@@ -98,6 +94,30 @@ class DeepSeekCaptionEnhancementProvider(
             }
         }
 
+        // Metadata search can miss the real song when the ASR-mangled title does not exist
+        // (e.g. "Sadie of stars" instead of "City of Stars"). Retry with raw lyric text so the
+        // correct track can still be found and verified; the DP verifier stays the gatekeeper.
+        if (best == null && !foundLyrics && !searchUnavailable &&
+            request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES
+        ) {
+            currentCoroutineContext().ensureActive()
+            val candidates = try {
+                searchTool.searchByLyricText(lyricTextFallbackQuery(request))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (candidates.isNotEmpty()) foundLyrics = true
+            onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_VERIFY)
+            candidates.forEach { candidate ->
+                val verified = verifier.verify(request.cues, candidate) ?: return@forEach
+                if (best == null || verified.metrics.confidence > requireNotNull(best).metrics.confidence) {
+                    best = verified
+                }
+            }
+        }
+
         best?.let { verified ->
             onDiagnosticStage(DeepSeekEnhancementStage.VERIFIED_LYRICS_SELECTED)
             return LyricsLookupOutcome(
@@ -112,8 +132,8 @@ class DeepSeekCaptionEnhancementProvider(
             )
         }
 
-        val firstIdentity = identities.first()
-        return if (foundLyrics || searchUnavailable) {
+        val firstIdentity = identities.firstOrNull()
+        return if (firstIdentity != null && (foundLyrics || searchUnavailable)) {
             LyricsLookupOutcome(
                 unconfirmedIdentity = firstIdentity,
                 songMatch = SongMatch(
@@ -221,21 +241,32 @@ class DeepSeekCaptionEnhancementProvider(
         val songMatch: SongMatch,
     )
 
+    /** Collapse the raw ASR lines into one bounded query string for the lyric-text fallback. */
+    internal fun lyricTextFallbackQuery(request: CaptionEnhancementRequest): String =
+        request.cues.map { it.rawEnglish }
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(FALLBACK_QUERY_MAX_CHARS)
+
     companion object {
         const val ENDPOINT = "https://api.deepseek.com/chat/completions"
         const val MODEL = "deepseek-v4-pro"
-        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v3"
+        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v4"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
         const val MAX_SONG_CANDIDATES = 2
         const val LRCLIB_BATCH_DELAY_MS = 250L
+        const val FALLBACK_QUERY_MAX_CHARS = 300
 
         val IDENTIFICATION_SYSTEM_PROMPT = """
 输入是同一首英文歌曲的整批 Whisper 识别字幕，内容可能包含错词、漏词和错误断句。
 1.必须综合整批字幕中的多条歌词识别对应歌曲，不能只凭单句判断，也不能声称候选已经确认。
-2.按可能性从高到低返回最多 $MAX_SONG_CANDIDATES 个候选，每个候选必须包含非空的英文歌名和歌手。
-3.如果整批证据不足或内容无法识别为歌词，返回空 candidates 数组，不得编造候选。
+2.Whisper 可能把歌词中的关键词或歌名本身识别错（例如把歌名唱词听成形近词）。识别时必须依据整批歌词的语义、意象、句式和用词推断真实歌曲；不得直接照抄 Whisper 原文中疑似歌名的字面拼写作为候选歌名。
+3.单条字幕可能包含同一歌曲的两句歌词，这不是异常输入，综合判断时按两句理解。
+4.按可能性从高到低返回最多 $MAX_SONG_CANDIDATES 个候选，每个候选必须包含非空的英文歌名和歌手。
+5.如果整批证据不足或内容无法识别为歌词，返回空 candidates 数组，不得编造候选。
 只返回 JSON，格式必须严格为：{"candidates":[{"title":"...","artist":"..."}]}。
 """.trimIndent()
 
@@ -247,6 +278,8 @@ class DeepSeekCaptionEnhancementProvider(
 3.保持意象、情绪、语气、代词、跨行语义和重复副歌译法一致；不得为了押韵改变原意，不得输出解释、注释或歌词以外的内容。相同 canonical 英文歌词必须返回完全相同的中文。
 只能使用请求中实际提供并经过验证的歌词内容。只有请求明确提供了经过验证的网易云中英对照歌词及来源时，才能采用并声称为网易云版本；未提供时不得凭模型记忆编造或冒充网易云译文。
 不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+单条 raw_english 可能包含同一歌曲的两句歌词。对这类 cue，corrected_english 应在保持该 cue 原有时间范围不变的前提下包含两句完整英文歌词，两句之间用一个换行符分隔；对应的 chinese 同样输出两句中文并用一个换行符分隔，两句中文必须与两句英文一一对应。其余 cue 仍然只输出单行。
+cues 中的 confidence 是该条 Whisper 识别的置信度：数值越低说明该条错得越多，纠错幅度可以越大；confidence 高的条目应尽量保守。media_duration_ms 是素材总时长。
 只返回 JSON，格式必须严格为：
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
 每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
@@ -257,6 +290,8 @@ class DeepSeekCaptionEnhancementProvider(
 必须先综合整批 Whisper 英文字幕进行保守纠错，确定全部 corrected_english；完成后再根据整批上下文生成自然的中文歌词。
 中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
 不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+单条 raw_english 可能包含同一歌曲的两句歌词。对这类 cue，corrected_english 应在保持该 cue 原有时间范围不变的前提下包含两句完整英文歌词，两句之间用一个换行符分隔；对应的 chinese 同样输出两句中文并用一个换行符分隔，两句中文必须与两句英文一一对应。其余 cue 仍然只输出单行。
+cues 中的 confidence 是该条 Whisper 识别的置信度：数值越低说明该条错得越多，纠错幅度可以越大；confidence 高的条目应尽量保守。media_duration_ms 是素材总时长。
 只返回 JSON，格式必须严格为：
 {"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"$PROCESSING_VERSION","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
 每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
@@ -317,7 +352,7 @@ internal object DeepSeekCaptionEnhancementJson {
                 DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT
             },
             userPayload = context,
-            maxTokens = (request.cues.size * 192).coerceIn(768, 16_384),
+            maxTokens = (request.cues.size * 192).coerceIn(1_024, 16_384),
         )
     }
 
@@ -394,17 +429,24 @@ internal object DeepSeekCaptionEnhancementJson {
         ),
     )
 
-    private fun requestPayload(request: CaptionEnhancementRequest): Map<String, Any> = mapOf(
-        "schema_version" to request.schemaVersion,
-        "job_id" to request.jobId,
-        "processing_version" to DeepSeekCaptionEnhancementProvider.PROCESSING_VERSION,
-        "cues" to request.cues.map { cue ->
-            mapOf(
+    private fun requestPayload(request: CaptionEnhancementRequest): Map<String, Any> {
+        val cues = request.cues.map { cue ->
+            val cuePayload = mutableMapOf<String, Any>(
                 "id" to cue.id,
                 "start_ms" to cue.startMs,
                 "end_ms" to cue.endMs,
                 "raw_english" to cue.rawEnglish,
             )
-        },
-    )
+            cue.confidence?.let { cuePayload["confidence"] = it }
+            cuePayload
+        }
+        val payload = mutableMapOf<String, Any>(
+            "schema_version" to request.schemaVersion,
+            "job_id" to request.jobId,
+            "processing_version" to DeepSeekCaptionEnhancementProvider.PROCESSING_VERSION,
+            "cues" to cues,
+        )
+        request.mediaDurationMs?.let { payload["media_duration_ms"] = it }
+        return payload
+    }
 }

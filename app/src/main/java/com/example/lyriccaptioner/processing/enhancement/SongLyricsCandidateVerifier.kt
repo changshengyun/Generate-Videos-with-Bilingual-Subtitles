@@ -48,15 +48,38 @@ class SongLyricsCandidateVerifier {
         val alignment = align(eligible, lyricTokens)
         val allSimilarities = eligible.map { alignment[it.id]?.similarity ?: 0.0 }.sorted()
         val matchedCueCount = alignment.size
-        val minimumMatches = max(MIN_MATCHED_CUES, ceil(eligible.size * MIN_COVERAGE).toInt())
+
+        // Tiny batches (a short clip with only a few cues) get their own threshold tier: the DP
+        // matcher may legitimately miss one cue (e.g. one long cue carrying two lyric lines), so
+        // a full-match requirement turns every 3-cue verification into zero tolerance. Larger
+        // batches keep the frozen thresholds below and the zero-valued unmatched evidence.
+        val smallBatch = eligible.size <= SMALL_BATCH_MAX_ELIGIBLE_CUES
+        val minimumMatches = if (smallBatch) {
+            max(SMALL_BATCH_MIN_MATCHED_CUES, eligible.size - 1)
+        } else {
+            max(MIN_MATCHED_CUES, ceil(eligible.size * MIN_COVERAGE).toInt())
+        }
         if (matchedCueCount < minimumMatches) return null
 
         val coverage = matchedCueCount.toDouble() / eligible.size
-        val average = allSimilarities.average()
-        val median = median(allSimilarities)
+        // For tiny batches similarity statistics cover matched cues only: one unmatched cue out
+        // of three would otherwise drag the average far below any safe threshold and reintroduce
+        // the zero tolerance this tier is meant to remove. Larger batches keep unmatched cues as
+        // zero-valued negative evidence in the averages and medians.
+        val scoredSimilarities = if (smallBatch) {
+            allSimilarities.filter { it >= MIN_CUE_SIMILARITY }
+        } else {
+            allSimilarities
+        }
+        val average = scoredSimilarities.average()
+        val median = median(scoredSimilarities)
         val confidence = 0.55 * average + 0.25 * median + 0.20 * coverage
-        if (coverage < MIN_COVERAGE || average < MIN_AVERAGE_SIMILARITY ||
-            median < MIN_MEDIAN_SIMILARITY || confidence < MIN_CONFIDENCE
+        val minCoverage = if (smallBatch) SMALL_BATCH_MIN_COVERAGE else MIN_COVERAGE
+        val minAverage = if (smallBatch) SMALL_BATCH_MIN_AVERAGE_SIMILARITY else MIN_AVERAGE_SIMILARITY
+        val minMedian = if (smallBatch) SMALL_BATCH_MIN_MEDIAN_SIMILARITY else MIN_MEDIAN_SIMILARITY
+        val minConfidence = if (smallBatch) SMALL_BATCH_MIN_CONFIDENCE else MIN_CONFIDENCE
+        if (coverage < minCoverage || average < minAverage ||
+            median < minMedian || confidence < minConfidence
         ) {
             return null
         }
@@ -231,6 +254,15 @@ class SongLyricsCandidateVerifier {
         const val MIN_AVERAGE_SIMILARITY = 0.78
         const val MIN_MEDIAN_SIMILARITY = 0.78
         const val MIN_CONFIDENCE = 0.82
+
+        /** Batches with at most this many eligible cues use the small-batch tier below. */
+        const val SMALL_BATCH_MAX_ELIGIBLE_CUES = 5
+        const val SMALL_BATCH_MIN_MATCHED_CUES = 2
+        const val SMALL_BATCH_MIN_COVERAGE = 0.60
+        const val SMALL_BATCH_MIN_AVERAGE_SIMILARITY = 0.75
+        const val SMALL_BATCH_MIN_MEDIAN_SIMILARITY = 0.72
+        const val SMALL_BATCH_MIN_CONFIDENCE = 0.76
+
         const val MAX_LYRIC_LINES = 5_000
         const val MAX_LYRIC_TOKENS = 50_000
         const val MAX_LINES_PER_SPAN = 2

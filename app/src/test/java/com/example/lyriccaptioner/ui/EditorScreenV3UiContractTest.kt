@@ -73,7 +73,7 @@ class EditorScreenV3UiContractTest {
     }
 
     @Test
-    fun productUiExposesOneCompleteCaptionWorkflowAndGalleryVideoExport() {
+    fun productUiExposesOneCompleteCaptionWorkflowGalleryVideoExportAndBilingualSrtExport() {
         val source = editorScreenSource()
 
         assertTrue(source.contains("PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)"))
@@ -87,7 +87,12 @@ class EditorScreenV3UiContractTest {
         assertFalse(source.contains("viewModel::translateMissingChinese"))
         assertFalse(source.contains("createCaptionsFromLyrics"))
         assertFalse(source.contains("exportSidecarSrt"))
-        assertFalse(source.contains("CreateDocument(\"application/x-subrip\")"))
+        assertTrue(
+            "the export panel must expose a bilingual SRT subtitle export",
+            source.contains("CreateDocument(\"application/x-subrip\")"),
+        )
+        assertTrue(source.contains("viewModel.exportSrt("))
+        assertTrue(source.contains("accessibilityId = \"export_srt\""))
     }
 
     @Test

@@ -23,8 +23,19 @@ class SrtParser {
         val startMs = parseTimestamp(timing[0]) ?: return null
         val endMs = parseTimestamp(timing[1]) ?: return null
         val textLines = lines.drop(2)
-        val english = textLines.firstOrNull().orEmpty()
-        val chinese = textLines.drop(1).joinToString("\n")
+        // A merged cue may carry two English lines plus two Chinese lines, so the legacy
+        // "first line is English" reading loses text on re-import. Split on the first
+        // Chinese-dominant line; blocks without any Chinese line keep the legacy reading.
+        val chineseStart = textLines.indexOfFirst(::looksChinese)
+        val english: String
+        val chinese: String
+        if (chineseStart >= 0) {
+            english = textLines.subList(0, chineseStart).joinToString("\n")
+            chinese = textLines.subList(chineseStart, textLines.size).joinToString("\n")
+        } else {
+            english = textLines.firstOrNull().orEmpty()
+            chinese = textLines.drop(1).joinToString("\n")
+        }
 
         return CaptionCue(
             id = "srt-$index",
@@ -35,6 +46,12 @@ class SrtParser {
             confidence = 1.0f,
             confirmed = english.isNotBlank() && chinese.isNotBlank(),
         )
+    }
+
+    private fun looksChinese(line: String): Boolean {
+        val cjk = line.count { it in '\u4E00'..'\u9FFF' }
+        val latin = line.count { it in 'a'..'z' || it in 'A'..'Z' }
+        return cjk > 0 && cjk >= latin
     }
 
     private fun parseTimestamp(value: String): Long? {

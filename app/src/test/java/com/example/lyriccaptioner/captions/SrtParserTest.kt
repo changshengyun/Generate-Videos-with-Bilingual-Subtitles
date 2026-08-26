@@ -1,5 +1,6 @@
 package com.example.lyriccaptioner.captions
 
+import com.example.lyriccaptioner.model.CaptionCue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,5 +53,39 @@ class SrtParserTest {
         """.trimIndent()
 
         assertTrue(SrtParser().parse(raw).isEmpty())
+    }
+
+    @Test
+    fun roundTripsMergedCuesWithTwoLinesPerLanguage() {
+        val cue = CaptionCue(
+            id = "cue-0",
+            startMs = 1_000L,
+            endMs = 5_000L,
+            english = "City of stars\nAre you shining just for me",
+            chinese = "星光之城\n你是否只为我闪耀",
+            confidence = 0.9f,
+        )
+
+        val parsed = SrtParser().parse(SrtWriter().write(listOf(cue))).single()
+
+        assertEquals(cue.english, parsed.english)
+        assertEquals(cue.chinese, parsed.chinese)
+        assertTrue(parsed.confirmed)
+    }
+
+    @Test
+    fun chineseOnlyBlocksKeepEnglishEmpty() {
+        val raw = """
+            1
+            00:00:01,500 --> 00:00:03,000
+            星光之城
+            你是否只为我闪耀
+        """.trimIndent()
+
+        val cue = SrtParser().parse(raw).single()
+
+        assertEquals("", cue.english)
+        assertEquals("星光之城\n你是否只为我闪耀", cue.chinese)
+        assertFalse(cue.confirmed)
     }
 }

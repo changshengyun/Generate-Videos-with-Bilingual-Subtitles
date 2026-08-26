@@ -76,6 +76,42 @@ class SongLyricsSearchToolTest {
         assertFalse(error.stackTraceToString().contains(privateBody))
     }
 
+    @Test
+    fun lyricTextSearchCollapsesLinesIntoBoundedQQuery() = runBlocking {
+        val response = encodeJson(
+            listOf(
+                mapOf(
+                    "id" to 5678,
+                    "trackName" to "Example Song",
+                    "artistName" to "Example Artist",
+                    "instrumental" to false,
+                    "plainLyrics" to "first complete line\nsecond complete line\nthird complete line",
+                ),
+            ),
+        )
+        var requestedUrl: URL? = null
+        val tool = LrclibSongLyricsSearchTool { url ->
+            requestedUrl = url
+            FakeConnection(200, response)
+        }
+
+        val result = tool.searchByLyricText(" City of stars\n\nAre you shining just for me  ")
+
+        assertEquals("https", requestedUrl?.protocol)
+        assertEquals("lrclib.net", requestedUrl?.host)
+        assertTrue(requestedUrl?.query?.startsWith("q=City+of+stars+Are+you+shining+just+for+me") == true)
+        assertEquals("lrclib:5678", result.single().sourceId)
+    }
+
+    @Test
+    fun blankLyricTextQuerySkipsTheRequest() = runBlocking {
+        val tool = LrclibSongLyricsSearchTool { _ ->
+            throw AssertionError("No request should be made for a blank query.")
+        }
+
+        assertTrue(tool.searchByLyricText("   \n  ").isEmpty())
+    }
+
     private class FakeConnection(
         private val status: Int,
         private val response: String,

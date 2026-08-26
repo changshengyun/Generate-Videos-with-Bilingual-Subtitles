@@ -63,7 +63,9 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertTrue(body.contains("相同 canonical 英文歌词必须返回完全相同的中文"))
         assertTrue(body.contains("corrected_english"))
         assertTrue(body.contains("coherent Chinese lyric line"))
-        assertTrue(body.contains("\"max_tokens\":960"))
+        assertTrue(body.contains("单条 raw_english 可能包含同一歌曲的两句歌词"))
+        assertTrue(body.contains("cues 中的 confidence 是该条 Whisper 识别的置信度"))
+        assertTrue(body.contains("\"max_tokens\":1024"))
     }
 
     @Test
@@ -82,6 +84,23 @@ class DeepSeekCaptionEnhancementProviderTest {
     }
 
     @Test
+    fun requestPayloadCarriesConfidenceAndMediaDuration() {
+        val request = CaptionEnhancementRequest(
+            jobId = "job-1",
+            schemaVersion = CaptionEnhancementContract.SCHEMA_VERSION,
+            cues = listOf(
+                CaptionEnhancementRequestCue("cue-1", 0L, 1_000L, "Hello from the quiet street", 0.87f),
+            ),
+            mediaDurationMs = 18_716L,
+        )
+
+        val body = DeepSeekCaptionEnhancementJson.songIdentificationRequestBody(request)
+
+        assertTrue(body.contains("\\\"confidence\\\":0.87"))
+        assertTrue(body.contains("\\\"media_duration_ms\\\":18716"))
+    }
+
+    @Test
     fun unconfirmedPromptRemainsConservativeAndDoesNotClaimNeteaseVersion() {
         assertEquals(
             """
@@ -89,8 +108,10 @@ class DeepSeekCaptionEnhancementProviderTest {
 必须先综合整批 Whisper 英文字幕进行保守纠错，确定全部 corrected_english；完成后再根据整批上下文生成自然的中文歌词。
 中文应忠实表达歌曲原意而不是逐词直译，并保持意象、情绪、语气、代词、跨行语义和重复内容一致；不能把每条字幕孤立翻译，也不得声称为网易云版本。
 不得增加、删除、拆分、合并、重排字幕或修改时间。每个 cue id 和时间戳必须原样保留。
+单条 raw_english 可能包含同一歌曲的两句歌词。对这类 cue，corrected_english 应在保持该 cue 原有时间范围不变的前提下包含两句完整英文歌词，两句之间用一个换行符分隔；对应的 chinese 同样输出两句中文并用一个换行符分隔，两句中文必须与两句英文一一对应。其余 cue 仍然只输出单行。
+cues 中的 confidence 是该条 Whisper 识别的置信度：数值越低说明该条错得越多，纠错幅度可以越大；confidence 高的条目应尽量保守。media_duration_ms 是素材总时长。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v3","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v4","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
 每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent(),
             DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT,
@@ -128,10 +149,12 @@ class DeepSeekCaptionEnhancementProviderTest {
         val byokManager = FakeByokManager()
         val provider = DeepSeekCaptionEnhancementProvider(
             byokManager = byokManager,
-            searchTool = SongLyricsSearchTool { identity ->
-                assertFalse(byokManager.plaintextKeyInScope)
-                searched += identity
-                listOf(SongLyricsCandidate("lrclib:42", "Quiet Street", "Example Artist", lyrics()))
+            searchTool = object : SongLyricsSearchTool {
+                override suspend fun search(identity: SongIdentityCandidate): List<SongLyricsCandidate> {
+                    assertFalse(byokManager.plaintextKeyInScope)
+                    searched += identity
+                    return listOf(SongLyricsCandidate("lrclib:42", "Quiet Street", "Example Artist", lyrics()))
+                }
             },
             connectionFactory = { connections.removeFirst() },
             onDiagnosticStage = stages::add,
@@ -159,6 +182,39 @@ class DeepSeekCaptionEnhancementProviderTest {
     }
 
     @Test
+    fun lyricTextFallbackConfirmsSongWhenMetadataSearchMisses() = runBlocking {
+        val request = request()
+        val connections = ArrayDeque<FakeConnection>().apply {
+            add(FakeConnection(200, envelope("""{"candidates":[{"title":"Sadie of Stars","artist":"Example Artist"}]}""")))
+            add(FakeConnection(200, enhancementEnvelope(request)))
+        }
+        var fallbackQuery: String? = null
+        val usedConnections = mutableListOf<FakeConnection>()
+        val provider = DeepSeekCaptionEnhancementProvider(
+            byokManager = FakeByokManager(),
+            searchTool = object : SongLyricsSearchTool {
+                override suspend fun search(identity: SongIdentityCandidate): List<SongLyricsCandidate> = emptyList()
+
+                override suspend fun searchByLyricText(queryText: String): List<SongLyricsCandidate> {
+                    fallbackQuery = queryText
+                    return listOf(SongLyricsCandidate("lrclib:99", "Quiet Street", "Example Artist", lyrics()))
+                }
+            },
+            connectionFactory = {
+                connections.removeFirst().also(usedConnections::add)
+            },
+        )
+
+        val response = provider.enhance(request)
+
+        assertEquals(SongMatchStatus.CONFIRMED, response.songMatch?.status)
+        assertEquals("lrclib:99", response.songMatch?.source)
+        assertTrue(requireNotNull(fallbackQuery).startsWith("Hello from the quiet street"))
+        val finalBody = usedConnections.last().writtenBody()
+        assertTrue(finalBody.contains("verified_complete_lyrics"))
+    }
+
+    @Test
     fun searchFailureUsesWholeBatchCloudFallbackWithoutClaimingConfirmation() = runBlocking {
         val request = request()
         val usedConnections = mutableListOf<FakeConnection>()
@@ -168,8 +224,10 @@ class DeepSeekCaptionEnhancementProviderTest {
         }
         val provider = DeepSeekCaptionEnhancementProvider(
             byokManager = FakeByokManager(),
-            searchTool = SongLyricsSearchTool {
-                throw SongLyricsSearchException(SongLyricsSearchFailureKind.CONNECTION, "private detail")
+            searchTool = object : SongLyricsSearchTool {
+                override suspend fun search(identity: SongIdentityCandidate): List<SongLyricsCandidate> {
+                    throw SongLyricsSearchException(SongLyricsSearchFailureKind.CONNECTION, "private detail")
+                }
             },
             connectionFactory = {
                 connections.removeFirst().also(usedConnections::add)
