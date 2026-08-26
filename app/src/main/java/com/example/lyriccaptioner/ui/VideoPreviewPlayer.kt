@@ -79,6 +79,8 @@ internal fun VideoPreview(
     exportState: ExportState,
     mediaRevision: Long,
     directEditMode: Boolean,
+    layoutEditLocked: Boolean = false,
+    onToggleLayoutEditLocked: () -> Unit = {},
     onSelectCue: (String) -> Unit,
     onDeleteCue: (String) -> Unit,
     onPositionCommitted: (String, Float, Float) -> Unit,
@@ -101,7 +103,20 @@ internal fun VideoPreview(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("视频预览", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (directEditMode) {
+                    TextButton(
+                        modifier = Modifier.heightIn(min = 48.dp).semantics {
+                            contentDescription = if (layoutEditLocked) {
+                                "layout_lock:locked"
+                            } else {
+                                "layout_lock:unlocked"
+                            }
+                        },
+                        onClick = onToggleLayoutEditLocked,
+                    ) { Text(if (layoutEditLocked) "🔒 全部布局" else "🔓 单条布局") }
+                } else {
+                    Text("视频预览", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 Text(
                     if (videoUri == null) "未导入" else "可编辑",
                     style = MaterialTheme.typography.labelMedium,
@@ -132,6 +147,8 @@ internal fun VideoPreview(
                         captionLayout = captionLayout,
                         defaultCaptionStyle = defaultCaptionStyle,
                         directEditMode = directEditMode,
+                        layoutEditLocked = layoutEditLocked,
+                        onToggleLayoutEditLocked = onToggleLayoutEditLocked,
                         onSelectCue = onSelectCue,
                         onDeleteCue = onDeleteCue,
                         onPositionCommitted = onPositionCommitted,
@@ -187,6 +204,8 @@ internal fun VideoPlayer(
     captionLayout: CaptionLayout,
     defaultCaptionStyle: DefaultCaptionStyle,
     directEditMode: Boolean,
+    layoutEditLocked: Boolean = false,
+    onToggleLayoutEditLocked: () -> Unit = {},
     onSelectCue: (String) -> Unit,
     onDeleteCue: (String) -> Unit,
     onPositionCommitted: (String, Float, Float) -> Unit,
@@ -374,7 +393,20 @@ internal fun VideoPlayer(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
+                            if (directEditMode) {
+                                TextButton(
+                                    modifier = Modifier.heightIn(min = 48.dp).semantics {
+                                        contentDescription = if (layoutEditLocked) {
+                                            "fullscreen_layout_lock:locked"
+                                        } else {
+                                            "fullscreen_layout_lock:unlocked"
+                                        }
+                                    },
+                                    onClick = onToggleLayoutEditLocked,
+                                ) { Text(if (layoutEditLocked) "🔒 全部布局" else "🔓 单条布局", color = Color.White) }
+                            } else {
+                                Text("全屏预览", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
                             TextButton(
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)

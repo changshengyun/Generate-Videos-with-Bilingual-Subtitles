@@ -157,6 +157,8 @@ fun EditorScreen(viewModel: MainViewModel) {
                     exportState = state.exportState,
                     mediaRevision = state.mediaRevision,
                     directEditMode = activeSection == EditorSection.CAPTIONS.index,
+                    layoutEditLocked = state.layoutEditLocked,
+                    onToggleLayoutEditLocked = viewModel::toggleLayoutEditLocked,
                     onSelectCue = viewModel::selectCue,
                     onDeleteCue = viewModel::deleteCaption,
                     onPositionCommitted = viewModel::updateCueDirectPosition,
