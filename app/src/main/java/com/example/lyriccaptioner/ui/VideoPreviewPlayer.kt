@@ -390,7 +390,7 @@ internal fun VideoPlayer(
                         positionMs = positionMs,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 24.dp),
+                            .padding(bottom = 56.dp),
                     )
                 }
             }
