@@ -40,7 +40,9 @@ class EditorScreenV3UiContractTest {
     fun captionListIsGatedToTheCaptionEditorSection() {
         val source = editorScreenSource()
 
-        assertTrue(source.contains("if (showsCaptionList(activeSection))"))
+        assertTrue(source.contains("if (activeSection == EditorSection.CAPTIONS.index)"))
+        assertTrue(source.contains("CaptionEditorPage("))
+        assertTrue(source.contains("itemsIndexed(orderedCaptions"))
         assertTrue(source.contains("contentDescription = \"caption_list\""))
     }
 

@@ -120,6 +120,20 @@ fun EditorScreen(viewModel: MainViewModel) {
             color = Color(0xFF0D0F12),
             contentColor = Color(0xFFF4F5F7),
         ) {
+        if (activeSection == EditorSection.CAPTIONS.index) {
+            CaptionEditorPage(
+                state = state,
+                editorSnapshot = editorSnapshot,
+                playbackPositionMs = playbackPositionMs,
+                onPlaybackPositionChanged = { playbackPositionMs = it },
+                onImportLyrics = { lyricPicker.launch("text/*") },
+                onSectionSelected = { activeSection = it },
+                onOpenStylePanel = { cueId -> styleCueId = cueId },
+                onOpenMerge = { cueId -> mergeCueId = cueId },
+                viewModel = viewModel,
+                bottomPadding = if (styleCueId != null) panelHeight else 0.dp,
+            )
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -156,7 +170,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     isWorking = state.isWorking,
                     exportState = state.exportState,
                     mediaRevision = state.mediaRevision,
-                    directEditMode = activeSection == EditorSection.CAPTIONS.index,
+                    directEditMode = false,
                     layoutEditLocked = state.layoutEditLocked,
                     onToggleLayoutEditLocked = viewModel::toggleLayoutEditLocked,
                     onSelectCue = viewModel::selectCue,
@@ -213,19 +227,6 @@ fun EditorScreen(viewModel: MainViewModel) {
                             }
                         }
                     }
-                    2 -> WorkflowPanel(title = "字幕编辑", subtitle = "在视频画面内直接调整字幕") {
-                        ActionRow {
-                            SecondaryAction("添加字幕", state.videoUri != null && !state.isWorking) {
-                                viewModel.addCaptionAt(playbackPositionMs)
-                            }
-                            SecondaryAction("导入歌词", state.captions.isNotEmpty() && !state.isWorking) { lyricPicker.launch("text/*") }
-                        }
-                        Text(
-                            text = "点击画面中的字幕可移动、删除、拉伸宽度或缩放字号",
-                            color = Color(0xFF9EA5B1),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                     else -> WorkflowPanel(title = "导出", subtitle = "保存项目、导出视频或分享成品") {
                         ActionRow {
                             ActionButton(
@@ -269,59 +270,7 @@ fun EditorScreen(viewModel: MainViewModel) {
                     }
                 }
             }
-            if (showsCaptionList(activeSection)) {
-                if (activeSection != EditorSection.CAPTIONS.index) {
-                    CaptionList(
-                    captions = state.captions,
-                    selectedId = state.selectedCaptionId,
-                    defaultStyle = state.defaultCaptionStyle,
-                    captionLayout = state.captionLayout,
-                    onSelect = viewModel::selectCue,
-                    onEnglishChanged = viewModel::updateEnglishText,
-                    onChineseChanged = viewModel::updateChineseText,
-                    onApplyCandidate = viewModel::applyCorrectionCandidate,
-                    onShiftStart = viewModel::shiftCueStart,
-                    onShiftEnd = viewModel::shiftCueEnd,
-                    onDelete = viewModel::deleteCaption,
-                    onConfirm = viewModel::confirmCue,
-                    onFontSmaller = { cueId, delta -> viewModel.updateCueFontSize(cueId, delta) },
-                    onFontLarger = { cueId, delta -> viewModel.updateCueFontSize(cueId, delta) },
-                    onEnglishColorChanged = viewModel::updateCueEnglishColor,
-                    onChineseColorChanged = viewModel::updateCueChineseColor,
-                    onOutlineColorChanged = viewModel::updateCueOutlineColor,
-                    onFontFamilyChanged = viewModel::updateCueFontFamily,
-                    onToggleBold = { cueId -> viewModel.toggleCueBold(cueId) },
-                    onToggleItalic = { cueId -> viewModel.toggleCueItalic(cueId) },
-                    onAlignmentChanged = viewModel::updateCueAlignment,
-                    onPositionChanged = viewModel::updateCuePosition,
-                    onClearOverride = viewModel::clearCueStyleOverride,
-                    onOpenStyle = { cueId ->
-                        viewModel.selectCue(cueId)
-                        styleCueId = cueId
-                    },
-                    onSplitDraft = viewModel::splitCaptionDraft,
-                    onMerge = { cueId -> mergeCueId = cueId },
-                    onEnhance = viewModel::requestCueSuggestion,
-                    aiRunningCueId = if (cueSuggestion.running) cueSuggestion.cueId else null,
-                    aiError = cueSuggestion.error,
-                    enabled = !state.isWorking,
-                    editorSnapshot = editorSnapshot,
-                        modifier = Modifier.weight(0.28f),
-                    )
-                } else {
-                    DirectCaptionEditPanel(
-                        cue = state.captions.firstOrNull { it.id == state.selectedCaptionId },
-                        defaultStyle = state.defaultCaptionStyle,
-                        enabled = !state.isWorking,
-                        onEnglishChanged = viewModel::updateEnglishText,
-                        onChineseChanged = viewModel::updateChineseText,
-                        onApplyBasicStyle = viewModel::applyCueBasicStyle,
-                        onUnifiedColorChanged = viewModel::updateCueUnifiedTextColor,
-                        onAlignmentChanged = viewModel::updateCueAlignment,
-                        modifier = Modifier.weight(0.38f),
-                    )
-                }
-            }
+        }
         }
         }
         val orderedCaptions = state.captions.sortedWith(

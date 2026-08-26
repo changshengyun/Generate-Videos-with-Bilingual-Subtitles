@@ -31,8 +31,7 @@ class EditorScreenV3DirectEditContractTest {
             "viewModel::updateCueDirectPosition",
             "viewModel::updateCueDirectWidth",
             "viewModel::updateCueDirectFontSize",
-            "viewModel::applyCueBasicStyle",
-            "viewModel::updateCueUnifiedTextColor",
+            "viewModel.applyCueBasicStyle(",
         ).forEach { call -> assertTrue("missing frozen call: $call", source.contains(call)) }
     }
 

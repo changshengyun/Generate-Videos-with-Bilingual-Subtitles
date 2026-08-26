@@ -371,17 +371,37 @@ internal fun VideoPlayer(
                             },
                             update = { playerView -> playerView.player = player },
                         )
+                        if (directEditMode) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .semantics { contentDescription = "全屏取消字幕选择" }
+                                    .pointerInput(player, currentCue?.id) {
+                                        detectTapGestures {
+                                            visibleSelectionId = null
+                                            if (player.isPlaying) player.pause() else player.play()
+                                        }
+                                    },
+                            )
+                        }
                         if (currentRender != null && sourceVideoSize != null) {
                             SubtitlePreviewOverlay(
                                 render = currentRender,
                                 sourceVideoSize = sourceVideoSize,
-                                directEditMode = false,
-                                selected = false,
-                                onSelect = {},
-                                onDelete = {},
-                                onPositionCommitted = { _, _, _ -> },
-                                onWidthCommitted = { _, _ -> },
-                                onFontSizeCommitted = { _, _ -> },
+                                directEditMode = directEditMode,
+                                selected = visibleSelectionId == currentRender.caption.id,
+                                onSelect = {
+                                    player.pause()
+                                    visibleSelectionId = currentRender.caption.id
+                                    onSelectCue(currentRender.caption.id)
+                                },
+                                onDelete = {
+                                    visibleSelectionId = null
+                                    onDeleteCue(currentRender.caption.id)
+                                },
+                                onPositionCommitted = onPositionCommitted,
+                                onWidthCommitted = onWidthCommitted,
+                                onFontSizeCommitted = onFontSizeCommitted,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
