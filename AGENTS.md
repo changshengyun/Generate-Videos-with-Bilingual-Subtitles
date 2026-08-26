@@ -1,5 +1,18 @@
 # Codex Engineering Constitution / Codex 工程宪法
 
+## 0. Active constraints index / 当前生效约束索引
+
+- Default regime: Section 9 stage contract (Brain/Developer); Section 7 Multi-Agent regime runs only when the user explicitly enables it.
+  默认体制为第 9 节阶段契约；第 7 节 Multi-Agent 体制仅在用户显式启用时生效。
+- State source: `docs/DEVELOPMENT_ROADMAP.md` + `docs/CURRENT_TASK.md` + `docs/PROJECT_STATE.md`.
+  状态来源为三份活动文档。
+- Change levels: S0/S1/S2; after three failed fix attempts freeze code changes and return to evidence analysis.
+  变更分级 S0/S1/S2；同一故障三次修复失败后冻结修改转证据分析。
+- Git: precise staging, no push by default, never `git reset --hard` / clean.
+  Git：精确暂存、默认不 push、禁用 reset --hard 与 clean。
+- Devices: physical-device operations require explicit user authorization.
+  真机操作必须获得用户显式授权。
+
 ## 1. Core principle / 核心原则
 
 - MVP reduces product scope; it does not remove environment validation, architecture analysis, feasibility testing, or acceptance verification.
@@ -52,6 +65,8 @@
 
 ## 7. Multi-Agent orchestration / Multi-Agent 编排
 
+- This section applies only when the user explicitly enables Multi-Agent mode. By default the repository runs the Section 9 stage contract; the governance documents referenced by `.agents/` prompts (`MULTI_AGENT_WORKFLOW.md`, `DECISIONS.md`, `governance/*`, `IMPLEMENTATION_HANDOFF.md`, `REVIEW_REPORT.md`) are archived read-only under `docs-BK/` and must be restored or re-approved before Multi-Agent roles run.
+  本节仅在用户显式启用 Multi-Agent 模式时生效；默认运行第 9 节阶段契约。`.agents/` 提示词引用的治理文档已作为只读历史归档于 `docs-BK/`，启用 Multi-Agent 角色前必须先恢复或重新获得用户批准。
 - The Orchestrator Agent is the only role that assigns work, advances workflow state, aggregates results, and requests human approval. Subagents do not dispatch one another.
   Orchestrator Agent 是唯一负责分配任务、推进工作流状态、汇总结果和请求人工审批的角色；子 Agent 不得相互调度。
 - Agents must not rely on chat history for handoff. Before acting, read `docs/DEVELOPMENT_ROADMAP.md`, `docs/PROJECT_STATE.md`, and `docs/CURRENT_TASK.md`; write every result needed by the next role back to the current task or project-state document.
@@ -130,6 +145,7 @@
 - 开始新阶段时，先把三份活动文档切换到该任务的 `MATRIX_DEFINED / IN_PROGRESS` 状态并写完验收矩阵，再为阶段入口建立独立 checkpoint commit；阶段完成后创建独立功能提交。阶段内的小调整沿用当前阶段和既有矩阵，不额外制造微型阶段。
 - 提交前精确检查 staged diff，只提交当前任务文件。保留所有进入任务前已经存在的修改和未跟踪内容，尤其不得擅自清理、重置、覆盖或暂存 `third_party/ffmpeg-kit` 的既有状态。
 - 禁止使用 `git reset --hard`、强制 checkout、clean 或等效破坏性操作。默认不 push；只有用户明确要求时才允许 push。
+- 阶段收尾时执行 `git fetch` 并在状态文档记录本地与远端的 ahead/behind 分叉；是否以及何时 rebase、merge 或 push 由用户决定，默认仍不 push。
 
 ### 9.5 Autonomous debug loop / 自主 Debug 闭环
 
@@ -144,6 +160,7 @@
 - 严格区分 `BUILD_VERIFIED`、`COMPONENT_VERIFIED`、`SIMULATOR_VERIFIED`、`DEVICE_VERIFIED` 和正式验收。模拟器证据不得写成真机证据；Demo、固定探针、mock、空结果或 fallback 不得写成真实产品成功。
 - 设备边界以三份活动文档为准。处于 simulator-only 门禁时，禁止连接或测试真机，最终证据最高只能到对应的 `*_SIMULATOR_VERIFIED`，并把真机验证明确延后到后续设备门禁阶段。
 - 验收证据必须报告实际命令结果、测试数量、模拟器或设备标识、关键产物路径及大小/时长/编码等适用数据；UI 阶段必须提供可复核截图，并检查系统栏 Insets、裁切、重叠、滚动、触控区域和关键无障碍描述。
+- 新产生的截图、视频、导出物等二进制验收证据统一存放于 `.emulator-test-assets/` 或后续设备门禁指定的证据目录，git 只记录路径引用，不再新增二进制证据文件入库；`deliverables/` 视为只读历史，不再追加。
 
 ### 9.7 Documentation / 文档维护
 

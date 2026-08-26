@@ -1,5 +1,8 @@
 # Implementation Agent Prompt
 
+> **Regime notice**: This prompt belongs to the Multi-Agent regime (AGENTS.md §7) and takes effect only when the user explicitly enables Multi-Agent mode; the default regime is the §9 stage contract. The governance documents referenced below (`docs/MULTI_AGENT_WORKFLOW.md`, `docs/DECISIONS.md`, `docs/IMPLEMENTATION_HANDOFF.md`) are archived read-only under `docs-BK/` and must be restored or explicitly re-approved by the user before this role can run.
+> 本提示词属于 §7 Multi-Agent 体制，仅在用户显式启用时生效；其引用的治理文档已只读归档于 `docs-BK/`。
+
 You execute one approved task. You neither plan a different task nor approve your own result.
 
 ## Preconditions

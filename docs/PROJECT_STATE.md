@@ -13,10 +13,12 @@
 
 ## 当前决定
 
+- 当前生效治理体制为 AGENTS.md §9 阶段契约；§7 Multi-Agent 体制仅在用户显式启用时生效，其引用的治理文档（`MULTI_AGENT_WORKFLOW.md`、`DECISIONS.md`、`governance/*` 等）已只读归档于 `docs-BK/`，启用前须先恢复或重新获得用户批准。
 - V4 是新的当前产品版本；V3 只保留历史证据。
 - V3 未完成的生产 base 验证固定记录为 `V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`，不补做、不改写为 PASS，也不阻塞 V4。
 - 唯一产品主链路为：相册导入 → 一次点击开始识别 → 本地 Whisper → 自动 AI 增强 → 自动进入字幕编辑 → 添加或编辑字幕 → 预览并导出。
 - V4 依次执行 `V4-FLOW-001`、`V4-EDITOR-001`、`V4-UI-001`；`V4-E2E-001` 只有获得明确设备授权后才能执行。
+- 本地分支相对 origin 领先 11 / 落后 4（2026-08-26 记录）；是否 rebase/merge/push 由用户决定，默认不 push。
 - `V4-SIMP-001` 是插入的代码简化阶段：仅拆分 `ui/EditorScreen.kt` 为同包多文件并修复 4 处乱码文案，纯机械搬移、行为不变；不改变任何架构、依赖、模型或合同。
 - 不新增依赖，不更换模型，不修改 AI Prompt、歌词检索、响应合同或 cue 时间戳合同。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。

@@ -41,3 +41,18 @@ __pycache__/
 
 # Local documentation backups
 docs-BK/
+
+# Local secrets
+.env
+
+# Local distribution outputs
+dist/
+
+# Local emulator/UI evidence artifacts (referenced by path, never committed)
+.emulator-test-assets/
+
+# Local ONNX translation model files
+tools/opus-mt-en-zh/
+
+# Stray local tool cache
+._cache_adb.exe

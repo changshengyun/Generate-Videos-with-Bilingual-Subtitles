@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-V2 已由用户手动验收并归档。V3 当前完成 `V3-AI-CONTRACT-001 / R1` 的 DeepSeek BYOK 真机认证候选证据，等待 Brain 正式裁决；活动状态以 `docs/` 为准，V2 历史状态见 `docs-v2/`。
+当前活动状态以 `docs/PROJECT_STATE.md` 为唯一权威来源（`V4-E2E-001 / WAITING_DEVICE_AUTHORIZATION`，2026-08-24）。V2 历史状态见 `docs-v2/`，V3 历史证据见 `docs/archive/v3/`；`docs-BK/` 为更早的只读备份，不参与当前调度。
 
 ## 当前使用的三份项目文档
 
