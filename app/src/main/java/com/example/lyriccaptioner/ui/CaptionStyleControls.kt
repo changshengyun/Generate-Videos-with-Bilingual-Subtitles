@@ -60,7 +60,10 @@ internal fun DefaultCaptionStyleControls(
     val positionPercent = (layout.yRatio * 100f).toInt()
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF12151A),
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         Column(
             modifier = Modifier
@@ -257,7 +260,10 @@ internal fun SelectedCueStyleControls(
             .fillMaxWidth()
             .semantics { contentDescription = "cue_style_controls" },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF12151A),
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         if (cue == null) {
             Text(

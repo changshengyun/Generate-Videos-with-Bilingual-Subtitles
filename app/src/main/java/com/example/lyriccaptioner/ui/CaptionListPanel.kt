@@ -78,7 +78,10 @@ internal fun CaptionList(
         Card(
             modifier = modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF171A1F),
+                contentColor = Color(0xFFF4F5F7),
+            ),
         ) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -93,7 +96,10 @@ internal fun CaptionList(
     Card(
         modifier = modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF12151A),
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
@@ -204,7 +210,10 @@ internal fun CaptionCard(
             .semantics { contentDescription = "caption_card:${cue.id}" }
             .clickable(enabled = enabled, onClick = onSelect),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),

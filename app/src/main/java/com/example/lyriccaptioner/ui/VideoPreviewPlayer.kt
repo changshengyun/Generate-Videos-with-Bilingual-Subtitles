@@ -90,7 +90,10 @@ internal fun VideoPreview(
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF171A1F),
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         Column(
             modifier = Modifier
@@ -347,6 +350,7 @@ internal fun VideoPlayer(
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = Color.Black,
+                contentColor = Color.White,
             ) {
                 Column(
                     modifier = Modifier

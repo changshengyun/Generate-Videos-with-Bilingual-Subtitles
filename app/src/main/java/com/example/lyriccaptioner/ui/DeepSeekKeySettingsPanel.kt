@@ -52,7 +52,10 @@ internal fun DeepSeekKeySettingsPanel(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF171A1F),
+            contentColor = Color(0xFFF4F5F7),
+        ),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282D35)),
     ) {
         Column(

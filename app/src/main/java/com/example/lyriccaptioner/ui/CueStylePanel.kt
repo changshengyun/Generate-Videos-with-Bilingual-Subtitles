@@ -68,6 +68,7 @@ internal fun CueStylePanel(
             .height(panelHeight)
             .semantics { contentDescription = "cue_style_fixed_panel:${cue.id}" },
         color = Color(0xFF171A1F),
+        contentColor = Color(0xFFF4F5F7),
         tonalElevation = 8.dp,
         shadowElevation = 12.dp,
         shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
@@ -192,7 +193,10 @@ internal fun MergeCaptionDialog(
             modifier = Modifier.fillMaxWidth().semantics {
                 contentDescription = "cue_merge_dialog:${cue.id}"
             },
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF171A1F),
+                contentColor = Color(0xFFF4F5F7),
+            ),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -234,7 +238,10 @@ internal fun CueSuggestionDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics { contentDescription = "cue_ai_suggestion:${current.id}" },
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF171A1F),
+                contentColor = Color(0xFFF4F5F7),
+            ),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),

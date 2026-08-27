@@ -139,7 +139,10 @@ internal fun CaptionEditorPage(
                 Card(
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF171A1F),
+                        contentColor = Color(0xFFF4F5F7),
+                    ),
                 ) {
                     Box(
                         modifier = Modifier.fillMaxWidth().padding(24.dp),

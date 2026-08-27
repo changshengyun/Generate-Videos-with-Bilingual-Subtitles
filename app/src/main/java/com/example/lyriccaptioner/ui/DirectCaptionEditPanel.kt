@@ -71,7 +71,10 @@ internal fun DirectCaptionEditPanel(
             .imePadding()
             .semantics { contentDescription = "字幕直接编辑面板" },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF171A1F),
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(12.dp),

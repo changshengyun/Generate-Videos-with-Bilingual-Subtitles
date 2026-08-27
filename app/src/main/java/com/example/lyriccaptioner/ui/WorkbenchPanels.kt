@@ -118,6 +118,7 @@ internal fun RuntimeStatusChip(
         modifier = modifier.heightIn(min = 42.dp),
         shape = RoundedCornerShape(10.dp),
         color = Color(0xFF12151A),
+        contentColor = Color(0xFFF4F5F7),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
@@ -152,7 +153,10 @@ internal fun WorkflowPanel(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF171A1F)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF171A1F),
+            contentColor = Color(0xFFF4F5F7),
+        ),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282D35)),
     ) {
         Column(
@@ -295,7 +299,10 @@ internal fun RuntimeStatusCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF12151A)),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF12151A),
+            contentColor = Color(0xFFF4F5F7),
+        ),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
