@@ -8,7 +8,7 @@
 
 - 等级：高（用户可感知功能"消失"）
 - 发现时间：2026-08-27
-- 状态：已修复（提交见文末）
+- 状态：已修复并真机验证（提交见文末）
 
 ### 现象
 
@@ -40,6 +40,7 @@ aiError = cueSuggestion.error.takeIf { cueSuggestion.cueId == cue.id },
 
 - `compileDebugKotlin` 通过；全量 `testDebugUnitTest` 绿。
 - 修复版 APK 已装机（设备 `fcf4b0cb`）。
+- 2026-08-27 19:47 真机端到端复验：用户替换有效 Key 后，整流程状态显示 `DeepSeek enhanced 4 captions.`；点击单条「AI 增强」正常弹出「AI 增强建议」对话框（当前内容 / AI 建议 / 应用按钮），功能闭环。
 
 ### 遗留事项
 
