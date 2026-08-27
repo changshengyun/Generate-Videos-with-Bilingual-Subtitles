@@ -40,11 +40,25 @@ object CaptionBatchCommitPolicy {
         expected: List<CaptionCue>,
         actual: List<CaptionCue>,
     ): Boolean {
-        if (expected.size != actual.size) return false
-        return expected.zip(actual).all { (source, result) ->
-            source.id == result.id &&
-                source.startMs == result.startMs &&
-                source.endMs == result.endMs
-        } && actual.map { it.id }.toSet().size == actual.size
+        if (actual.map { it.id }.toSet().size != actual.size) return false
+        var actualIndex = 0
+        expected.forEach { source ->
+            val first = actual.getOrNull(actualIndex) ?: return false
+            if (first.id == source.id) {
+                if (first.startMs != source.startMs || first.endMs != source.endMs) return false
+                actualIndex += 1
+            } else {
+                val second = actual.getOrNull(actualIndex + 1) ?: return false
+                if (
+                    first.id != "${source.id}:1" || second.id != "${source.id}:2" ||
+                    first.startMs != source.startMs || second.endMs != source.endMs ||
+                    first.endMs > second.startMs
+                ) {
+                    return false
+                }
+                actualIndex += 2
+            }
+        }
+        return actualIndex == actual.size
     }
 }

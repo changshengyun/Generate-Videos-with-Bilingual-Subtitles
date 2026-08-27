@@ -80,6 +80,25 @@ class CaptionBatchCommitPolicyTest {
         assertEquals("old-export", result.state.exportUri.toString())
     }
 
+    @Test
+    fun completeOneToTwoSplitBatchCommitsAtomically() {
+        val original = captions()
+        val split = CaptionCueSplitPolicy.apply(
+            original.first(),
+            listOf(CaptionSplitLine("first", "第一"), CaptionSplitLine("second", "第二")),
+        ) + original.last().copy(chinese = "翻译")
+        val outcome = CaptionEnhancementOutcome(
+            captions = split,
+            source = CaptionResultSource.CLOUD_AI,
+            state = CaptionEnhancementState.CLOUD_APPLIED,
+        )
+
+        val result = CaptionBatchCommitPolicy.commit(EditorState(captions = original), original, outcome)
+
+        assertTrue(result.committed)
+        assertEquals(split, result.state.captions)
+    }
+
     private fun captions() = listOf(
         CaptionCue("a", 0L, 1_000L, "alpha", "", 0.9f),
         CaptionCue("b", 1_000L, 2_000L, "beta", "", 0.8f),
