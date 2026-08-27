@@ -185,7 +185,7 @@ internal fun CaptionEditorPage(
                     onMerge = { onOpenMerge(cue.id) },
                     onEnhance = { viewModel.requestCueSuggestion(cue.id) },
                     aiRunning = cueSuggestion.running && cueSuggestion.cueId == cue.id,
-                    aiError = cueSuggestion.error.takeIf { cueSuggestion.running && cueSuggestion.cueId == cue.id },
+                    aiError = cueSuggestion.error.takeIf { cueSuggestion.cueId == cue.id },
                 )
             }
         }
