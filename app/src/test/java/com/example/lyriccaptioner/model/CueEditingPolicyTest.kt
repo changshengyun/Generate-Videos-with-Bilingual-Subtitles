@@ -8,11 +8,12 @@ import org.junit.Test
 
 class CueEditingPolicyTest {
     @Test
-    fun changingEnglishClearsStaleChineseCandidatesAndConfirmation() {
+    fun changingEnglishClearsStaleCandidatesAndConfirmationButKeepsChinese() {
         val updated = CueEditingPolicy.updateEnglish(sampleCue(), "Changed English")
 
         assertEquals("Changed English", updated.english)
-        assertEquals("", updated.chinese)
+        // V4.1 two-stage repair (84a645d): manual English edits must not wipe the Chinese line.
+        assertEquals("原中文", updated.chinese)
         assertTrue(updated.correctionCandidates.isEmpty())
         assertFalse(updated.confirmed)
     }
@@ -25,11 +26,11 @@ class CueEditingPolicyTest {
     }
 
     @Test
-    fun applyingEnglishCorrectionAlsoClearsOldChinese() {
+    fun applyingEnglishCorrectionKeepsExistingChinese() {
         val updated = CueEditingPolicy.applyEnglishCorrection(sampleCue(), "Corrected lyric")
 
         assertEquals("Corrected lyric", updated.english)
-        assertEquals("", updated.chinese)
+        assertEquals("原中文", updated.chinese)
         assertFalse(updated.confirmed)
     }
 
