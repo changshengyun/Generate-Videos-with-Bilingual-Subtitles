@@ -1,0 +1,12 @@
+== Live scenario 'garbled-low-confidence' trace 2026-08-27T20:35:03.4551506
+== endpoint=https://api.deepseek.com/chat/completions model=deepseek-v4-pro
+== input cues: 6, mediaDurationMs=24000
+   cue-1 [0..4000] conf=0.42 :: when i fine my self in time a troble
+   cue-2 [4000..8000] conf=0.38 :: mother marry cums to mi
+   cue-3 [8000..12000] conf=0.55 :: speeking words of wisdom let it be
+   cue-4 [12000..16000] conf=0.45 :: and in my hour a darkness
+   cue-5 [16000..20000] conf=0.47 :: she is stending right in fraunt of me
+   cue-6 [20000..24000] conf=0.52 :: speaking words a wisdom let it bee
+[0ms] STAGE CANDIDATE_REQUEST
+== DeepSeek call #1 FAILED status=401
+{"error":{"message":"Authentication Fails, Your api key: ****34bc is invalid","type":"authentication_error","param":null,"code":"invalid_request_error"}}

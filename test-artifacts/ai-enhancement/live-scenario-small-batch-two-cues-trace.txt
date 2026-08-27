@@ -1,0 +1,9 @@
+== Live scenario 'small-batch-two-cues' trace 2026-08-27T20:35:03.2622469
+== endpoint=https://api.deepseek.com/chat/completions model=deepseek-v4-pro
+== input cues: 2, mediaDurationMs=8000
+   cue-1 [0..4000] conf=0.9 :: When I find myself in times of trouble
+   cue-2 [4000..8000] conf=0.9 :: Mother Mary comes to me
+[10ms] STAGE LYRICS_SEARCH
+[15ms] STAGE WHOLE_SONG_REQUEST
+== DeepSeek call #1 FAILED status=401
+{"error":{"message":"Authentication Fails, Your api key: ****34bc is invalid","type":"authentication_error","param":null,"code":"invalid_request_error"}}

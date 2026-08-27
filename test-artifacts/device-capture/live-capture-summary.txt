@@ -1,0 +1,29 @@
+# Live device recognition capture — 2026-08-27 20:31 CST
+# Source: device fcf4b0cb (Xiaomi 25098PN5AC), app com.example.lyriccaptioner (pid 29582)
+# Artifacts: live-ui-dump.xml (UI state dump), live-screen.png (screenshot), live-run-logcat.txt (full log stream)
+
+## Whisper session (last run, 20:31:15.884)
+event=whisper_session_run handle=2 reused=true loadMs=0 inferenceMs=5504 totalMs=5629 segmentCount=4 cancelled=false
+event=asr_completed mode=LOCAL captionCount=4
+video duration = 18716 ms
+
+## Recognized cues (Whisper English + DeepSeek Chinese, final editor state)
+whisper-0-0      [0..4320]
+  EN: I stopped CPR, after all it's no use
+  ZH: 我停止了心肺复苏，毕竟已无济于事
+whisper-1-4320   [4320..7360]
+  EN: The spirit was gone, we would never come to
+  ZH: 灵魂已逝，我们再也无法苏醒
+whisper-2-7360   [7360..11440]
+  EN: I'm pissed off you let me give you all that youth for free
+  ZH: 我气的是你让我白白把青春都给了你
+whisper-3-11440  [11440..18720]
+  EN: For so long, let me
+  ZH: 那么久，让我
+
+## Status line shown by the app
+DeepSeek enhanced 4 captions.
+
+## Earlier runs in the same session (same result)
+20:12:36.764 whisper_session_run handle=1 reused=false loadMs=174 inferenceMs=5500 totalMs=5798 segmentCount=4
+20:29:46.804 whisper_session_run handle=2 reused=false loadMs=143 inferenceMs=5254 totalMs=5536 segmentCount=4
