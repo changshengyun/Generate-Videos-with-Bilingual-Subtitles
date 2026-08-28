@@ -27,7 +27,7 @@ class DeepSeekCaptionEnhancementProviderTest {
         assertTrue(body.contains("raw_english"))
         assertTrue(body.contains("Hello from the quiet street"))
         assertTrue(body.contains("必须综合整批字幕中的多条歌词推断对应歌曲"))
-        assertTrue(body.contains("只返回 1 个最可能的候选"))
+        assertTrue(body.contains("最多返回 2 个候选"))
         assertTrue(body.contains("禁止返回空 candidates 数组"))
         assertTrue(body.contains("\"response_format\":{\"type\":\"json_object\"}"))
         assertFalse(body.contains("complete_english_lyrics"))
@@ -111,7 +111,7 @@ class DeepSeekCaptionEnhancementProviderTest {
 单条 raw_english 可能包含同一歌曲的两句歌词。对这类 cue，corrected_english 应在保持该 cue 原有时间范围不变的前提下包含两句完整英文歌词，两句之间用一个换行符分隔；对应的 chinese 同样输出两句中文并用一个换行符分隔，两句中文必须与两句英文一一对应。其余 cue 仍然只输出单行。
 cues 中的 confidence 是该条 Whisper 识别的置信度：数值越低说明该条错得越多，纠错幅度可以越大；confidence 高的条目应尽量保守。media_duration_ms 是素材总时长。
 只返回 JSON，格式必须严格为：
-{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v4","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
+{"schema_version":"<copy input>","job_id":"<copy input>","processing_version":"deepseek-v4-pro-lyrics-search-context.v5","cues":[{"id":"<copy input>","start_ms":0,"end_ms":1,"corrected_english":"complete English line","chinese":"coherent Chinese lyric line"}]}.
 每个 cue 必须包含上面展示的全部六个字段。不要返回 song_match。
 """.trimIndent(),
             DeepSeekCaptionEnhancementProvider.UNCONFIRMED_SYSTEM_PROMPT,

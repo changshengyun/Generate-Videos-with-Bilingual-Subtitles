@@ -10,6 +10,8 @@ data class EditorState(
     val mediaRevision: Long = 0L,
     val requiresVideoAssociation: Boolean = false,
     val captions: List<CaptionCue> = emptyList(),
+    /** Editor-session scope only; deliberately excluded from project archives. */
+    val lyricLines: List<String> = emptyList(),
     val captionProcessing: CaptionProcessingSnapshot = CaptionProcessingSnapshot(),
     val selectedCaptionId: String? = null,
     /** Editor-session scope only; deliberately excluded from project archives. */

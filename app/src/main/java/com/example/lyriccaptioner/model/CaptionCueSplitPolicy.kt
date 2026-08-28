@@ -127,6 +127,122 @@ object CaptionCueSplitPolicy {
         )
     }
 
+    /**
+     * Splits a cue along the song's real lyric segmentation. The cut point must coincide with
+     * the boundary between two consecutive imported lyric lines, so ASR-merged phrases are
+     * restored to the structure of the source song instead of being cut mechanically.
+     */
+    fun suggestLyricSegmentation(cue: CaptionCue, lyricLines: List<String>): List<CaptionSplitLine>? {
+        val english = cue.english.trim()
+        val chinese = cue.chinese.trim()
+        if (english.isEmpty() || chinese.isEmpty() || lyricLines.size < 2) return null
+
+        val mapping = normalizeWithMapping(english)
+        val normalizedEnglish = mapping.normalized
+        if (normalizedEnglish.isEmpty()) return null
+        val normalizedLines = lyricLines.map { normalizeForSegmentation(it) }.filter { it.isNotEmpty() }
+        if (normalizedLines.size < 2) return null
+
+        var bestSplitAt = -1
+        var bestScore = 0.0
+        for (i in 0 until normalizedLines.size - 1) {
+            val firstNorm = normalizedLines[i]
+            val secondNorm = normalizedLines[i + 1]
+            val prefixLength = normalizedLongestPrefix(normalizedEnglish, firstNorm)
+            if (prefixLength < firstNorm.length * 0.7 || prefixLength >= normalizedEnglish.length) continue
+            val originalCut = mapping.originalIndexOfNormalizedEnd(prefixLength) ?: continue
+            if (originalCut <= 0 || originalCut >= english.length) continue
+            if (originalCut < english.length && !english[originalCut].isWhitespace()) continue
+            val firstEnglish = english.substring(0, originalCut).trim()
+            val secondEnglish = english.substring(originalCut).trim()
+            if (firstEnglish.isEmpty() || secondEnglish.isEmpty()) continue
+            val suffixSimilarity = editDistanceSimilarity(normalizeForSegmentation(secondEnglish), secondNorm)
+            if (suffixSimilarity < 0.7) continue
+            val score = (1.0 + suffixSimilarity) * (firstNorm.length + secondNorm.length)
+            if (score > bestScore) {
+                bestScore = score
+                bestSplitAt = originalCut
+            }
+        }
+        if (bestSplitAt < 0) return null
+
+        val firstEnglish = english.substring(0, bestSplitAt).trim()
+        val secondEnglish = english.substring(bestSplitAt).trim()
+        if (englishWordCount(firstEnglish) < 1 || englishWordCount(secondEnglish) < 1) return null
+        val ratio = firstEnglish.count { !it.isWhitespace() }.toDouble() /
+            english.count { !it.isWhitespace() }.coerceAtLeast(1)
+        val chineseBoundary = chineseBoundary(chinese, ratio) ?: return null
+        val firstChinese = chinese.substring(0, chineseBoundary).trim()
+        val secondChinese = chinese.substring(chineseBoundary).trim()
+        if (firstChinese.isEmpty() || secondChinese.isEmpty()) return null
+        return listOf(
+            CaptionSplitLine(firstEnglish, firstChinese),
+            CaptionSplitLine(secondEnglish, secondChinese),
+        )
+    }
+
+    private class NormalizedMapping(val normalized: String, val originalEndIndex: IntArray)
+
+    private fun normalizeWithMapping(value: String): NormalizedMapping {
+        val normalized = StringBuilder()
+        val originalEnd = mutableListOf<Int>()
+        var lastWasSpace = true
+        for ((index, char) in value.withIndex()) {
+            when {
+                char.isLetterOrDigit() -> {
+                    normalized.append(char.lowercaseChar())
+                    originalEnd.add(index + 1)
+                    lastWasSpace = false
+                }
+                char.isWhitespace() -> {
+                    if (!lastWasSpace && normalized.isNotEmpty()) {
+                        normalized.append(' ')
+                        originalEnd.add(index)
+                    }
+                    lastWasSpace = true
+                }
+                else -> Unit
+            }
+        }
+        return NormalizedMapping(normalized.toString(), originalEnd.toIntArray())
+    }
+
+    private fun NormalizedMapping.originalIndexOfNormalizedEnd(normalizedEnd: Int): Int? =
+        originalEndIndex.getOrNull(normalizedEnd - 1)
+
+    private fun normalizeForSegmentation(value: String): String =
+        value.lowercase().filter { it.isLetterOrDigit() || it.isWhitespace() }
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    private fun normalizedLongestPrefix(text: String, line: String): Int {
+        val limit = minOf(text.length, line.length)
+        var matched = 0
+        while (matched < limit && text[matched] == line[matched]) matched++
+        return matched
+    }
+
+    private fun editDistanceSimilarity(left: String, right: String): Double {
+        if (left.isEmpty() || right.isEmpty()) return 0.0
+        if (left == right) return 1.0
+        val distances = IntArray(right.length + 1) { it }
+        for (leftIndex in left.indices) {
+            var previousDiagonal = distances[0]
+            distances[0] = leftIndex + 1
+            for (rightIndex in right.indices) {
+                val previousAbove = distances[rightIndex + 1]
+                val replacementCost = if (left[leftIndex] == right[rightIndex]) 0 else 1
+                distances[rightIndex + 1] = minOf(
+                    distances[rightIndex + 1] + 1,
+                    distances[rightIndex] + 1,
+                    previousDiagonal + replacementCost,
+                )
+                previousDiagonal = previousAbove
+            }
+        }
+        return 1.0 - distances.last().toDouble() / maxOf(left.length, right.length)
+    }
+
     private fun englishBoundary(value: String): Int? {
         val midpoint = value.length / 2
         val strong = Regex("[.!?;,:](?:\\s+|$)").findAll(value)
@@ -205,7 +321,11 @@ fun EditorState.splitCaptionCue(
 
 fun EditorState.splitCaptionCueDraft(cueId: String): EditorState {
     val source = captions.firstOrNull { it.id == cueId } ?: return this
-    val lines = CaptionCueSplitPolicy.suggestDraftLines(source)
-        ?: return copy(status = "找不到安全的分句边界；请先补充标点或调整文字。")
+    val lines = if (lyricLines.isNotEmpty()) {
+        CaptionCueSplitPolicy.suggestLyricSegmentation(source, lyricLines)
+            ?: CaptionCueSplitPolicy.suggestDraftLines(source)
+    } else {
+        CaptionCueSplitPolicy.suggestDraftLines(source)
+    } ?: return copy(status = "找不到安全的分句边界；请先补充标点或调整文字。（提示：导入歌词后可按歌曲真实分段拆分）")
     return splitCaptionCue(cueId, lines)
 }

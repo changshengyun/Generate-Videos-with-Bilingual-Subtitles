@@ -16,8 +16,11 @@ import java.net.SocketTimeoutException
 import java.net.URL
 
 /**
- * Production two-stage DeepSeek adapter: identify candidates, verify searched lyrics locally,
- * then generate bilingual cues using the complete song as context.
+ * Production DeepSeek adapter with dual search paths:
+ * - New path (SearchScheduler): AI with web_search finds song, local DP verifier gates,
+ *   three-interval branching (CONFIRMED / MIDDLE_ZONE / RESEARCH).
+ * - Legacy path (LRCLIB): used as fallback when SearchScheduler is not provided.
+ * Flow 3 generates bilingual cues using verified lyrics or repaired canonical alignments.
  */
 class DeepSeekCaptionEnhancementProvider(
     private val byokManager: DeepSeekByokManager,
@@ -25,26 +28,46 @@ class DeepSeekCaptionEnhancementProvider(
     private val verifier: SongLyricsCandidateVerifier = SongLyricsCandidateVerifier(),
     private val connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
     private val onDiagnosticStage: (DeepSeekEnhancementStage) -> Unit = {},
+    private val searchScheduler: SearchScheduler? = null,
 ) : CaptionEnhancementProvider, CaptionCueSuggestionService {
     override suspend fun enhance(request: CaptionEnhancementRequest): CaptionEnhancementResponse {
         currentCoroutineContext().ensureActive()
-        val identities = if (request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES) {
-            onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_REQUEST)
-            val body = byokManager.withDecryptedKey { apiKey ->
-                executeRequest(
-                    apiKey = apiKey,
-                    requestBody = DeepSeekCaptionEnhancementJson.songIdentificationRequestBody(request),
-                )
-            }
-            onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_PARSE)
-            parseProviderJson { DeepSeekCaptionEnhancementJson.parseSongCandidates(body) }
-        } else {
-            emptyList()
-        }
-        currentCoroutineContext().ensureActive()
 
-        onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_SEARCH)
-        val lookup = findVerifiedLyrics(request, identities)
+        val scheduler = searchScheduler
+        val searchResult: SearchResult = if (scheduler != null &&
+            request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES
+        ) {
+            // New path: AI with web_search + local DP verifier gate + three-interval branching
+            onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_REQUEST)
+            val result = scheduler.schedule(request)
+            onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_SEARCH)
+            result
+        } else {
+            // Legacy path: code-driven identification + LRCLIB search
+            val identification = if (request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES) {
+                onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_REQUEST)
+                val body = byokManager.withDecryptedKey { apiKey ->
+                    executeRequest(
+                        apiKey = apiKey,
+                        requestBody = DeepSeekCaptionEnhancementJson.songIdentificationRequestBody(request),
+                    )
+                }
+                onDiagnosticStage(DeepSeekEnhancementStage.CANDIDATE_PARSE)
+                parseProviderJson { DeepSeekCaptionEnhancementJson.parseSongIdentification(body) }
+            } else {
+                SongIdentificationResult(emptyList(), emptyList())
+            }
+            currentCoroutineContext().ensureActive()
+            onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_SEARCH)
+            val lookup = findVerifiedLyrics(request, identification)
+            SearchResult(
+                songMatch = lookup.songMatch,
+                verifiedLyrics = lookup.verified,
+                unconfirmedIdentity = lookup.unconfirmedIdentity,
+                canonicalAlignments = null,
+            )
+        }
+
         currentCoroutineContext().ensureActive()
         onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_REQUEST)
         val finalBody = byokManager.withDecryptedKey { apiKey ->
@@ -52,15 +75,16 @@ class DeepSeekCaptionEnhancementProvider(
                 apiKey = apiKey,
                 requestBody = DeepSeekCaptionEnhancementJson.contextualEnhancementRequestBody(
                     request = request,
-                    verified = lookup.verified,
-                    unconfirmedIdentity = lookup.unconfirmedIdentity,
+                    verified = searchResult.verifiedLyrics,
+                    unconfirmedIdentity = searchResult.unconfirmedIdentity,
+                    canonicalAlignments = searchResult.canonicalAlignments,
                 ),
             )
         }
         onDiagnosticStage(DeepSeekEnhancementStage.WHOLE_SONG_PARSE)
         return parseProviderJson { DeepSeekCaptionEnhancementJson.parseEnhancementResponse(finalBody) }.copy(
             processingVersion = PROCESSING_VERSION,
-            songMatch = lookup.songMatch,
+            songMatch = searchResult.songMatch,
         )
     }
 
@@ -79,8 +103,9 @@ class DeepSeekCaptionEnhancementProvider(
 
     private suspend fun findVerifiedLyrics(
         request: CaptionEnhancementRequest,
-        identities: List<SongIdentityCandidate>,
+        identification: SongIdentificationResult,
     ): LyricsLookupOutcome {
+        val identities = identification.candidates
         var best: VerifiedSongLyrics? = null
         var foundLyrics = false
         var searchUnavailable = false
@@ -100,36 +125,40 @@ class DeepSeekCaptionEnhancementProvider(
             }
             if (candidates.isNotEmpty()) foundLyrics = true
             onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_VERIFY)
-            candidates.forEach { candidate ->
-                val verified = verifier.verify(request.cues, candidate) ?: return@forEach
-                if (best == null || verified.metrics.confidence > requireNotNull(best).metrics.confidence) {
-                    best = verified
-                }
-            }
+            best = keepBestVerification(request.cues, candidates, best)
         }
 
         // Metadata search can miss the real song when the ASR-mangled title does not exist
-        // (e.g. "Sadie of stars" instead of "City of Stars"). Retry with raw lyric text so the
+        // (e.g. "Sadie of stars" instead of "City of Stars"). Retry with lyric text so the
         // correct track can still be found and verified; the DP verifier stays the gatekeeper.
-        if (best == null && !foundLyrics && !searchUnavailable &&
+        // The retry also runs when lyrics were found for the guessed identity but none passed
+        // verification: a wrong guess still leaves the lyric-text path worth trying.
+        //
+        // Two text queries run here: the model-cleaned lyric lines (spelling-level repairs only,
+        // far more searchable than ASR noise) and, as a control, the raw ASR concatenation.
+        if (best == null && !searchUnavailable &&
             request.cues.size >= SongLyricsCandidateVerifier.MIN_ELIGIBLE_CUES
         ) {
             currentCoroutineContext().ensureActive()
-            val candidates = try {
-                searchTool.searchByLyricText(lyricTextFallbackQuery(request))
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                emptyList()
-            }
-            if (candidates.isNotEmpty()) foundLyrics = true
-            onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_VERIFY)
-            candidates.forEach { candidate ->
-                val verified = verifier.verify(request.cues, candidate) ?: return@forEach
-                if (best == null || verified.metrics.confidence > requireNotNull(best).metrics.confidence) {
-                    best = verified
+            val fallbackQueries = listOfNotNull(
+                cleanedTextFallbackQuery(identification.cleanedLines, request.cues.size),
+                lyricTextFallbackQuery(request),
+            ).distinct()
+            val fallbackCandidates = mutableListOf<SongLyricsCandidate>()
+            fallbackQueries.forEachIndexed { queryIndex, query ->
+                currentCoroutineContext().ensureActive()
+                if (queryIndex > 0 || identities.isNotEmpty()) delay(LRCLIB_BATCH_DELAY_MS)
+                try {
+                    fallbackCandidates += searchTool.searchByLyricText(query)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // One failed text query must not abort the other route or the whole flow.
                 }
             }
+            if (fallbackCandidates.isNotEmpty()) foundLyrics = true
+            onDiagnosticStage(DeepSeekEnhancementStage.LYRICS_VERIFY)
+            best = keepBestVerification(request.cues, fallbackCandidates.distinctBy { it.sourceId }, best)
         }
 
         best?.let { verified ->
@@ -249,6 +278,21 @@ class DeepSeekCaptionEnhancementProvider(
         throw providerFailure(CaptionEnhancementErrorKind.INVALID_RESPONSE, error)
     }
 
+    private fun keepBestVerification(
+        cues: List<CaptionEnhancementRequestCue>,
+        candidates: List<SongLyricsCandidate>,
+        currentBest: VerifiedSongLyrics?,
+    ): VerifiedSongLyrics? {
+        var best = currentBest
+        candidates.forEach { candidate ->
+            val verified = verifier.verify(cues, candidate) ?: return@forEach
+            if (best == null || verified.metrics.confidence > requireNotNull(best).metrics.confidence) {
+                best = verified
+            }
+        }
+        return best
+    }
+
     private data class LyricsLookupOutcome(
         val verified: VerifiedSongLyrics? = null,
         val unconfirmedIdentity: SongIdentityCandidate? = null,
@@ -263,25 +307,53 @@ class DeepSeekCaptionEnhancementProvider(
             .trim()
             .take(FALLBACK_QUERY_MAX_CHARS)
 
+    /**
+     * Build the text-search query from model-cleaned lyric lines. The lines are discarded when
+     * their count does not match the cue batch (one line per cue is part of the contract); the
+     * longest lines win because they carry the most searchable phrase content.
+     */
+    internal fun cleanedTextFallbackQuery(cleanedLines: List<String>, expectedCueCount: Int): String? {
+        if (cleanedLines.size != expectedCueCount) return null
+        val lines = cleanedLines
+            .map { it.replace(Regex("\\s+"), " ").trim() }
+            .filter { it.isNotEmpty() && !it.matches(Regex("[\\[(][^\\])]*[\\])]")) }
+        if (lines.isEmpty()) return null
+        val picked = lines.withIndex()
+            .sortedByDescending { it.value.length }
+            .take(CLEANED_FALLBACK_MAX_LINES)
+            .sortedBy { it.index }
+        return picked.joinToString(" ") { it.value }
+            .take(FALLBACK_QUERY_MAX_CHARS)
+            .trim()
+            .takeIf { it.isNotEmpty() }
+    }
+
     companion object {
         const val ENDPOINT = "https://api.deepseek.com/chat/completions"
         const val MODEL = "deepseek-v4-pro"
-        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v4"
+        const val PROCESSING_VERSION = "deepseek-v4-pro-lyrics-search-context.v5"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 90_000
         const val MAX_RESPONSE_BYTES = 1_048_576
         const val MAX_SONG_CANDIDATES = 2
         const val LRCLIB_BATCH_DELAY_MS = 250L
         const val FALLBACK_QUERY_MAX_CHARS = 300
+        const val CLEANED_FALLBACK_MAX_LINES = 3
+        const val IDENTIFICATION_MAX_TOKENS = 1024
 
         val IDENTIFICATION_SYSTEM_PROMPT = """
-输入是同一首英文歌曲的整批 Whisper 识别字幕，内容可能包含错词、漏词和错误断句。
+输入是同一首英文歌曲的整批 Whisper 识别字幕，内容可能包含错词、漏词和错误断句。你需要完成两个任务：
+任务A 歌曲识别：
 1.必须综合整批字幕中的多条歌词推断对应歌曲，优先依据整批线索整体判断；线索较少时也必须给出最可能的猜测，不得弃权。
 2.Whisper 可能把歌词中的关键词或歌名本身识别错（例如把歌名唱词听成形近词）。识别时必须依据整批歌词的语义、意象、句式和用词推断真实歌曲；不得直接照抄 Whisper 原文中疑似歌名的字面拼写作为候选歌名。
 3.单条字幕可能包含同一歌曲的两句歌词，这不是异常输入，综合判断时按两句理解。
-4.只返回 1 个最可能的候选：可能性最高的歌名及其最知名的原唱歌手（artist），候选不能声称已经确认。
+4.最多返回 2 个候选，按可能性从高到低排列，每个候选给出歌名及其最知名的原唱歌手（artist），候选不能声称已经确认。两个候选必须是不同的歌曲，不得返回同一首歌的别名、别名拼写或翻唱版本。
 5.禁止返回空 candidates 数组。即使整批证据不足或拿不准，也必须给出你判断中最可能的那首歌；猜错会被下游歌词验证否决，不会造成错误确认，所以宁可给出猜测也不要返回空。
-只返回 JSON，格式必须严格为：{"candidates":[{"title":"...","artist":"..."}]}。
+任务B 净化歌词行：
+6.输出 cleaned_lines 数组，与输入 cues 一一对应：条数相同、顺序相同。每一行是对应 raw_english 的净化歌词文本。
+7.净化只允许拼写、同音词、语法层面的修复（例如把听错的形近词改回常见正确写法），禁止凭你对歌曲的记忆改写、补写或替换歌词内容；拿不准的措辞必须保留 Whisper 原文。
+8.纯噪声行（例如 [Music]、(upbeat music)、纯标点）输出空字符串 ""，不得编造歌词填充。
+只返回 JSON，格式必须严格为：{"candidates":[{"title":"...","artist":"..."}],"cleaned_lines":["..."]}。
 """.trimIndent()
 
         val VERIFIED_LYRICS_SYSTEM_PROMPT = """
@@ -319,6 +391,15 @@ cues 中的 confidence 是该条 Whisper 识别的置信度：数值越低说明
     }
 }
 
+/**
+ * Dual output of the identification call: song guesses plus model-cleaned lyric lines. Cleaned
+ * lines are only ever used to build a lyrics search query; they never enter the verified path.
+ */
+data class SongIdentificationResult(
+    val candidates: List<SongIdentityCandidate>,
+    val cleanedLines: List<String>,
+)
+
 /** Non-sensitive lifecycle markers for diagnostics; no request or response data is exposed. */
 enum class DeepSeekEnhancementStage {
     CANDIDATE_REQUEST,
@@ -334,13 +415,14 @@ internal object DeepSeekCaptionEnhancementJson {
     fun songIdentificationRequestBody(request: CaptionEnhancementRequest): String = completionRequest(
         systemPrompt = DeepSeekCaptionEnhancementProvider.IDENTIFICATION_SYSTEM_PROMPT,
         userPayload = requestPayload(request),
-        maxTokens = 512,
+        maxTokens = DeepSeekCaptionEnhancementProvider.IDENTIFICATION_MAX_TOKENS,
     )
 
     fun contextualEnhancementRequestBody(
         request: CaptionEnhancementRequest,
         verified: VerifiedSongLyrics?,
         unconfirmedIdentity: SongIdentityCandidate?,
+        canonicalAlignments: Map<String, String>? = null,
     ): String {
         val context = if (verified != null) {
             mapOf(
@@ -352,6 +434,17 @@ internal object DeepSeekCaptionEnhancementJson {
                 ),
                 "complete_english_lyrics" to verified.candidate.completeEnglishLyrics,
                 "cue_canonical_alignments" to verified.cueCanonicalEnglish.map { (id, english) ->
+                    mapOf("id" to id, "canonical_english" to english)
+                },
+                "request" to requestPayload(request),
+            )
+        } else if (canonicalAlignments != null && canonicalAlignments.isNotEmpty()) {
+            mapOf(
+                "mode" to "unconfirmed_partial_lyrics",
+                "unconfirmed_candidate" to unconfirmedIdentity?.let {
+                    mapOf("title" to it.title, "artist" to it.artist)
+                },
+                "cue_canonical_alignments" to canonicalAlignments.map { (id, english) ->
                     mapOf("id" to id, "canonical_english" to english)
                 },
                 "request" to requestPayload(request),
@@ -380,13 +473,13 @@ internal object DeepSeekCaptionEnhancementJson {
     fun requestBody(request: CaptionEnhancementRequest): String =
         contextualEnhancementRequestBody(request, verified = null, unconfirmedIdentity = null)
 
-    fun parseSongCandidates(body: String): List<SongIdentityCandidate> {
+    fun parseSongIdentification(body: String): SongIdentificationResult {
         val root = parseAssistantJson(body)
         val candidates = root.requiredArray("candidates").values
         if (candidates.size > DeepSeekCaptionEnhancementProvider.MAX_SONG_CANDIDATES) {
             throw JsonParseException("Too many song candidates")
         }
-        return candidates.map { value ->
+        val identities = candidates.map { value ->
             val item = value.asObject()
             val title = item.requiredString("title").trim()
             val artist = item.requiredString("artist").trim()
@@ -398,7 +491,18 @@ internal object DeepSeekCaptionEnhancementJson {
             }
             SongIdentityCandidate(title, artist)
         }.distinctBy { it.title.lowercase() to it.artist.lowercase() }
+        // cleaned_lines is a best-effort side output used only to build a search query: a missing
+        // or malformed array must never break the candidate path. Count mismatches are dropped
+        // later by cleanedTextFallbackQuery, which owns the one-line-per-cue contract check.
+        val cleanedLines = (root.values["cleaned_lines"] as? JsonArray)?.values
+            ?.map { value -> (value as? JsonValue.StringValue)?.value.orEmpty() }
+            ?: emptyList()
+        return SongIdentificationResult(identities, cleanedLines)
     }
+
+    /** Kept as a compatibility shim for focused tests and probe tooling. */
+    fun parseSongCandidates(body: String): List<SongIdentityCandidate> =
+        parseSongIdentification(body).candidates
 
     fun parseEnhancementResponse(body: String): CaptionEnhancementResponse {
         val root = parseAssistantJson(body)

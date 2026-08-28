@@ -1,4 +1,4 @@
-== Live AI-enhancement recognition trace 2026-08-27T21:45:31.1858305
+== Live AI-enhancement recognition trace 2026-08-29T00:11:30.3896005
 == endpoint=https://api.deepseek.com/chat/completions model=deepseek-v4-pro
 == input cues: 6, mediaDurationMs=24000
    cue-1 [0..4000] conf=0.9 :: When I find myself in times of trouble
@@ -7,6 +7,6 @@
    cue-4 [12000..16000] conf=0.9 :: And in my hour of darkness
    cue-5 [16000..20000] conf=0.9 :: She is standing right in front of me
    cue-6 [20000..24000] conf=0.9 :: Speaking words of wisdom, let it be
-[3ms] STAGE CANDIDATE_REQUEST
-== DeepSeek call #1 FAILED status=401
-{"error":{"message":"Authentication Fails, Your api key: ****34bc is invalid","type":"authentication_error","param":null,"code":"invalid_request_error"}}
+[5ms] STAGE CANDIDATE_REQUEST
+== DeepSeek call #1 FAILED status=402
+{"error":{"message":"Insufficient Balance","type":"unknown_error","param":null,"code":"invalid_request_error"}}

@@ -1,4 +1,4 @@
-== Live scenario 'wrong-segmentation' trace 2026-08-27T21:45:30.8106586
+== Live scenario 'wrong-segmentation' trace 2026-08-29T00:11:28.6821653
 == endpoint=https://api.deepseek.com/chat/completions model=deepseek-v4-pro
 == input cues: 5, mediaDurationMs=20000
    cue-1 [0..4000] conf=0.85 :: When I find myself in times of trouble
@@ -6,6 +6,6 @@
    cue-3 [8000..12000] conf=0.55 :: Speaking words of wisdom, let it be and in my hour of darkness
    cue-4 [12000..16000] conf=0.5 :: standing right in front of me
    cue-5 [16000..20000] conf=0.85 :: Speaking words of wisdom, let it be
-[6ms] STAGE CANDIDATE_REQUEST
-== DeepSeek call #1 FAILED status=401
-{"error":{"message":"Authentication Fails, Your api key: ****34bc is invalid","type":"authentication_error","param":null,"code":"invalid_request_error"}}
+[1ms] STAGE CANDIDATE_REQUEST
+== DeepSeek call #1 FAILED status=402
+{"error":{"message":"Insufficient Balance","type":"unknown_error","param":null,"code":"invalid_request_error"}}

@@ -104,7 +104,10 @@ import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementExcep
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementService
 import com.example.lyriccaptioner.processing.enhancement.CaptionEnhancementState
 import com.example.lyriccaptioner.processing.enhancement.CaptionResultSource
+import com.example.lyriccaptioner.processing.enhancement.SongMatchStatus
 import com.example.lyriccaptioner.processing.enhancement.DeepSeekCaptionEnhancementProvider
+import com.example.lyriccaptioner.processing.enhancement.ResponsesApiClient
+import com.example.lyriccaptioner.processing.enhancement.SearchScheduler
 import com.example.lyriccaptioner.project.AndroidProjectRepository
 import com.example.lyriccaptioner.project.MediaAccessResult
 import com.example.lyriccaptioner.project.ProjectLoadResult
@@ -357,7 +360,15 @@ class MainViewModel(
         )
     }
     private val defaultEnhancementProvider: DeepSeekCaptionEnhancementProvider by lazy {
-        DeepSeekCaptionEnhancementProvider(deepSeekManager)
+        val responsesClient = ResponsesApiClient()
+        val scheduler = SearchScheduler(
+            responsesClient = responsesClient,
+            byokManager = deepSeekManager,
+        )
+        DeepSeekCaptionEnhancementProvider(
+            byokManager = deepSeekManager,
+            searchScheduler = scheduler,
+        )
     }
     private val cueSuggestionService: CaptionCueSuggestionService by lazy {
         captionCueSuggestionService ?: defaultEnhancementProvider
@@ -470,6 +481,7 @@ class MainViewModel(
             }
             DerivedOutputPolicy.invalidateDerivedOutputs(current.copy(
                 captions = updated,
+                lyricLines = lyricLines,
                 status = "Matched ${matches.size} lyric lines. Review the suggested corrections.",
             ))
         }
@@ -559,7 +571,11 @@ class MainViewModel(
                             selectedCaptionId = outcome.captions.firstOrNull()?.id,
                             captionProcessing = CaptionProcessingSnapshot.from(outcome),
                             status = if (outcome.source == CaptionResultSource.CLOUD_AI) {
-                                "DeepSeek enhanced ${outcome.captions.size} captions."
+                                if (outcome.songMatch?.status == SongMatchStatus.CONFIRMED) {
+                                    "DeepSeek enhanced ${outcome.captions.size} captions with verified lyrics (${outcome.songMatch.title})."
+                                } else {
+                                    "DeepSeek enhanced ${outcome.captions.size} captions; no verified lyrics match, translated conservatively."
+                                }
                             } else {
                                 "Applied local fallback to ${outcome.captions.size} captions."
                             },
