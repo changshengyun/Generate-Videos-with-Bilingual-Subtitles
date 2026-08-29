@@ -1,15 +1,13 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-26.013`
+- `STATE_REV: 2026-08-29.001`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
-- Branch: `migration/lyric-captioner-history`
-- V4 baseline HEAD: `daf38c884b5b8b9f6b7f1b0517232871f9113417`
-- Current task: `V4-E2E-001`
-- Stage state: `WAITING_DEVICE_AUTHORIZATION`
-- Product status: `V4_COMPONENTS_IMPLEMENTED_E2E_PENDING`
-- Current gate: `PHYSICAL_DEVICE_AUTHORIZATION_REQUIRED`（E2E 专用；不阻塞无行为变化的代码简化）
-- Evidence ceiling: `COMPONENT_VERIFIED`
-- Last state sync: 2026-08-26
+- Branch: `main`（V4.4 收尾后与 `feature/ai-enhancement-search-scheduler` 快进合并）
+- Release: `v4.4.0`（V4 系列功能全部完成并通过验收的正式发布）
+- Current task: 无活动任务（V4.4 版本收尾完成，V5 阶段未启动）
+- Product status: `V4_RELEASED`
+- Evidence ceiling: `DEVICE_VERIFIED`（真机识别、真实 API 增强、三视频沙箱验证证据已入库 `test-artifacts/`）
+- Last state sync: 2026-08-29
 
 ## 当前决定
 
@@ -37,9 +35,13 @@
 
 保留所有进入 V4 前的未跟踪或脏内容，包括 `.emulator-test-assets/`、`.env`、`dist/`、`docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`、`tools/opus-mt-en-zh/` 和未知内容。不得 reset、clean、覆盖、批量暂存或 push。
 
-## 下一允许动作
+## V4.4 收尾记录（2026-08-29）
 
-等待 `V4-E2E-001` 真机授权。授权前不得连接、安装或操作真机。
+- V4 全部功能（V4.1 编辑套件、V4.2 AI 增强链路与 SRT 导出、V4.3 一致性恢复、V4.3.x 修复与 SearchScheduler 双路检索）已完成并通过验收，验收证据见 `test-artifacts/`。
+- 临时调试脚本、截图、UI dump、trace 已从 `tools/` 抽离至 `test-artifacts/debug-session-v4.3/`；超大原始 logcat 移入 `test-artifacts/device-capture/raw-logs/` 并加入 `.gitignore` 仅本地保留。
+- 版本号升至 `versionName 4.4.0 / versionCode 4400`，README 重写为项目入口与发布说明，打标签 `v4.4.0` 并推送。
+- 后续若进入 V5 新阶段，另行立项；当前不提前声明任何 V5 内容。
+
 
 ## 权威资料
 

@@ -6,8 +6,8 @@
   默认体制为第 9 节阶段契约；第 7 节 Multi-Agent 体制仅在用户显式启用时生效。
 - State source: `docs/DEVELOPMENT_ROADMAP.md` + `docs/CURRENT_TASK.md` + `docs/PROJECT_STATE.md`.
   状态来源为三份活动文档。
-- Change levels: S0/S1/S2; after three failed fix attempts freeze code changes and return to evidence analysis.
-  变更分级 S0/S1/S2；同一故障三次修复失败后冻结修改转证据分析。
+- Change levels: S0/S1/S2; simple bugs may use the fast-fix track (up to three simple fixes verified directly on device); after three failed fix attempts freeze code changes and enter the structured root-cause analysis phase.
+  变更分级 S0/S1/S2；简单 Bug 可走快速修复通道（最多三次简单修改并直接装机验证）；同一故障三次修复失败后冻结修改，转入根因分析阶段。
 - Git: precise staging, no push by default, never `git reset --hard` / clean.
   Git：精确暂存、默认不 push、禁用 reset --hard 与 clean。
 - Devices: physical-device operations require explicit user authorization.
@@ -105,8 +105,9 @@
 
 - `S0` 适用于文案、常量、明确的局部 UI 调整等低风险简单修改：直接修改，只检查精确 diff，不运行测试、构建或设备验证。`S0` 只豁免单次修改验证，不豁免阶段收尾时冻结验收矩阵要求的整体验证。
 - `S1` 适用于边界清楚的普通功能和缺陷：依次执行“定位 → 修改 → 最贴近的聚焦验证”。同一故障最多允许三次带代码修改的修复尝试。
+- 简单且范围明确的 Bug 适用快速修复通道：最多允许连续三次简单修改，期间不要求逐项中间验证，但每次修改后必须直接装机在真机（或当前门禁允许的设备）上运行验证；三次均未解决时立即停止快速修改，转入根因分析阶段。
 - `S2` 适用于构建、运行、测试、依赖、设备、集成、性能故障，或根因、影响范围不明确的问题：从第一次开始执行证据优先分析，先证明失败层和判别假设，再修改代码。
-- 同一故障连续三次修复失败后，立即冻结该故障的代码修改，回到证据分析阶段；此时只允许运行一个最小判别实验。证据足以定位后，执行一次最小修复，并依次运行原始复现、相关验证和阶段整体验证；若仍失败，再次回到冻结分析阶段。
+- 根因分析阶段按固定步骤执行：先列出该故障的所有可能原因并逐步缩小范围，再对候选原因逐一验证以确认真正根因；确认根因后才执行一次针对性修复，并依次运行原始复现、相关验证和阶段整体验证；若仍失败，再次回到根因分析阶段，不得继续无分析的尝试。
 - 不得通过把复杂问题标为 `S0` 或拆成多个表面小改动来规避必要验证。分级只控制验证成本，不降低冻结验收矩阵、证据分级和 PASS 条件。
 
 ### 9.1 Start and authority / 启动与授权
@@ -165,6 +166,7 @@
 ### 9.7 Documentation / 文档维护
 
 - 活动状态最多维护 `docs/DEVELOPMENT_ROADMAP.md`、`docs/CURRENT_TASK.md`、`docs/PROJECT_STATE.md`。验收矩阵写入 `docs/CURRENT_TASK.md`，不得为矩阵或每次 Debug 新建状态、总结或交接文档。
+- 所有文档（状态、任务、交接、报告、证据记录、归档文档）统一使用 `.md` 格式，便于查看与归档；纯文本日志类证据也应保存为 `.md` 文件。截图、视频、二进制产物不属于文档，仍按证据目录规则存放。
 - 阶段结束时三份文档必须一致记录：实际实现、测试证据、证据等级、剩余风险、设备门禁和下一完整模块。不得提前声明未验证的质量提升、设备通过或后续模块完成。
 - 涉及长期路线、模块顺序或关键产品决策的变更，不得自行写成既定路线，应返回 Brain/用户确认。
 
