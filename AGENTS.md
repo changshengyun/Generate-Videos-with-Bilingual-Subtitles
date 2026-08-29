@@ -97,6 +97,17 @@
 - Governance findings may recommend changes to a Prompt, Skill, rule, template, or workflow, but do not authorize those changes or any product/architecture action.
   治理结论可以建议修改 Prompt、Skill、规则、模板或流程，但不授权这些修改，也不授权任何产品或架构动作。
 
+### 8.1 Final-state hygiene / 最终状态卫生
+
+- Code comments record only a durable, non-obvious reason, external constraint, or invalidation condition that a maintainer needs. Do not restate the operation, preserve intermediate attempts, or narrate rejected alternatives.
+  代码注释只记录维护者需要的持久且非显然原因、外部约束或失效条件；不得复述代码操作、保留中间尝试或叙述已否决方案。
+- Final documentation and PR/MR or commit text describe the observable final behavior and only material rationale that the diff cannot express. Do not mention temporary states, removed experiments, or behavior that never entered the final diff.
+  最终文档及 PR/MR 或提交说明只描述可观察的最终行为，以及 diff 无法表达的重要理由；不得提及临时状态、已移除实验或从未进入最终 diff 的行为。
+- Routine validation narration is omitted from PR/MR text unless a repository template, frozen acceptance matrix, or risk-specific manual result requires it. Completion reports still follow Section 9.9.
+  PR/MR 文本默认不罗列常规验证过程；仅当仓库模板、冻结验收矩阵或风险专项人工结果要求时保留。阶段最终汇报仍遵循第 9.9 节。
+- Cleanup requests do not authorize behavior changes or broader review. Use `.agents/skills/final-diff-hygiene` for the current change surface and preserve required evidence, tests, and state records.
+  收尾清理不授权改变行为或扩大审查范围；对当前变更表面使用 `.agents/skills/final-diff-hygiene`，并保留强制证据、测试和状态记录。
+
 ## 9. LyricCaptioner stage execution contract / LyricCaptioner 阶段执行契约
 
 本节是所有 LyricCaptioner Developer 阶段任务的默认执行契约。后续 Prompt 不需要重复本节，只需声明任务 ID、阶段目标、功能边界、专项验收和相对于本节的例外；若 Prompt 与本节冲突，以用户最新明确指令和三份活动文档共同确认的当前任务为准。
