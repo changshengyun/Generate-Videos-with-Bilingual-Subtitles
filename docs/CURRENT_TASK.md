@@ -1,9 +1,9 @@
 # Current Task: V5-RELEASE-001
 
-- `STATE_REV: 2026-08-30.005`
-- `TASK_REV: V5-RELEASE-001.001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `V5_RELEASE_PREPARATION`
+- `STATE_REV: 2026-08-30.006`
+- `TASK_REV: V5-RELEASE-001.002`
+- Stage state: `IMPLEMENTED / BUILD_VERIFIED / PUSH_PENDING`
+- Product status: `V5_BUILD_VERIFIED`
 - Evidence ceiling: `BUILD_VERIFIED`
 - Device gate: `NO_DEVICE_ACTION`
 - Push gate: `PUSH_AUTHORIZED_ORIGIN_DEV_ONLY`
@@ -42,4 +42,20 @@
 
 ## 5. 下一动作
 
-提交阶段 checkpoint,再修改版本号和发布说明。
+精确提交本阶段五个允许文件,推送新建的 `origin/dev`,再核对远端提交并同步最终状态。
+
+## 6. 本地实现与验证结果
+
+| 项目 | 结果 |
+|---|---|
+| 版本身份 | `versionName 5.0.0 / versionCode 5000` |
+| 行为范围 | 未修改业务源码、依赖、模型、Prompt、合同、ABI 或设备状态 |
+| ASR Python | 6/6 通过 |
+| JVM 单元测试 | `testDebugUnitTest` 成功;测试源码已移出,任务为 `NO-SOURCE` |
+| Lint | `lintDebug` 成功;报告 `app/build/reports/lint-results-debug.html` |
+| 普通/Native Debug | 均构建成功 |
+| 普通/Native AndroidTest | 均构建成功;测试源码为 `NO-SOURCE` |
+| Native APK | `app/build/outputs/apk/debug/app-debug.apk`,397,816,816 bytes,包含 arm64-v8a 与 x86_64 的 `liblyriccaptioner_whisper.so` |
+| APK 版本核对 | `aapt dump badging`: `versionCode='5000' versionName='5.0.0'` |
+| 已知警告 | Android Gradle Plugin 8.7.3 对 compileSdk 36 给出兼容范围警告;不在本次版本发布范围内升级依赖 |
+| 设备证据 | 未操作设备;本阶段证据上限为 `BUILD_VERIFIED` |

@@ -1,7 +1,7 @@
 # LyricCaptioner 开发路线
 
-- `ROADMAP_REV: 2026-08-30.005`
-- 当前任务：`V5-RELEASE-001 / MATRIX_DEFINED / IN_PROGRESS`（把精简后的当前版本发布为 V5.0.0 到远端 `dev`）
+- `ROADMAP_REV: 2026-08-30.006`
+- 当前任务：`V5-RELEASE-001 / IMPLEMENTED / BUILD_VERIFIED / PUSH_PENDING`（V5.0.0 本地门禁已通过,待推送远端 `dev`）
 - V3 历史摘要：原 `archive/v3/V3_STAGE_HISTORY_2026-08-12.md`（V4.4 已移出仓库，可从 git 历史找回）
 
 ## 文档职责
@@ -50,7 +50,7 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 
 | 阶段 | 当前状态 | 目标/依赖 |
 |---|---|---|
-| `V5-RELEASE-001` | `MATRIX_DEFINED / IN_PROGRESS` | 将 `716f2f4` 精简基线标记为 `5.0.0 / 5000`,同步发布文档并推送新建的 `origin/dev`;不改变产品行为 |
+| `V5-RELEASE-001` | `IMPLEMENTED / BUILD_VERIFIED / PUSH_PENDING` | 已将 `716f2f4` 精简基线标记为 `5.0.0 / 5000` 并通过本地构建门禁;待推送新建的 `origin/dev`;不改变产品行为 |
 
 ## 执行和提交顺序
 

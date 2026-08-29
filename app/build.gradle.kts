@@ -39,8 +39,8 @@ android {
         applicationId = "com.example.lyriccaptioner"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4400
-        versionName = "4.4.0"
+        versionCode = 5000
+        versionName = "5.0.0"
 
         if (whisperNativeEnabled) {
             externalNativeBuild {

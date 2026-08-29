@@ -1,11 +1,11 @@
 # LyricCaptioner Project State
 
-- `STATE_REV: 2026-08-30.005`
+- `STATE_REV: 2026-08-30.006`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `dev`（从精简基线 `716f2f4` 创建;远端 `origin/dev` 尚不存在）
-- Release: `v5.0.0` 准备中（计划 `versionName 5.0.0 / versionCode 5000`）
-- Current task: `V5-RELEASE-001 / MATRIX_DEFINED / IN_PROGRESS`
-- Product status: `V5_RELEASE_PREPARATION`
+- Release: `v5.0.0` 本地构建已验证（`versionName 5.0.0 / versionCode 5000`;待推送 `origin/dev`）
+- Current task: `V5-RELEASE-001 / IMPLEMENTED / BUILD_VERIFIED / PUSH_PENDING`
+- Product status: `V5_BUILD_VERIFIED`
 - Evidence ceiling: `BUILD_VERIFIED`（本阶段不操作设备;V4.4 既有设备证据不改写）
 - Last state sync: 2026-08-30
 
@@ -20,7 +20,7 @@
 - `V4-SIMP-001` 是插入的代码简化阶段：仅拆分 `ui/EditorScreen.kt` 为同包多文件并修复 4 处乱码文案，纯机械搬移、行为不变；不改变任何架构、依赖、模型或合同。
 - 不新增依赖，不更换模型，不修改 AI Prompt、歌词检索、响应合同或 cue 时间戳合同。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
-- `CODEX-HYGIENE-001` 已引入针对最终 diff、注释和变更说明的项目级规则与 `.agents/skills/final-diff-hygiene`；未恢复 V4.4 已迁出的 Multi-Agent 角色体系，也未启动 V5。
+- `CODEX-HYGIENE-001` 已引入针对最终 diff、注释和变更说明的项目级规则与 `.agents/skills/final-diff-hygiene`；未恢复 V4.4 已迁出的 Multi-Agent 角色体系。该阶段当时尚未启动 V5，现已由 `V5-RELEASE-001` 进入 V5 发布基线。
 - `V4-SIMP-002` 已完成:只删除已证明无生产消费者的仓库负担、测试遗留、死代码、直接依赖和完全失效文档；未改变产品行为、技术路线、持久化、安全或运行时合同。
 - `V5-RELEASE-001` 只升级版本身份与发布文档,不新增 V5 功能,不改变应用包名、业务源码或运行时合同。
 
@@ -33,7 +33,7 @@
 - `CODEX-HYGIENE-001` 达到 `PASS / REPO_CONFIG_VERIFIED`：repo Skill 通过 `quick_validate.py`，`git diff --check` 通过，且 `AGENTS.md` 保持在默认 32 KiB 指令上限以内。
 - `V4-SIMP-002` 达到 `PASS / BUILD_VERIFIED`:跟踪项 `126 → 116`,工作树字节 `115,160,329 → 27,124,073`,Kotlin `15,905 → 14,235` 行,Markdown `1,678 → 1,610` 行;ASR Python 6/6、lint、普通/Native Debug 与普通/Native AndroidTest 构建均成功;测试任务如实为 `NO-SOURCE`。
 - `V4-SIMP-002` 当前禁止真机操作，因此本阶段最高记录 `BUILD_VERIFIED`；这不改写 V4.4 发布前已经取得并本地留存的设备与真实 API 证据。
-- `V5-RELEASE-001` 已冻结验收矩阵;必须在构建门禁通过且 `origin/dev` 指向最终提交后才能记录 `PASS / BUILD_VERIFIED / PUSHED`。
+- `V5-RELEASE-001` 已同步 `5.0.0 / 5000` 并完成本地门禁：ASR Python 6/6，`testDebugUnitTest` 成功且为 `NO-SOURCE`，lint、普通/Native Debug、普通/Native AndroidTest 构建成功；Native APK 为 397,816,816 bytes，含 arm64-v8a 与 x86_64 Whisper 库。只有 `origin/dev` 指向最终提交后才能记录 `PASS / BUILD_VERIFIED / PUSHED`。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
 ## 受保护工作树
@@ -47,7 +47,7 @@
 - 版本号升至 `versionName 4.4.0 / versionCode 4400`，README 重写为项目入口与发布说明，打标签 `v4.4.0` 并推送。
 - 仓库精简：原 Multi-Agent `.agents/` 与 `.codex/skills/` 迁入 DEV-SKILL 仓库；`CODEX-HYGIENE-001` 后仅重新加入独立的 `.agents/skills/final-diff-hygiene` repo Skill，不恢复角色体系。`deliverables/`、`docs-v2/`、`docs/archive/`、`docs/debug/`、`.kotlin/`、`.emulator-test-assets/` 仍已移出仓库（均可从 git 历史找回）。
 - 二次精简：`app/src/test/`、`app/src/androidTest/` 测试代码移出仓库；`test-artifacts/` 改为仅本地保留并加入 `.gitignore` 不入库；历史测试与证据均可从 git 历史（`v4.4.0`）找回。
-- 后续若进入 V5 新阶段，另行立项；当前不提前声明任何 V5 内容。
+- 本记录在当时结束 V4；后续已由 `V5-RELEASE-001` 单独立项进入 V5，不改写上述 V4 历史证据。
 
 
 ## 权威资料
