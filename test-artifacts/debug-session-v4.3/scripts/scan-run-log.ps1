@@ -1,0 +1,12 @@
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$adb = 'D:\DevData\Android\Sdk\platform-tools\adb.exe'
+& $adb shell 'logcat -d -v time > /sdcard/full-log.txt'
+Write-Output '=== line count ==='
+& $adb shell 'wc -l /sdcard/full-log.txt'
+Write-Output '=== lyriccaptioner count ==='
+& $adb shell 'grep -c lyriccaptioner /sdcard/full-log.txt'
+Write-Output '=== trace/workflow/whisper lines ==='
+& $adb shell 'grep -i -E "LyricCaptionerTrace|workflow_started|whisper_batch|song_identity" /sdcard/full-log.txt'
+Write-Output '=== first and last line ==='
+& $adb shell 'head -1 /sdcard/full-log.txt'
+& $adb shell 'tail -1 /sdcard/full-log.txt'

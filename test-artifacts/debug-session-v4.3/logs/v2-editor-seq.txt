@@ -1,0 +1,44 @@
+﻿TXT &#128275; 单条布局
+TXT 可编辑
+TXT It was like we're all who stands apart
+TXT 仿佛我们生来就注定分离
+TXT 0:00
+TXT DeepSeek enhanced 4 captions; no verified lyrics match, translated conservatively.
+TXT 识别/翻译
+TXT 字幕编辑
+TXT 在视频画面内直接调整字幕
+TXT 添加字幕
+TXT 导入歌词
+TXT 点击画面中的字幕可移动、删除、拉伸宽度或缩放字号
+TXT 字幕列表
+TXT 4 条
+CARD whisper-0-0
+TXT 第 1/4 段  0.0s - 8.0s
+TXT 置信度 63%
+TXT 时长超过 7 秒
+TXT 样式/位置
+TXT −0.1 秒
+TXT ＋0.1 秒
+TXT 英文字幕
+TXT 中文字幕
+TXT 拆分字幕
+TXT 合并字幕
+TXT AI 增强
+TXT 建议复核
+CARD whisper-1-9000
+TXT 第 2/4 段  9.0s - 13.0s
+TXT 置信度 91%
+TXT There's so much space between us
+TXT 我们之间隔着遥远的距离
+TXT 待确认
+CARD whisper-2-13000
+TXT 第 3/4 段  13.0s - 17.0s
+TXT 置信度 68%
+TXT Baby, we're already behind
+TXT 亲爱的，我们早已落后于时光
+CARD whisper-3-17000
+TXT 第 4/4 段  17.0s - 35.84s
+TXT 置信度 81%
+TXT 英文超过 42 字符
+TXT And you have given me something that I can't live without.
+TXT 而你给了我无法割舍的一切
