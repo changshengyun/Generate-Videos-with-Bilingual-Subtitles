@@ -2,12 +2,12 @@
 
 ## 文档状态
 
-- `ARCH_REV: 2026-08-26.001`
+- `ARCH_REV: 2026-08-30.002`
 - 状态:`ACTIVE_REFERENCE`
-- 日期:2026-08-26
+- 日期:2026-08-30
 - 目的:记录 V4 当前真实产品架构与模块地图,取代 `V3_PRODUCT_ARCHITECTURE.md` 作为当前架构参考。V3 文档原地保留为历史证据,不修改、不删除。
 - 本文只描述"代码现在是什么",不新增计划;阶段调度仍以 `CURRENT_TASK.md` 与 `PROJECT_STATE.md` 为准。
-- 所有事实均以 2026-08-26 工作树源码为准;不确定或外部来源的内容单独标注证据等级。
+- 所有事实均以 2026-08-30 的 v4.4.0 精简后源码为准;不确定或外部来源的内容单独标注证据等级。
 
 ## V4 唯一产品主链路
 
@@ -23,7 +23,7 @@
 
 编排入口:`MainViewModel.generateCompleteCaptions()` → `CompleteCaptionWorkflowRunner.run()`(`processing/CompleteCaptionWorkflow.kt`)。前置检查在 `CompleteCaptionWorkflowPreflight.blockingMessage()`:视频已导入、本地 Whisper 就绪、DeepSeek Key 已配置且验证。工作流严格串行:识别完成并提交 RAW 批次后才进入增强;增强结果整批原子替换,不提交部分 AI 输出。
 
-## 模块地图(2026-08-26 工作树实测)
+## 模块地图(2026-08-30 工作树实测)
 
 ### `ui/`(V4-SIMP-001 拆分后)
 
@@ -32,12 +32,12 @@
 | `EditorScreen.kt` | 主入口;分区导航(导入/生成/编辑/导出)、launcher 编排 |
 | `VideoPreviewPlayer.kt` | 视频预览卡片、播放控制行 `PlayerControlRow`、全屏 Dialog 预览 |
 | `SubtitlePreviewOverlay.kt` | 画面内字幕覆盖层;直接编辑模式(选点/拖动/缩放) |
-| `DirectCaptionEditPanel.kt` | 编辑分区下的选中 cue 直编面板 |
-| `CaptionListPanel.kt` | 字幕列表(文本编辑、时间微调、确认、删除) |
+| `CaptionEditorPage.kt` | 编辑分区字幕列表、选中 cue 直编与时间轴操作编排 |
+| `CaptionListPanel.kt` | 单条字幕卡片(文本编辑、时间微调、确认、删除) |
 | `CaptionStyleControls.kt` | 逐 cue 样式控件(颜色/字体/对齐/位置等) |
 | `DeepSeekKeySettingsPanel.kt` | AI 服务配置(BYOK Key 输入/验证/删除) |
 | `WorkbenchPanels.kt` | 工作台面板与通用 Action 组件 |
-| `EditorSupport.kt`、`EditorUiPolicy.kt`、`ProductUiContract.kt`、`Theme.kt` | 编辑器辅助、UI 策略、产品 UI 契约、主题 |
+| `EditorSupport.kt`、`EditorUiPolicy.kt`、`Theme.kt` | 编辑器辅助、UI 策略与主题 |
 
 ### `processing/`(识别、增强、导出)
 
@@ -52,7 +52,7 @@
 | `CompleteCaptionWorkflow.kt` | 识别→增强串行编排(见上) |
 | `CaptionRenderResolver.kt`、`CaptionPaintPlan.kt` | 预览与导出共用的字幕渲染解析 |
 | `ExportEngine.kt`、`FfmpegKitSubtitleExporter.kt` | FFmpegKit 导出(内部含 `AssSubtitleWriter`) |
-| `MediaStoreExportGateway.kt`、`ExportDestinationPolicy.kt`、`ExportLifecycle.kt` | MediaStore 目的地、安全边界与生命周期 |
+| `MediaStoreExportGateway.kt`、`ExportDestinationPolicy.kt` | MediaStore 发布会话、目的地与安全边界 |
 | `TranslationModule.kt`、`OnnxLocalTranslator.kt`、`LocalTranslationModelCatalog.kt`、`LocalTranslationModelStore.kt`、`SentencePieceTokenizer.kt` | 本地 OPUS-MT 翻译(AI 失败回退路径) |
 
 ### `processing/enhancement/`(AI 增强,唯一云端链路)
@@ -72,7 +72,7 @@
 ### 其余模块
 
 - `audio/`:`LinearPcm16Resampler`、`Pcm16ChannelMixer`、`Pcm16ToMono16kProcessor`、`Pcm16WavWriter` — 16 kHz 单声道 WAV 预处理链。
-- `captions/`:`CaptionTimeline`(时间轴查询)、`CaptionTimingEditor`、`LyricLineAligner`(歌词文本对齐建议)、`SrtParser`(导入)、`SrtWriter`(仅测试/instrumentation 使用,产品 UI 无 SRT 导出入口;详见 SRT 缺口文档)。
+- `captions/`:`CaptionTimeline`(时间轴查询)、`CaptionTimingEditor`、`LyricLineAligner`(歌词文本对齐建议)、`SrtParser`(导入)、`SrtWriter`(由产品导出分区的 SRT 入口调用)。
 - `model/`:`CaptionCue`(含 `confidence`、`correctionCandidates`、样式/布局 override)、`EditorState`、各类编辑与导入策略、`ProjectSnapshot`。
 - `project/`:`AndroidProjectRepository`、`ProjectArchive`(`.lcp` 项目存档读写)。
 
@@ -128,7 +128,7 @@
 ## 数据与不变量合同
 
 - cue `id`、顺序、`start_ms`、`end_ms` 在 AI 链路中原样往返;禁止增加、删除、拆分、合并、重排 cue 或修改时间(由 validator 与合同测试双重守护)。
-- AI 响应只能填充 `corrected_english` 与 `chinese` 两个文本字段;整批成功才提交(CaptionBatchCommitPolicy)。
+- AI 响应只能填充 `corrected_english` 与 `chinese` 两个文本字段;由 `CaptionEnhancementResponseValidator` 全批校验后，`CaptionEnhancementCoordinator` 才返回可提交结果。
 - `CaptionCue.confidence` 由 Whisper 每段置信度填充,用于编辑器 `needsReview`(< 0.82 标记待复核);当前 AI 请求合同不包含该字段(见 `AI2_ENHANCEMENT_DIAGNOSIS.md`)。
 - 导出与预览共用 `CaptionRenderResolver`,保证 Compose 预览与 ASS 烧录的坐标/样式语义一致(ASS PlayRes 固定 1920×1080)。
 
@@ -144,6 +144,6 @@
 
 ## 已知边界与证据缺口
 
-- 真机 E2E(`V4-E2E-001`)尚未获得设备授权,真实 AI、真实导出、回放证据未取得;本文架构描述达到 `COMPONENT_VERIFIED` 证据等级。
+- V4.4 发布前已取得真机识别、真实 API 增强与装机冒烟证据,仅本地保留于 `test-artifacts/`;本次 `V4-SIMP-002` 不执行新的设备操作,只提供 `BUILD_VERIFIED` 证据。
 - ASR 侧 small/base 与 runtime 差异的既有诊断见 `docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`（V4.4 已移出仓库，可从 git 历史找回）;本文不重复结论。
-- AI 增强效果问题与 Prompt 优化分析见 `AI2_ENHANCEMENT_DIAGNOSIS.md`;SRT 输出缺口见 `SRT_OUTPUT_GAPS.md`。
+- AI 增强效果问题与 Prompt 优化分析见 `AI2_ENHANCEMENT_DIAGNOSIS.md`;SRT 已接线后的剩余格式与对时问题见 `SRT_OUTPUT_GAPS.md`。

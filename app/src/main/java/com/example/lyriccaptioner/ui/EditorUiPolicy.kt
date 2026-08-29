@@ -12,25 +12,6 @@ internal enum class EditorSection(val index: Int) {
     EXPORT(3),
 }
 
-internal data class AsrEditEntryState(
-    val visible: Boolean,
-    val captionCount: Int,
-)
-
-internal fun asrEditEntryState(
-    status: String,
-    captionCount: Int,
-    asrRunning: Boolean,
-    isWorking: Boolean,
-): AsrEditEntryState {
-    val completedLocalAsr = status.startsWith(LOCAL_ASR_SUCCESS_PREFIX)
-    val visible = completedLocalAsr && captionCount > 0 && !asrRunning && !isWorking
-    return AsrEditEntryState(visible = visible, captionCount = if (visible) captionCount else 0)
-}
-
-internal fun showsCaptionList(activeSection: Int): Boolean =
-    activeSection == EditorSection.CAPTIONS.index
-
 internal fun orderedCaptionEditorItems(captions: List<CaptionCue>): List<CaptionCue> =
     captions.sortedWith(
         compareBy<CaptionCue> { it.startMs }
@@ -58,5 +39,3 @@ internal fun captionStyleUiState(
     // a position-only edit must keep the card's clear action enabled.
     hasOverride = cue.styleOverride?.isEmpty == false || cue.layoutOverride?.isEmpty == false,
 )
-
-private const val LOCAL_ASR_SUCCESS_PREFIX = "Local Whisper JNI generated "

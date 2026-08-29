@@ -2,19 +2,14 @@ package com.example.lyriccaptioner.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -38,126 +32,6 @@ import com.example.lyriccaptioner.model.CaptionLayout
 import com.example.lyriccaptioner.model.CaptionReadability
 import com.example.lyriccaptioner.model.CaptionReadabilityIssue
 import com.example.lyriccaptioner.model.DefaultCaptionStyle
-
-@Composable
-internal fun CaptionList(
-    captions: List<CaptionCue>,
-    selectedId: String?,
-    defaultStyle: DefaultCaptionStyle,
-    captionLayout: CaptionLayout,
-    onSelect: (String) -> Unit,
-    onEnglishChanged: (String, String) -> Unit,
-    onChineseChanged: (String, String) -> Unit,
-    onApplyCandidate: (String, String) -> Unit,
-    onShiftStart: (String, Long) -> Unit,
-    onShiftEnd: (String, Long) -> Unit,
-    onDelete: (String) -> Unit,
-    onConfirm: (String) -> Unit,
-    onFontSmaller: (String, Int) -> Unit,
-    onFontLarger: (String, Int) -> Unit,
-    onEnglishColorChanged: (String, String) -> Unit,
-    onChineseColorChanged: (String, String) -> Unit,
-    onOutlineColorChanged: (String, String) -> Unit,
-    onFontFamilyChanged: (String, String) -> Unit,
-    onToggleBold: (String) -> Unit,
-    onToggleItalic: (String) -> Unit,
-    onAlignmentChanged: (String, CaptionAlignment) -> Unit,
-    onPositionChanged: (String, Int) -> Unit,
-    onClearOverride: (String) -> Unit,
-    onOpenStyle: (String) -> Unit = {},
-    onSplitDraft: (String) -> Unit = {},
-    onMerge: (String) -> Unit = {},
-    onEnhance: (String) -> Unit = {},
-    aiRunningCueId: String? = null,
-    aiError: String? = null,
-    enabled: Boolean,
-    editorSnapshot: String,
-    modifier: Modifier = Modifier,
-) {
-    if (captions.isEmpty()) {
-        Card(
-            modifier = modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF171A1F),
-                contentColor = Color(0xFFF4F5F7),
-            ),
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("字幕列表将在识别或导入后显示", color = Color(0xFF9EA5B1))
-            }
-        }
-        return
-    }
-
-    Card(
-        modifier = modifier.fillMaxWidth().semantics { contentDescription = "caption_list" },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF12151A),
-            contentColor = Color(0xFFF4F5F7),
-        ),
-    ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(1.dp)
-                    .clearAndSetSemantics { contentDescription = "caption_state:$editorSnapshot" },
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("字幕列表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("${captions.size} 条", style = MaterialTheme.typography.labelMedium, color = Color(0xFF9EA5B1))
-            }
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(captions, key = { it.id }) { cue ->
-                    CaptionCard(
-                        cue = cue,
-                        positionLabel = "第 ${captions.indexOf(cue) + 1}/${captions.size} 段",
-                        selected = cue.id == selectedId,
-                        enabled = enabled,
-                        onSelect = { onSelect(cue.id) },
-                        onEnglishChanged = { onEnglishChanged(cue.id, it) },
-                        onChineseChanged = { onChineseChanged(cue.id, it) },
-                        onApplyCandidate = { onApplyCandidate(cue.id, it) },
-                        onShiftStart = { onShiftStart(cue.id, it) },
-                        onShiftEnd = { onShiftEnd(cue.id, it) },
-                        onDelete = { onDelete(cue.id) },
-                        onConfirm = { onConfirm(cue.id) },
-                        defaultStyle = defaultStyle,
-                        captionLayout = captionLayout,
-                        onFontSmaller = { delta -> onFontSmaller(cue.id, delta) },
-                        onFontLarger = { delta -> onFontLarger(cue.id, delta) },
-                        onEnglishColorChanged = { color -> onEnglishColorChanged(cue.id, color) },
-                        onChineseColorChanged = { color -> onChineseColorChanged(cue.id, color) },
-                        onOutlineColorChanged = { color -> onOutlineColorChanged(cue.id, color) },
-                        onFontFamilyChanged = { font -> onFontFamilyChanged(cue.id, font) },
-                        onToggleBold = { onToggleBold(cue.id) },
-                        onToggleItalic = { onToggleItalic(cue.id) },
-                        onAlignmentChanged = { alignment -> onAlignmentChanged(cue.id, alignment) },
-                        onPositionChanged = { delta -> onPositionChanged(cue.id, delta) },
-                        onClearOverride = { onClearOverride(cue.id) },
-                        onOpenStyle = { onOpenStyle(cue.id) },
-                        onSplitDraft = { onSplitDraft(cue.id) },
-                        onMerge = { onMerge(cue.id) },
-                        onEnhance = { onEnhance(cue.id) },
-                        aiRunning = aiRunningCueId == cue.id,
-                        aiError = aiError.takeIf { aiRunningCueId == cue.id },
-                    )
-                }
-            }
-        }
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

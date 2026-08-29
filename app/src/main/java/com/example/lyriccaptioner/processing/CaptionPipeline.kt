@@ -48,22 +48,8 @@ interface LocalSpeechRecognizer {
     suspend fun recognize(audio: ExtractedAudio): List<CaptionCue>
 }
 
-interface CaptionCorrector {
-    suspend fun correct(captions: List<CaptionCue>): List<CaptionCue>
-}
-
 interface LocalTranslator {
     suspend fun isModelReady(): Boolean = false
     suspend fun prepareBatch() = Unit
     suspend fun translateEnglishToChinese(text: String): String
-}
-
-data class LocalModelStatus(
-    val name: String,
-    val ready: Boolean,
-    val detail: String,
-)
-
-interface LocalModelManager {
-    suspend fun status(): List<LocalModelStatus>
 }

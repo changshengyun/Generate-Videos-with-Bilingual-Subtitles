@@ -1,8 +1,8 @@
 # Current Task: V4-SIMP-002
 
-- `STATE_REV: 2026-08-30.003`
-- `TASK_REV: V4-SIMP-002.001`
-- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- `STATE_REV: 2026-08-30.004`
+- `TASK_REV: V4-SIMP-002.002`
+- Stage state: `PASS / BUILD_VERIFIED`
 - Product status: `V4_RELEASED`
 - Evidence ceiling: `BUILD_VERIFIED`
 - Device gate: `NO_DEVICE_ACTION`
@@ -36,6 +36,21 @@
 3. 依赖：按单项消费者证明移除未使用直接依赖。
 4. 文档：修复当前 owner，退役完全失效记录，保留仍拥有兼容或历史决策的资料。
 
-## 5. 下一动作
+## 5. 完成证据
 
-建立本阶段 checkpoint，采集当前构建与体积基线，然后从最高置信度、最易撤销的仓库负担开始。
+| 验收项 | 结果 |
+|---|---|
+| 仓库规模 | 跟踪项 `126 → 116`;工作树字节 `115,160,329 → 27,124,073`;Kotlin `15,905 → 14,235` 行;Markdown `1,678 → 1,610` 行 |
+| 仓库负担 | 删除未参与构建的 full FFmpegKit AAR `87,961,592` bytes;保留 minimal-gpl AAR |
+| 测试遗留 | 删除 debug BYOK 测试 Activity/Manifest、JUnit 依赖与目录已移出的测试专用生产代码;`testDebugUnitTest` 与 AndroidTest Kotlin 编译均明确为 `NO-SOURCE` |
+| 死代码/依赖 | 删除 6 个无生产消费者的完整 Kotlin 文件、共享文件内孤立成员，以及 5 个零源码导入的直接依赖;残留搜索通过 |
+| 文档同步 | `versionName 4.4.0 / versionCode 4400` 保持不变;README、V4 架构、SRT 缺口与三份活动文档同步到实际实现 |
+| 验证 | ASR Python `6/6`;`lintDebug`;普通/Native Debug;普通/Native AndroidTest 全部成功;`git diff --check` 通过 |
+| 产物 | 普通 Debug APK `377,509,671` bytes;Native Debug APK `397,816,816` bytes并含 ARM64/x86_64 两份 `liblyriccaptioner_whisper.so`;AndroidTest APK `5,536` bytes |
+| 设备边界 | 未连接、安装或操作模拟器/真机;本阶段证据等级固定为 `BUILD_VERIFIED` |
+
+## 6. 提交与下一动作
+
+- Checkpoint: `ba1009d`。
+- 功能提交:本任务最终功能提交(见 Git 日志);默认不 push。
+- 当前无活动开发任务;如需进入 V5 或执行新的设备验收,必须另行立项并获得相应授权。

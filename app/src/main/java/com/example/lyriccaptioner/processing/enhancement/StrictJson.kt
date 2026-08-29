@@ -179,13 +179,6 @@ internal fun JsonObject.requiredLong(key: String): Long =
     (values[key] as? JsonValue.NumberValue)?.value?.toLongOrNull()
         ?: throw JsonParseException("Expected JSON integer")
 
-internal fun JsonObject.optionalDouble(key: String): Double? = when (val value = values[key]) {
-    null, JsonValue.NullValue -> null
-    is JsonValue.NumberValue -> value.value.toDoubleOrNull()
-        ?: throw JsonParseException("Expected optional JSON number")
-    else -> throw JsonParseException("Expected optional JSON number")
-}
-
 internal fun JsonObject.optionalBoolean(key: String): Boolean? = when (val value = values[key]) {
     null, JsonValue.NullValue -> null
     is JsonValue.BooleanValue -> value.value
@@ -194,12 +187,6 @@ internal fun JsonObject.optionalBoolean(key: String): Boolean? = when (val value
 
 internal fun JsonObject.requiredObject(key: String): JsonObject =
     (values[key] as? JsonValue.ObjectValue) ?: throw JsonParseException("Expected JSON object")
-
-internal fun JsonObject.optionalObject(key: String): JsonObject? = when (val value = values[key]) {
-    null, JsonValue.NullValue -> null
-    is JsonValue.ObjectValue -> value
-    else -> throw JsonParseException("Expected optional JSON object")
-}
 
 internal fun JsonObject.requiredArray(key: String): JsonArray =
     (values[key] as? JsonValue.ArrayValue) ?: throw JsonParseException("Expected JSON array")

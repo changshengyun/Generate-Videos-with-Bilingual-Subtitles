@@ -46,13 +46,6 @@ fun CaptionLayout.verticalAnchor(): CaptionVerticalAnchor = when {
     else -> CaptionVerticalAnchor.MIDDLE
 }
 
-/** Offset from the corresponding top/center/bottom parent anchor to the cue y coordinate. */
-fun CaptionLayout.verticalAnchorOffsetRatio(): Float = when (verticalAnchor()) {
-    CaptionVerticalAnchor.TOP -> yRatio
-    CaptionVerticalAnchor.MIDDLE -> yRatio - 0.5f
-    CaptionVerticalAnchor.BOTTOM -> yRatio - 1f
-}
-
 /**
  * Optional per-cue placement changes.  Null fields inherit the project layout;
  * a non-null field replaces only that coordinate for the cue.
@@ -285,25 +278,6 @@ fun CaptionStyleOverride.withFontSizeRatio(fontSizeRatio: Float): CaptionStyleOv
     val canonical = canonicalCaptionFontSizeRatio(fontSizeRatio)
     return copy(fontSizeRatio = canonical, fontSizeSp = ratioToLegacyFontSize(canonical))
 }
-
-fun DefaultCaptionStyle.sourceRelativeFontSizeRatio(): Float = validated().fontSizeRatio
-fun DefaultCaptionStyle.sourceRelativeOutlineWidthRatio(): Float = validated().outlineWidthRatio
-
-/*
- * Deprecated compatibility accessors are intentionally represented by the
- * existing fontSizeSp field. New persistence and render code must consume the
- * ratio fields above; the integer is only a 1080p display projection.
- */
-/* old validation implementation retained below only for color/font helpers */
-/*
-fun DefaultCaptionStyle.validated(): DefaultCaptionStyle = copy(
-    fontSizeSp = fontSizeSp.coerceIn(MIN_CAPTION_FONT_SIZE_SP, MAX_CAPTION_FONT_SIZE_SP),
-    primaryColorHex = normalizeSubtitleColor(primaryColorHex, "#FFFFFF"),
-    secondaryColorHex = normalizeSubtitleColor(secondaryColorHex, "#F4E7A1"),
-    outlineColorHex = normalizeSubtitleColor(outlineColorHex, "#000000"),
-    fontFamily = fontFamily.validatedCaptionFontFamily(),
-)
-*/
 
 fun SubtitleStyle.toDefaultCaptionStyle(): DefaultCaptionStyle {
     val legacy = validated()

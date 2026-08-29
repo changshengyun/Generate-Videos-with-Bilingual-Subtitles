@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-30.003`
-- 当前任务：`V4-SIMP-002 / MATRIX_DEFINED / IN_PROGRESS`（v4.4.0 发布后行为保持的仓库精简，不启动 V5）
+- `ROADMAP_REV: 2026-08-30.004`
+- 当前任务：无（最近完成 `V4-SIMP-002 / PASS / BUILD_VERIFIED`;未启动 V5）
 - V3 历史摘要：原 `archive/v3/V3_STAGE_HISTORY_2026-08-12.md`（V4.4 已移出仓库，可从 git 历史找回）
 
 ## 文档职责
@@ -39,10 +39,12 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 | `V4-EDITOR-001` | `PASS / COMPONENT_VERIFIED` | 按当前播放位置在空档新增双语字幕，并保持编辑/恢复/导出一致 |
 | `V4-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED` | 普通与全屏独立控制行已通过组件验证；Pixel 8 因已有 snapshot operation pending 无法启动，未取得截图或 instrumentation 证据 |
 | `V4-SIMP-001` | `PASS / COMPONENT_VERIFIED` | 代码简化已完成：`EditorScreen.kt` 拆分为同包 8 文件（2365 → 290 行）并修复 4 处乱码文案，41 处 `private` → `internal`，契约测试改为 ui 目录拼接文本且断言强度不降低；行为不变，不影响后续阶段合同 |
-| `V4-E2E-001` | `WAITING_DEVICE_AUTHORIZATION` | 真实相册导入、ASR、AI、编辑、恢复、导出与 Media3 回放验收 |
-| `V4-SIMP-002` | `MATRIX_DEFINED / IN_PROGRESS` | v4.4.0 发布后删除已证明无生产消费者的仓库负担、测试遗留、死代码、依赖与失效文档；行为、合同和技术路线不变 |
+| `V4-E2E-001` | `PASS / DEVICE_VERIFIED` | V4.3/V4.4 收尾前已完成真机识别、真实 API 增强与装机冒烟，证据仅本地保留；本次精简不重复设备操作 |
+| `V4-SIMP-002` | `PASS / BUILD_VERIFIED` | v4.4.0 发布后删除已证明无生产消费者的仓库负担、测试遗留、死代码、依赖与失效文档；行为、合同和技术路线不变 |
 
 发布后的 `CODEX-HYGIENE-001` 已完成，只调整 Codex 项目规则与 repo Skill，不改变 V4 阶段顺序、产品实现或 V5 路线。
+
+`V4-SIMP-002` 已完成:跟踪项 `126 → 116`,工作树约 `115.16 MB → 27.12 MB`,Kotlin `15,905 → 14,235` 行;ASR Python 6/6、lint、普通/Native Debug 与普通/Native AndroidTest 构建均成功。测试源码已在 V4.4 移出,因此 Gradle 测试任务如实记录为 `NO-SOURCE`。
 
 ## 执行和提交顺序
 
@@ -67,4 +69,4 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 
 ## V4 总体验收
 
-正式 V4 PASS 需要在获得设备授权后，使用真实设备从系统相册入口完成：一次点击识别、本地 ASR、真实 AI 增强、自动进入编辑器、开头/中间/结尾新增双语字幕、修改已有字幕、保存恢复、MediaStore 导出和 Media3 回放。缺少真实 AI、真实设备或真实导出证据时，只能标记对应的 `PARTIAL_PASS`。
+V4.4.0 已作为 V4 收官版本发布。真机识别、真实 API 增强和装机冒烟证据在发布前取得并仅保留于本地 `test-artifacts/`;本次 `V4-SIMP-002` 只验证行为保持的源码与构建，证据上限为 `BUILD_VERIFIED`，不新增或替代既有设备验收。

@@ -206,7 +206,7 @@ app/src/main/java/com/example/lyriccaptioner/
 | 分类降级策略 | 按错误类型白名单（离线/连接/超时/可重试/无效响应）决定是否本地翻译降级；认证失败不降级 | `CaptionEnhancementCoordinator` |
 | 异常消息脱敏 | 异常链中自动剥离 Authorization、Bearer、sk-* 等敏感内容 | `CaptionEnhancementException.sanitizeExceptionMessage` |
 | 按播放位置加字幕 | 在播放时刻的空档插入双语字幕并维持时间轴一致 | `MainViewModel` + `model/` |
-| 拆分/合并政策 | 一条 cue 拆两条的批提交合同（接受 1:2 拆分对，校验父边界与不重叠） | `CaptionBatchCommitPolicy`、`CaptionCueSplitPolicy` |
+| 拆分/合并政策 | 一条 cue 拆两条并保持父边界与不重叠，编辑状态按时间顺序原子更新 | `CaptionCueSplitPolicy`、`MainViewModel` |
 | 状态化错误处理 | UI 不接收异常，所有错误写入 `EditorState` / `ExportState` 等状态流 | `MainViewModel` |
 
 ---

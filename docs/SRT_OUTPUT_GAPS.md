@@ -2,28 +2,26 @@
 
 ## 文档状态
 
-- `GAP_REV: 2026-08-26.001`
-- 状态:`ANALYSIS_ONLY`(本文只列问题与修改方向,不修改任何代码)
-- 输入证据:2026-08-26 工作树源码 + 桌面 RAW 存档(`LyricCaptioner-Whisper-RAW-2026-08-26/`)
+- `GAP_REV: 2026-08-30.002`
+- 状态:`PARTIALLY_RESOLVED`(GAP-1 已在 V4.2 接线;本文保留其余格式与对时问题)
+- 输入证据:2026-08-30 工作树源码 + 桌面 RAW 存档(`LyricCaptioner-Whisper-RAW-2026-08-26/`)
 - 证据等级:`代码事实` = 当前源码可验证;`RAW 证据` = 桌面存档;`外部事实` = 需联网核验。
 
 ## 问题总览
 
 | ID | 问题 | 严重度 | 层 |
 |---|---|---|---|
-| GAP-1 | SRT 导出能力已实现但产品 UI 未接线 | 高(功能缺失) | UI |
+| GAP-1 | SRT 导出入口 | 已解决(V4.2) | UI |
 | GAP-2 | 时间轴按父 cue 粒度输出,合句 cue 时间窗过长,字幕与歌词行错位 | 高(体验) | 数据/导出 |
 | GAP-3 | 合句 cue 双语 SRT 块 4 行堆叠,且 SRT 再导入往返失真 | 中 | 导出/导入 |
 | GAP-4 | cue 不可拆分合同与行级显示需求的冲突 | 中(设计决策) | 合同 |
 | GAP-5 | LRCLIB syncedLyrics(带时间戳歌词)未使用,行级对时数据源被丢弃 | 中(机会) | 检索 |
 | GAP-6 | SRT 纯文本与 ASS/MP4 样式导出的一致性边界未在产品中说明 | 低 | 文档/UX |
 
-## GAP-1:SRT 导出未接线(代码事实)
+## GAP-1:SRT 导出已接线(已解决)
 
-- 现状:`captions/SrtWriter.kt` 完整实现(排序、HH:MM:SS,mmm 时间戳、双语块输出),但全 main 源码无调用点;仅 `SrtWriterTest`(JVM)与 `LocalAiInstrumentation.kt:371`(测试产物)使用。
-- 导出分区(`ui/EditorScreen.kt` 导出 WorkflowPanel)只有:导出视频、分享视频、保存项目、取消导出。没有任何 SRT 导出入口。
-- 影响:用户无法从产品拿到可给其他播放器/剪辑软件使用的 `.srt` 文件;"导出 SRT"是双语字幕工具的基础预期功能。
-- 修改方向:导出分区增加"导出 SRT"按钮(`ActivityResultContracts.CreateDocument("text/plain")`,模式同"保存项目"的 `projectCreator`);`MainViewModel` 增加 `exportSrt(uri)`(复用现有 `SrtWriter`,写 UTF-8);同时更新 `DerivedOutputPolicy` 失效逻辑。涉及文件:`ui/EditorScreen.kt`(或导出面板所在文件)、`MainViewModel.kt`。
+- V4.2 已在 `EditorScreen.kt` 导出分区接入 `ActivityResultContracts.CreateDocument("application/x-subrip")`,并由 `MainViewModel.exportSrt(uri)` 调用 `SrtWriter` 写入 UTF-8 内容。
+- 该项不再是当前缺口;GAP-2 至 GAP-6 仍按各自边界保留。
 
 ## GAP-2:时间轴按父 cue 粒度输出(代码事实 + RAW 证据)
 
@@ -71,11 +69,11 @@
 ## GAP-6:SRT 与 ASS/MP4 导出一致性边界(说明性)
 
 - SRT 是纯文本时间轴格式,无颜色/字体/位置能力;ASS(烧录进 MP4)承载完整样式(双语分行、中文换色 `\c`、逐 cue 样式)。两者内容同源(`CaptionRenderResolver` 同一解析边界),但呈现能力本质不同,这不是缺陷。
-- 建议(低优先级):产品内对"导出视频 vs 导出 SRT"的样式差异给出一句说明,避免用户误以为 SRT 丢失样式是 bug。随 GAP-1 接线时一并处理。
+- 建议(低优先级):产品内对"导出视频 vs 导出 SRT"的样式差异给出一句说明,避免用户误以为 SRT 丢失样式是 bug。
 
 ## 执行边界
 
-- 以上全部修改均属未来新任务;当前 `V4-SIMP-001` 阶段冻结矩阵禁止触碰 AI Prompt、响应合同与受保护工作树,本文不执行任何代码变更。
+- GAP-2 至 GAP-6 均属未来新任务;当前 `V4-SIMP-002` 冻结矩阵禁止触碰 AI Prompt、响应合同与受保护工作树,本文不执行这些功能变更。
 - GAP-2/3/4/5 与 `AI2_ENHANCEMENT_DIAGNOSIS.md` 的 Prompt 优化方案存在耦合(合句输出格式、sub_lines 合同扩展),立项时应作为一个特性包统一评审,避免合同两次破坏性变更。
 
 ## 相关文档
