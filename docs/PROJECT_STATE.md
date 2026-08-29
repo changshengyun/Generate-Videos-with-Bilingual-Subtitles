@@ -1,13 +1,13 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-29.001`
+- `STATE_REV: 2026-08-30.001`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `main`（V4.4 收尾后与 `feature/ai-enhancement-search-scheduler` 快进合并）
 - Release: `v4.4.0`（V4 系列功能全部完成并通过验收的正式发布）
-- Current task: 无活动任务（V4.4 版本收尾完成，V5 阶段未启动）
+- Current task: `CODEX-HYGIENE-001 / MATRIX_DEFINED / IN_PROGRESS`（发布后治理配置，V5 阶段未启动）
 - Product status: `V4_RELEASED`
 - Evidence ceiling: `DEVICE_VERIFIED`（真机识别、真实 API 增强、三视频沙箱验证证据留存于本地 `test-artifacts/`，V4.4 起不入库）
-- Last state sync: 2026-08-29
+- Last state sync: 2026-08-30
 
 ## 当前决定
 
@@ -20,6 +20,7 @@
 - `V4-SIMP-001` 是插入的代码简化阶段：仅拆分 `ui/EditorScreen.kt` 为同包多文件并修复 4 处乱码文案，纯机械搬移、行为不变；不改变任何架构、依赖、模型或合同。
 - 不新增依赖，不更换模型，不修改 AI Prompt、歌词检索、响应合同或 cue 时间戳合同。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
+- `CODEX-HYGIENE-001` 只允许引入针对最终 diff、注释和变更说明的项目级规则与一个 repo Skill；不恢复 V4.4 已迁出的 Multi-Agent 角色体系，也不启动 V5。
 
 ## 当前验收门禁
 

@@ -1,44 +1,41 @@
-# Current Task: V4-SIMP-001
+# Current Task: CODEX-HYGIENE-001
 
-- `STATE_REV: 2026-08-26.013`
-- `TASK_REV: V4-SIMP-001.002`
-- Stage state: `PASS / COMPONENT_VERIFIED`
-- Product status: `V4_COMPONENTS_IMPLEMENTED_E2E_PENDING`
-- Evidence ceiling: `COMPONENT_VERIFIED`
-- Device gate: `EXPLICIT_PHYSICAL_DEVICE_AUTHORIZATION_REQUIRED`
+- `STATE_REV: 2026-08-30.001`
+- `TASK_REV: CODEX-HYGIENE-001.001`
+- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- Product status: `V4_RELEASED`
+- Evidence ceiling: `REPO_CONFIG_VERIFIED`
+- Device gate: `NO_DEVICE_ACTION`
 
 ## 1. 阶段目标
 
-在等待 `V4-E2E-001` 真机授权的窗口期，把 `app/src/main/java/com/example/lyriccaptioner/ui/EditorScreen.kt`（2365 行、35 个顶层声明）按职责拆分为同包多个文件，修复其中 4 个乱码按钮文案，并同步适配 2 个源码契约测试。纯机械搬移，行为与语义契约完全不变。
+评估 `liby/dotfiles` 中针对 Codex 过度保留中间尝试、冗余注释和失真 PR 描述的方法，并把适合 LyricCaptioner 的最小规则与 repo Skill 引入当前仓库。上游个人环境、macOS、密钥、GitHub/GitLab 和无关语言规则不进入本项目。
 
 ## 2. 冻结验收矩阵
 
 | 类别 | 冻结内容 |
 |---|---|
-| 主链路 | 从既有代码基线出发：拆分后工程编译成功 → 全量 JVM 测试通过 → lint 通过 → 普通/Native Debug 与 AndroidTest 构建成功 → 2 个 UI 源码契约测试在多文件形态下继续守护同等断言强度。 |
-| 必须证据 | `testDebugUnitTest` 实际测试计数（基线 58 suites / 352 tests / 0 failures）；`lintDebug` 成功输出；普通与 `-PenableWhisperNative=true` Debug 构建及普通与 Native AndroidTest 构建成功；ASR Python 6/6；拆分前后 ui 包 Kotlin 源文件清单与行数对比；乱码字符串修复后的精确 diff。 |
-| 禁止事项 | 不改任何函数体逻辑、参数、调用点与 semantics contentDescription 契约；不改 MainViewModel、ProjectArchive 及其他业务模块；不动受保护工作树（`.emulator-test-assets/`、`.env`、`dist/`、`tools/opus-mt-en-zh/`、`third_party/`、`._cache_adb.exe` 等既有脏内容）；不操作真机或模拟器破坏性恢复；不 reset、clean、批量暂存或 push。 |
-| 退出状态 | 全部验证命令通过且契约测试断言强度不低于拆分前，标记 `PASS / COMPONENT_VERIFIED`；`V4-E2E-001` 恢复为下一等待授权事项。 |
-| 未完成状态 | 任一验证失败为 `PARTIAL_PASS` 并记录失败项；模拟器证据因既有 snapshot pending 不可获得时按 `SIMULATOR_BLOCKED` 降级说明（本次为无行为变化搬移，不强制 UI 截图）；契约断言无法在多文件形态下保持同等强度时冻结并返回 `HUMAN_DECISION`。 |
+| 主链路 | 新 Codex 任务从仓库根目录启动 → 自动读取根 `AGENTS.md` → 在收尾清理类请求中发现并加载 repo Skill → 最终注释、文档和变更说明只保留当前实现、非显然原因与可验证事实。 |
+| 必须证据 | 记录上游仓库 URL 与精确 commit；OpenAI 官方文档确认 `AGENTS.md` 与 `.agents/skills` 的发现路径；Skill 通过 `quick_validate.py`；`git diff --check` 通过；精确 diff 只包含治理规则、repo Skill 和三份活动文档。 |
+| 禁止事项 | 不复制上游无许可证的大段原文；不引入上游个人 dotfiles、macOS/Bash、密钥、Snowflake、Herdr、Oracle、GitHub/GitLab 专用内容；不修改 Android 业务代码、测试、依赖、模型、Prompt、产品路线；不运行构建、模拟器或真机；不 push。 |
+| 退出状态 | 项目级规则与一个聚焦 Skill 均落地，结构验证和精确 diff 检查通过，且分析明确说明能力边界时，标记 `PASS / REPO_CONFIG_VERIFIED`。 |
+| 未完成状态 | Skill 路径或格式无法被当前 Codex 发现时为 `BLOCKED`；需要扩大到全局 Codex 配置、外部 hooks 或大段上游复制时为 `HUMAN_DECISION`；仅完成分析但未落地时为 `PARTIAL_PASS`。 |
 
-## 3. 拆分方案摘要
+## 3. 允许范围
 
-同包 `com.example.lyriccaptioner.ui` 下新建 8 个文件：`DeepSeekKeySettingsPanel.kt`、`WorkbenchPanels.kt`、`CaptionStyleControls.kt`、`EditorSupport.kt`、`VideoPreviewPlayer.kt`、`SubtitlePreviewOverlay.kt`、`DirectCaptionEditPanel.kt`、`CaptionListPanel.kt`；`EditorScreen.kt` 仅保留主入口与 `uniqueDocumentName`。搬移函数原样保留，仅 `private` → `internal`（Kotlin 文件级私有语义）并按文件裁剪 imports。`DirectEditPanelTab` 枚举与 `DirectCaptionEditPanel`、`DirectStyleGroupTitle` 保持原有相对顺序。
+- `AGENTS.md`
+- `.agents/skills/final-diff-hygiene/SKILL.md`
+- `docs/DEVELOPMENT_ROADMAP.md`
+- `docs/CURRENT_TASK.md`
+- `docs/PROJECT_STATE.md`
 
-## 4. 已完成实现
+## 4. 上游快照与适配原则
 
-- `V4-PLAN-001`：`758cfa1`。
-- `V4-FLOW-001`：`990207b`，`PASS / COMPONENT_VERIFIED`。
-- `V4-EDITOR-001`：`a342db9`，`PASS / COMPONENT_VERIFIED`。
-- `V4-UI-001`：`d4ef61d`，`PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED`。
-- `V4-SIMP-001`：本阶段功能 commit，`PASS / COMPONENT_VERIFIED`。证据：
-  - 拆分结果：`EditorScreen.kt` 从 2365 行/35 个顶层声明变为 290 行（仅主入口 + `uniqueDocumentName`），同包新建 8 文件：`CaptionListPanel.kt`(322)、`CaptionStyleControls.kt`(359)、`DeepSeekKeySettingsPanel.kt`(171)、`DirectCaptionEditPanel.kt`(228)、`EditorSupport.kt`(62)、`SubtitlePreviewOverlay.kt`(350)、`VideoPreviewPlayer.kt`(444)、`WorkbenchPanels.kt`(314)；41 处 `private` → `internal`；纯机械搬移（完整性校验：拆分前后代码行 2177/2177 精确匹配，差异仅为可见性声明与乱码修复）。
-  - 乱码修复：`DefaultCaptionStyleControls` 中 4 个按钮文案修复为「取消粗体/粗体/取消斜体/斜体」。
-  - 契约测试适配：2 个测试的源码读取改为 ui 目录全部 .kt 按文件名排序拼接（断言范围实际扩大到整个 ui 包）；4 处断言字符串同步 `private` → `internal`；`useController = false` 计数仍为 2、`PlayerControlRow(` 计数减 1 仍为 2、`DirectEditPanelTab` 边界提取逻辑在拼接文本中仍精确命中。
-  - 验证证据：`testDebugUnitTest` 58 suites / 352 tests / 0 failures（与基线一致）；`lintDebug`、普通 `assembleDebug`、`-PenableWhisperNative=true assembleDebug`、`-PenableWhisperNative=true assembleDebugAndroidTest` 全部 BUILD SUCCESSFUL；`python tools\asr_evaluate_test.py` 6/6 OK。
-  - UI instrumentation/截图：模拟器维持 `SIMULATOR_BLOCKED`（Pixel 8 snapshot pending，同 V4-UI-001 降级原因），本次为无行为变化纯搬移，按矩阵约定不强制 UI 证据。
-- V3 缺口继续固定为 `V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`。
+- Source: `https://github.com/liby/dotfiles`
+- Inspected commit: `9bcb53abfc1c26bec1de918f9dd520430fe720ad`
+- 直接采用的方法：注释只保留维护者需要的非显然原因；不把中间尝试写入最终代码、文档和提交说明；PR/MR 只写最终行为和 diff 无法表达的重要理由。
+- 改写为本项目 Skill 的方法：仅对当前变更表面进行收尾清理；删除实现镜像、历史尝试和失效对比；保留可验证约束与失败条件；验证成本按 S0/S1/S2 和冻结矩阵决定。
 
-## 5. 下一允许动作
+## 5. 下一动作
 
-阶段完成。恢复等待 `V4-E2E-001` 真机授权；授权前不得连接、安装或操作真机。
+建立阶段 checkpoint 后，修改 `AGENTS.md`，创建 repo Skill，运行聚焦结构与 diff 验证，然后同步三份活动文档并提交最终结果。
