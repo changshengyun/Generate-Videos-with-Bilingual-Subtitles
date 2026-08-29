@@ -21,7 +21,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -37,8 +36,6 @@ import androidx.compose.ui.unit.dp
 import com.example.lyriccaptioner.MainViewModel
 import com.example.lyriccaptioner.model.EditorState
 import com.example.lyriccaptioner.model.MediaState
-
-private const val CAPTION_EDITOR_HEADER_ITEM_COUNT = 4
 
 @Composable
 internal fun CaptionEditorPage(
@@ -56,16 +53,6 @@ internal fun CaptionEditorPage(
     val cueSuggestion by viewModel.cueSuggestion.collectAsState()
     val orderedCaptions = remember(state.captions) { orderedCaptionEditorItems(state.captions) }
     val captionListState = rememberLazyListState()
-    LaunchedEffect(state.selectedCaptionId, orderedCaptions) {
-        captionEditorLazyItemIndex(
-            orderedCaptions = orderedCaptions,
-            selectedCaptionId = state.selectedCaptionId,
-            headerItemCount = CAPTION_EDITOR_HEADER_ITEM_COUNT,
-        )?.let { targetIndex ->
-            val alreadyVisible = captionListState.layoutInfo.visibleItemsInfo.any { it.index == targetIndex }
-            if (!alreadyVisible) captionListState.animateScrollToItem(targetIndex)
-        }
-    }
     LazyColumn(
         state = captionListState,
         modifier = Modifier

@@ -39,15 +39,6 @@ internal fun orderedCaptionEditorItems(captions: List<CaptionCue>): List<Caption
             .thenBy { it.id },
     )
 
-internal fun captionEditorLazyItemIndex(
-    orderedCaptions: List<CaptionCue>,
-    selectedCaptionId: String?,
-    headerItemCount: Int,
-): Int? {
-    val cueIndex = orderedCaptions.indexOfFirst { it.id == selectedCaptionId }
-    return cueIndex.takeIf { it >= 0 }?.plus(headerItemCount)
-}
-
 private fun captionChildSequence(cueId: String): Int =
     cueId.substringAfterLast(':', missingDelimiterValue = "")
         .toIntOrNull()
