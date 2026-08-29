@@ -57,6 +57,5 @@ tools/opus-mt-en-zh/
 # Stray local tool cache
 ._cache_adb.exe
 
-# Oversized raw device logcat captures (local evidence only, > GitHub size limit)
-test-artifacts/device-capture/raw-logs/
-test-artifacts/debug-session-v4.3/logs/device-logcat-latest.txt
+# Local acceptance evidence and debug artifacts (kept on disk, out of repo since V4.4 slim-down)
+test-artifacts/

@@ -35,7 +35,7 @@
 ## 本地验证沙箱（最重要，一切改动先在这里验证）
 
 - 沙箱测试：`app\src\test\java\com\example\lyriccaptioner\processing\enhancement\ThreeVideoEnhancementSandboxTest.kt`
-- 内置三组真机 ASR 数据（视频1 九条、视频2 四条、视频3 五条），真实调用 DeepSeek 与歌词库，运行后生成报告 `test-artifacts\ai-enhancement\three-video-local-sandbox-rerun.md`（含整体策略流程图、本地规则表、逐阶段 prompt 全文/输入/输出/触发策略）
+- 内置三组真机 ASR 数据（视频1 九条、视频2 四条、视频3 五条），真实调用 DeepSeek 与歌词库，运行后生成报告 `test-artifacts\ai-enhancement\three-video-local-sandbox-rerun.md`（含整体策略流程图、本地规则表、逐阶段 prompt 全文/输入/输出/触发策略）。注：本文描述涉及的沙箱测试代码已在 V4.4 精简时移出仓库，可从 git 历史 `v4.4.0` 找回
 - **沙箱与 app 共用同一份源码：改 prompt 或阈值后重跑沙箱，就等于改了 app，无需二次同步**
 - 运行命令：`.\gradlew.bat testDebugUnitTest --tests "com.example.lyriccaptioner.processing.enhancement.ThreeVideoEnhancementSandboxTest" --console=plain`
 - `.env` 里有 `DEEPSEEK_API_KEY`；缺 key 时测试自动跳过

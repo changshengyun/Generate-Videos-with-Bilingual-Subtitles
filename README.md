@@ -87,12 +87,12 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 |---|---|
 | JVM 全量回归（截至 `a1e0486` 一致性修复） | 402 条 / 0 失败（直播网络测试自动跳过） |
 | SearchScheduler 接入后新增测试（`233cb04`） | DeviceRealApiTraceTest（3 组真机数据集真实 API）、DeviceAsrWalkthroughTest、ThreeVideoEnhancementSandboxTest 等 |
-| 三视频本地沙箱重跑（2026-08-29） | 三个真实视频走完整流程 0–4，逐阶段 prompt/输入/输出/拦截策略记录在 `test-artifacts/ai-enhancement/three-video-local-sandbox-rerun.md` |
-| 真机识别与真实 API 增强 | 真机抓取识别文本与 AI trace，证据在 `test-artifacts/ai-enhancement/device-real-api-trace.md` |
+| 三视频本地沙箱重跑（2026-08-29） | 三个真实视频走完整流程 0–4，逐阶段 prompt/输入/输出/拦截策略记录于本地证据 `test-artifacts/ai-enhancement/three-video-local-sandbox-rerun.md`（V4.4 起不入库） |
+| 真机识别与真实 API 增强 | 真机抓取识别文本与 AI trace，证据在本地 `test-artifacts/ai-enhancement/device-real-api-trace.md`（V4.4 起不入库） |
 | APK 原生库完整性 | 13 个原生库齐全（含 `liblyriccaptioner_whisper.so`） |
 | 真机装机冒烟 | 进程存活，无 FATAL / crash |
 
-> 已知保留项：AI 增强沙箱测试代码与正式源码同仓（位于 `test/.../sandbox/` 包），未独立成模块，属已知现状不影响功能。
+> 说明：验收当时全部回归测试通过；V4.4 精简时测试代码（`app/src/test/`、`app/src/androidTest/`）与沙箱代码已从仓库移出，可从 git 历史（`v4.4.0`）找回。
 
 ---
 
@@ -276,7 +276,7 @@ AI 增强是一条「把 Whisper 识别出的带错英文歌词，变成准确�
 - **上游**：`AsrModule` 提供原始 cue；`MainViewModel` 注入 `SearchScheduler` 并观察 `SongMatchStatus` 更新界面状态。
 - **下游**：校验通过的字幕原子写入 `EditorState`，进入字幕编辑套件；导出时由 `FfmpegKitSubtitleExporter`（MP4）或 SRT 导出消费。
 - **失败路径**：`CaptionEnhancementCoordinator` 按错误类型决定降级或失败，UI 通过状态字段展示错误，不抛异常。
-- **沙箱验证**：`app/src/test/.../enhancement/sandbox/` 与正式代码共用同一份 Provider/Verifier/Validator 源码，改策略后重跑沙箱即等同于修改 App 策略；验证报告存于 `test-artifacts/ai-enhancement/`。
+- **沙箱验证**：验收阶段曾用与正式代码共用同一份 Provider/Verifier/Validator 源码的沙箱重跑策略（改策略后重跑沙箱即等同于修改 App 策略）；沙箱与测试代码已在 V4.4 精简时移出仓库（可从 git 历史 `v4.4.0` 找回），验证报告留存于本地 `test-artifacts/ai-enhancement/`。
 
 ---
 
@@ -284,16 +284,16 @@ AI 增强是一条「把 Whisper 识别出的带错英文歌词，变成准确�
 
 | 目录 | 内容 | 是否随版本发布 |
 |---|---|---|
-| `app/` | 应用源码与测试 | 是 |
+| `app/` | 应用源码 | 是 |
 | `docs/` | 活动文档：路线、任务、状态、架构方案 | 是 |
 | `tools/` | 稳定工具：ASR 评估、Whisper 原生依赖恢复脚本 | 是 |
-| `test-artifacts/` | 验收证据与调试产物（见下表） | 部分（超大原始日志仅本地） |
+| `test-artifacts/` | 本地验收证据与调试产物（见下表，不入库） | 否（.gitignore） |
 | `dist/` | 本地构建的 APK 发布产物 | 否（.gitignore） |
 | `docs-BK/`、`.env` 等 | 本地备份/密钥等 | 否（.gitignore） |
 
-> **V4.4 精简说明**：`deliverables/`、`docs-v2/`、`docs/archive/`、`docs/debug/`、`.agents/`、`.codex/`、`.kotlin/`、`.emulator-test-assets/` 已从仓库移除。其中 `.agents/` 与 `.codex/skills/` 已整理迁入 [DEV-SKILL 仓库](https://github.com/changshengyun/DEV-SKILL)（`projects/lyric-captioner-android/` 与根级 `.codex/skills/`）；其余内容仍可在 git 历史（`v4.4.0` 及更早）中找回。
+> **V4.4 精简说明**：`deliverables/`、`docs-v2/`、`docs/archive/`、`docs/debug/`、`.agents/`、`.codex/`、`.kotlin/`、`.emulator-test-assets/`、`app/src/test/`、`app/src/androidTest/` 已从仓库移除，`test-artifacts/` 改为仅本地保留不入库。其中 `.agents/` 与 `.codex/skills/` 已整理迁入 [DEV-SKILL 仓库](https://github.com/changshengyun/DEV-SKILL)（`projects/lyric-captioner-android/` 与根级 `.codex/skills/`）；其余内容仍可在 git 历史（`v4.4.0` 及更早）中找回。
 
-`test-artifacts/` 内部分类：
+`test-artifacts/`（仅本地）内部分类：
 
 | 子目录 | 内容 |
 |---|---|
@@ -315,5 +315,5 @@ AI 增强是一条「把 Whisper 识别出的带错英文歌词，变成准确�
 - [当前任务](docs/CURRENT_TASK.md)
 - [项目状态](docs/PROJECT_STATE.md)（状态唯一权威来源）
 - [V4 产品架构](docs/V4_PRODUCT_ARCHITECTURE.md)
-- [V3 产品架构](docs/V3_PRODUCT_ARCHITECTURE.md)- [AI 增强流程介绍](test-artifacts/ai-enhancement/ai-enhancement-flows-intro.md)
-- [AI 增强 Prompt 全文](test-artifacts/ai-enhancement/ai-enhancement-prompts.md)
+- [V3 产品架构](docs/V3_PRODUCT_ARCHITECTURE.md)
+- AI 增强流程介绍与 Prompt 全文：本地 `test-artifacts/ai-enhancement/ai-enhancement-flows-intro.md`、`ai-enhancement-prompts.md`（V4.4 起不入库）

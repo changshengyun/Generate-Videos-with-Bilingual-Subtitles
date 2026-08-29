@@ -6,7 +6,7 @@
 - Release: `v4.4.0`（V4 系列功能全部完成并通过验收的正式发布）
 - Current task: 无活动任务（V4.4 版本收尾完成，V5 阶段未启动）
 - Product status: `V4_RELEASED`
-- Evidence ceiling: `DEVICE_VERIFIED`（真机识别、真实 API 增强、三视频沙箱验证证据已入库 `test-artifacts/`）
+- Evidence ceiling: `DEVICE_VERIFIED`（真机识别、真实 API 增强、三视频沙箱验证证据留存于本地 `test-artifacts/`，V4.4 起不入库）
 - Last state sync: 2026-08-29
 
 ## 当前决定
@@ -37,10 +37,11 @@
 
 ## V4.4 收尾记录（2026-08-29）
 
-- V4 全部功能（V4.1 编辑套件、V4.2 AI 增强链路与 SRT 导出、V4.3 一致性恢复、V4.3.x 修复与 SearchScheduler 双路检索）已完成并通过验收，验收证据见 `test-artifacts/`。
+- V4 全部功能（V4.1 编辑套件、V4.2 AI 增强链路与 SRT 导出、V4.3 一致性恢复、V4.3.x 修复与 SearchScheduler 双路检索）已完成并通过验收，验收证据留存于本地 `test-artifacts/`（V4.4 起不入库）。
 - 临时调试脚本、截图、UI dump、trace 已从 `tools/` 抽离至 `test-artifacts/debug-session-v4.3/`；超大原始 logcat 移入 `test-artifacts/device-capture/raw-logs/` 并加入 `.gitignore` 仅本地保留。
 - 版本号升至 `versionName 4.4.0 / versionCode 4400`，README 重写为项目入口与发布说明，打标签 `v4.4.0` 并推送。
 - 仓库精简：`.agents/` 与 `.codex/skills/` 迁入 DEV-SKILL 仓库；`deliverables/`、`docs-v2/`、`docs/archive/`、`docs/debug/`、`.kotlin/`、`.emulator-test-assets/` 移出仓库（均可从 git 历史找回）；相关文档引用已同步更新。
+- 二次精简：`app/src/test/`、`app/src/androidTest/` 测试代码移出仓库；`test-artifacts/` 改为仅本地保留并加入 `.gitignore` 不入库；历史测试与证据均可从 git 历史（`v4.4.0`）找回。
 - 后续若进入 V5 新阶段，另行立项；当前不提前声明任何 V5 内容。
 
 
