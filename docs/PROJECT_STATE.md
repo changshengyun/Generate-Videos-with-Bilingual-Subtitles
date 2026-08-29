@@ -1,27 +1,28 @@
-# LyricCaptioner V4 Project State
+# LyricCaptioner Project State
 
-- `STATE_REV: 2026-08-30.004`
+- `STATE_REV: 2026-08-30.005`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
-- Branch: `main`（V4.4 收尾后与 `feature/ai-enhancement-search-scheduler` 快进合并）
-- Release: `v4.4.0`（V4 系列功能全部完成并通过验收的正式发布）
-- Current task: `NONE`（最近完成 `V4-SIMP-002 / PASS / BUILD_VERIFIED`;V5 阶段未启动）
-- Product status: `V4_RELEASED`
-- Evidence ceiling: `DEVICE_VERIFIED`（真机识别、真实 API 增强、三视频沙箱验证证据留存于本地 `test-artifacts/`，V4.4 起不入库）
+- Branch: `dev`（从精简基线 `716f2f4` 创建;远端 `origin/dev` 尚不存在）
+- Release: `v5.0.0` 准备中（计划 `versionName 5.0.0 / versionCode 5000`）
+- Current task: `V5-RELEASE-001 / MATRIX_DEFINED / IN_PROGRESS`
+- Product status: `V5_RELEASE_PREPARATION`
+- Evidence ceiling: `BUILD_VERIFIED`（本阶段不操作设备;V4.4 既有设备证据不改写）
 - Last state sync: 2026-08-30
 
 ## 当前决定
 
 - 当前生效治理体制为 AGENTS.md §9 阶段契约；§7 Multi-Agent 体制仅在用户显式启用时生效，其引用的治理文档（`MULTI_AGENT_WORKFLOW.md`、`DECISIONS.md`、`governance/*` 等）已只读归档于 `docs-BK/`，启用前须先恢复或重新获得用户批准。
-- V4 是新的当前产品版本；V3 只保留历史证据。
+- 用户已决定把精简后的 V4.4 基线作为 V5.0.0 发布到远端 `dev`;V3/V4 作为历史阶段保留。
 - V3 未完成的生产 base 验证固定记录为 `V3-ASR-DIAG-001 / PARTIAL_PASS / PRODUCTION_BASE_VALIDATION_DEFERRED_BY_USER`，不补做、不改写为 PASS，也不阻塞 V4。
 - 唯一产品主链路为：相册导入 → 一次点击开始识别 → 本地 Whisper → 自动 AI 增强 → 自动进入字幕编辑 → 添加或编辑字幕 → 预览并导出。
 - V4 已完成 `V4-FLOW-001`、`V4-EDITOR-001`、`V4-UI-001` 与发布前设备验收；后续任何新的真机操作仍需单独获得明确授权。
-- 本地分支在 V4-SIMP-002 最终提交后预计相对 `origin/main` 领先 4 / 落后 0（提交前 `git fetch --prune` 实测领先 3 / 落后 0）；默认不 push。
+- `V5-RELEASE-001` 获得明确 push 授权,仅限新建 `origin/dev`;不得 push main、创建标签或 force push。
 - `V4-SIMP-001` 是插入的代码简化阶段：仅拆分 `ui/EditorScreen.kt` 为同包多文件并修复 4 处乱码文案，纯机械搬移、行为不变；不改变任何架构、依赖、模型或合同。
 - 不新增依赖，不更换模型，不修改 AI Prompt、歌词检索、响应合同或 cue 时间戳合同。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
 - `CODEX-HYGIENE-001` 已引入针对最终 diff、注释和变更说明的项目级规则与 `.agents/skills/final-diff-hygiene`；未恢复 V4.4 已迁出的 Multi-Agent 角色体系，也未启动 V5。
 - `V4-SIMP-002` 已完成:只删除已证明无生产消费者的仓库负担、测试遗留、死代码、直接依赖和完全失效文档；未改变产品行为、技术路线、持久化、安全或运行时合同。
+- `V5-RELEASE-001` 只升级版本身份与发布文档,不新增 V5 功能,不改变应用包名、业务源码或运行时合同。
 
 ## 当前验收门禁
 
@@ -32,11 +33,12 @@
 - `CODEX-HYGIENE-001` 达到 `PASS / REPO_CONFIG_VERIFIED`：repo Skill 通过 `quick_validate.py`，`git diff --check` 通过，且 `AGENTS.md` 保持在默认 32 KiB 指令上限以内。
 - `V4-SIMP-002` 达到 `PASS / BUILD_VERIFIED`:跟踪项 `126 → 116`,工作树字节 `115,160,329 → 27,124,073`,Kotlin `15,905 → 14,235` 行,Markdown `1,678 → 1,610` 行;ASR Python 6/6、lint、普通/Native Debug 与普通/Native AndroidTest 构建均成功;测试任务如实为 `NO-SOURCE`。
 - `V4-SIMP-002` 当前禁止真机操作，因此本阶段最高记录 `BUILD_VERIFIED`；这不改写 V4.4 发布前已经取得并本地留存的设备与真实 API 证据。
+- `V5-RELEASE-001` 已冻结验收矩阵;必须在构建门禁通过且 `origin/dev` 指向最终提交后才能记录 `PASS / BUILD_VERIFIED / PUSHED`。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
 ## 受保护工作树
 
-保留所有进入 V4 前的未跟踪或脏本地内容，包括 `.env`、`dist/`、`tools/opus-mt-en-zh/` 和未知内容（`.emulator-test-assets/` 与 `docs/debug/` 已于 V4.4 移出仓库，本地副本仍受保护）。不得 reset、clean、覆盖、批量暂存或 push。
+保留所有既有未跟踪或脏本地内容，包括 `.env`、`dist/`、`tools/opus-mt-en-zh/` 和未知内容（`.emulator-test-assets/` 与 `docs/debug/` 已于 V4.4 移出仓库，本地副本仍受保护）。不得 reset、clean、覆盖或批量暂存;本阶段只允许按用户授权推送 `origin/dev`。
 
 ## V4.4 收尾记录（2026-08-29）
 

@@ -1,56 +1,45 @@
-# Current Task: V4-SIMP-002
+# Current Task: V5-RELEASE-001
 
-- `STATE_REV: 2026-08-30.004`
-- `TASK_REV: V4-SIMP-002.002`
-- Stage state: `PASS / BUILD_VERIFIED`
-- Product status: `V4_RELEASED`
+- `STATE_REV: 2026-08-30.005`
+- `TASK_REV: V5-RELEASE-001.001`
+- Stage state: `MATRIX_DEFINED / IN_PROGRESS`
+- Product status: `V5_RELEASE_PREPARATION`
 - Evidence ceiling: `BUILD_VERIFIED`
 - Device gate: `NO_DEVICE_ACTION`
+- Push gate: `PUSH_AUTHORIZED_ORIGIN_DEV_ONLY`
 
 ## 1. 阶段目标
 
-按照 `simplify-codebase` 的 Change/Broad 方法，对 v4.4.0 当前工作树执行行为保持的熵回收：删除已证明无生产消费者的仓库负担、测试遗留、死代码和直接依赖；把当前版本与架构文档统一到最终实现。不得改变产品功能、技术路线、运行时合同或持久化格式。
+把当前精简完成的 `716f2f4` 基线作为 V5 首个版本发布到远端 `dev` 分支。版本身份统一为 `versionName 5.0.0 / versionCode 5000`;同步 README、路线和项目状态。此阶段只改变版本身份与发布说明,不新增功能或改变运行时行为。
 
-## 2. 冻结验收矩阵
+## 2. 主版本升级提案
+
+| 项目 | 结论 |
+|---|---|
+| 证据 | 当前 V4.4.0 精简版本已达到 `PASS / BUILD_VERIFIED`;本地 `dev` 从 `716f2f4` 创建;远端不存在 `origin/dev`。 |
+| 影响 | Android 包名、数据格式、模型、权限和运行链路不变;仅版本号、当前版本说明、活动状态与 Git 分支发布状态变化。 |
+| 备选方案 | 保持 V4.4.0、仅创建标签、或继续推送 main;用户已明确选择 V5.0 并推送 `dev`。 |
+| 回滚 | 不改写历史、不 force push;如需撤回,在 `dev` 上 revert V5 发布提交,原 V4.4 标签与 main 历史保持不变。 |
+| 建议 | 使用 `5.0.0 / 5000`,只推送 `origin/dev`,不创建 V5 标签,待后续正式发布决策再处理 main/tag。 |
+
+## 3. 冻结验收矩阵
 
 | 类别 | 冻结内容 |
 |---|---|
-| 主链路 | 从 v4.4.0 发布后源码出发：建立消费者证明 → 按所有权边界删除无生产消费者的代码、依赖、二进制和过期文档 → 普通/Native 构建继续成功 → 版本、入口、主链路和发布说明保持一致。 |
-| 必须证据 | 删除前后 tracked 文件数量、工作树字节数和 Kotlin/文档行数；每个删除候选的生产/测试/文档消费者搜索；`python tools\asr_evaluate_test.py`；`testDebugUnitTest` 的实际结果（测试源码已移出仓库时必须明确记录 `NO-SOURCE`，不得冒充回归通过）；`lintDebug`；普通与 `-PenableWhisperNative=true` Debug 构建；普通与 Native AndroidTest 构建；APK 文件大小和关键 native 条目；`git diff --check` 与最终精确 diff。 |
-| 禁止事项 | 不修改用户可见行为、Whisper、DeepSeek Prompt、歌词检索、响应合同、cue 时间戳、BYOK/Keystore、权限、`.lcp` 持久化、导出技术路线或 ABI；不引入依赖；不改写 Git 历史；不修改 `third_party/ffmpeg-kit`；不操作模拟器或真机；不覆盖受保护本地内容；不 reset、clean、批量暂存或 push。 |
-| 退出状态 | 仅删除达到消费者映射与合同证明的候选；残留搜索、所有适用构建和 lint 通过，版本统一为 `v4.4.0 / 4400`，最终 diff 不含行为变化时，标记 `PASS / BUILD_VERIFIED`。 |
-| 未完成状态 | 动态、外部、持久化或诊断消费者无法排除的候选必须保留并记录；任一构建或 lint 失败为 `PARTIAL_PASS`；需要改变产品能力、兼容合同或架构才能继续时返回 `HUMAN_DECISION`。 |
+| 主链路 | 当前精简基线 → 切换 V5 版本身份 → 同步发布文档 → 普通/Native 构建验证 → 精确提交 → 推送 `origin/dev`。 |
+| 必须证据 | `app/build.gradle.kts` 为 `5.0.0 / 5000`;README 与三份活动文档无冲突的当前版本声明;ASR Python 6/6;`testDebugUnitTest` 实际结果;`lintDebug`;普通/Native Debug;普通/Native AndroidTest;Native APK 含双 ABI Whisper;`git diff --check`;远端 `origin/dev` 指向最终提交。 |
+| 禁止事项 | 不修改业务源码、Whisper、FFmpegKit、DeepSeek Prompt、歌词检索、响应合同、时间戳、BYOK/Keystore、权限、`.lcp`、导出、ABI、依赖或 `third_party`;不操作设备;不 push main;不创建标签;不 force push。 |
+| 退出状态 | 版本与文档同步、所有构建门禁通过、最终提交成功推送且 `origin/dev` 与本地 HEAD 一致时,标记 `PASS / BUILD_VERIFIED / PUSHED`。 |
+| 未完成状态 | 构建失败为 `PARTIAL_PASS`;远端 dev 在推送前出现独立历史或 push 被拒绝时为 `HUMAN_DECISION`;网络暂时失败但本地提交完成时为 `BLOCKED / PUSH_PENDING`。 |
 
-## 3. 已批准范围
+## 4. 允许修改范围
 
-- 删除未被构建引用的 FFmpegKit full AAR，保留正式使用的 minimal-gpl AAR。
-- 删除随 `app/src/test/`、`app/src/androidTest/` 移出后失去消费者的 Debug 测试入口、JUnit 配置和测试专用生产代码。
-- 删除经全仓精确搜索和历史消费者映射证明不可达的独立文件与文件内成员。
-- 逐项删除当前源码、脚本、配置和文档均未使用的直接依赖；每项必须由构建验证。
-- 将三份活动文档、README 与 V4 架构说明统一到 v4.4.0 最终状态；历史设计理由只有在转移到当前 owner 后才允许退役旧文档。
+- `app/build.gradle.kts`
+- `README.md`
+- `docs/DEVELOPMENT_ROADMAP.md`
+- `docs/CURRENT_TASK.md`
+- `docs/PROJECT_STATE.md`
 
-## 4. 执行批次
+## 5. 下一动作
 
-1. 仓库负担：冗余 AAR、测试依赖与 Debug 测试入口。
-2. 死代码：完整无消费者文件，再处理共享文件内的无消费者成员。
-3. 依赖：按单项消费者证明移除未使用直接依赖。
-4. 文档：修复当前 owner，退役完全失效记录，保留仍拥有兼容或历史决策的资料。
-
-## 5. 完成证据
-
-| 验收项 | 结果 |
-|---|---|
-| 仓库规模 | 跟踪项 `126 → 116`;工作树字节 `115,160,329 → 27,124,073`;Kotlin `15,905 → 14,235` 行;Markdown `1,678 → 1,610` 行 |
-| 仓库负担 | 删除未参与构建的 full FFmpegKit AAR `87,961,592` bytes;保留 minimal-gpl AAR |
-| 测试遗留 | 删除 debug BYOK 测试 Activity/Manifest、JUnit 依赖与目录已移出的测试专用生产代码;`testDebugUnitTest` 与 AndroidTest Kotlin 编译均明确为 `NO-SOURCE` |
-| 死代码/依赖 | 删除 6 个无生产消费者的完整 Kotlin 文件、共享文件内孤立成员，以及 5 个零源码导入的直接依赖;残留搜索通过 |
-| 文档同步 | `versionName 4.4.0 / versionCode 4400` 保持不变;README、V4 架构、SRT 缺口与三份活动文档同步到实际实现 |
-| 验证 | ASR Python `6/6`;`lintDebug`;普通/Native Debug;普通/Native AndroidTest 全部成功;`git diff --check` 通过 |
-| 产物 | 普通 Debug APK `377,509,671` bytes;Native Debug APK `397,816,816` bytes并含 ARM64/x86_64 两份 `liblyriccaptioner_whisper.so`;AndroidTest APK `5,536` bytes |
-| 设备边界 | 未连接、安装或操作模拟器/真机;本阶段证据等级固定为 `BUILD_VERIFIED` |
-
-## 6. 提交与下一动作
-
-- Checkpoint: `ba1009d`。
-- 功能提交:本任务最终功能提交(见 Git 日志);默认不 push。
-- 当前无活动开发任务;如需进入 V5 或执行新的设备验收,必须另行立项并获得相应授权。
+提交阶段 checkpoint,再修改版本号和发布说明。

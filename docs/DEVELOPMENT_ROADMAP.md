@@ -1,12 +1,12 @@
-# LyricCaptioner V4 开发路线
+# LyricCaptioner 开发路线
 
-- `ROADMAP_REV: 2026-08-30.004`
-- 当前任务：无（最近完成 `V4-SIMP-002 / PASS / BUILD_VERIFIED`;未启动 V5）
+- `ROADMAP_REV: 2026-08-30.005`
+- 当前任务：`V5-RELEASE-001 / MATRIX_DEFINED / IN_PROGRESS`（把精简后的当前版本发布为 V5.0.0 到远端 `dev`）
 - V3 历史摘要：原 `archive/v3/V3_STAGE_HISTORY_2026-08-12.md`（V4.4 已移出仓库，可从 git 历史找回）
 
 ## 文档职责
 
-本文件只维护 V4 产品目标、阶段顺序、依赖和总体验收。唯一活动任务见 `CURRENT_TASK.md`，实时门禁见 `PROJECT_STATE.md`。V3 保留为历史证据，不参与 V4 当前调度。
+本文件维护当前产品阶段、阶段顺序、依赖和总体验收。唯一活动任务见 `CURRENT_TASK.md`，实时门禁见 `PROJECT_STATE.md`。V3/V4 已完成阶段作为历史证据保留。
 
 ## V4 产品目标
 
@@ -46,6 +46,12 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 
 `V4-SIMP-002` 已完成:跟踪项 `126 → 116`,工作树约 `115.16 MB → 27.12 MB`,Kotlin `15,905 → 14,235` 行;ASR Python 6/6、lint、普通/Native Debug 与普通/Native AndroidTest 构建均成功。测试源码已在 V4.4 移出,因此 Gradle 测试任务如实记录为 `NO-SOURCE`。
 
+## V5 阶段
+
+| 阶段 | 当前状态 | 目标/依赖 |
+|---|---|---|
+| `V5-RELEASE-001` | `MATRIX_DEFINED / IN_PROGRESS` | 将 `716f2f4` 精简基线标记为 `5.0.0 / 5000`,同步发布文档并推送新建的 `origin/dev`;不改变产品行为 |
+
 ## 执行和提交顺序
 
 1. `V4-PLAN-001` 文档与规则 checkpoint。
@@ -55,7 +61,7 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 5. `V4-SIMP-001` 独立功能提交（无行为变化的拆分与乱码修复，不改变任何阶段依赖）。
 6. `V4-E2E-001` 获得设备授权后执行验收并提交状态。
 
-提交信息使用中文，默认不 push。每次只精确暂存当前阶段文件；所有进入 V4 前的未跟踪或脏内容必须保留。
+提交信息使用中文，默认不 push。`V5-RELEASE-001` 获得用户明确例外授权,只允许推送 `origin/dev`;仍不得 push main、创建标签或 force push。每次只精确暂存当前阶段文件；所有既有未跟踪或脏内容必须保留。
 
 ## V4 组件验收快照（2026-08-24）
 
