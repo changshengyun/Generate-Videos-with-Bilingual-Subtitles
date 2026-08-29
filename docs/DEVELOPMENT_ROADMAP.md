@@ -1,7 +1,7 @@
 # LyricCaptioner V4 开发路线
 
-- `ROADMAP_REV: 2026-08-30.002`
-- 当前任务：无活动任务（`CODEX-HYGIENE-001 / PASS / REPO_CONFIG_VERIFIED`，未启动 V5）
+- `ROADMAP_REV: 2026-08-30.003`
+- 当前任务：`V4-SIMP-002 / MATRIX_DEFINED / IN_PROGRESS`（v4.4.0 发布后行为保持的仓库精简，不启动 V5）
 - V3 历史摘要：原 `archive/v3/V3_STAGE_HISTORY_2026-08-12.md`（V4.4 已移出仓库，可从 git 历史找回）
 
 ## 文档职责
@@ -40,6 +40,7 @@ V4 不改变 Whisper 模型、DeepSeek Prompt、歌词检索、AI 响应合同�
 | `V4-UI-001` | `PARTIAL_PASS / COMPONENT_VERIFIED / SIMULATOR_BLOCKED` | 普通与全屏独立控制行已通过组件验证；Pixel 8 因已有 snapshot operation pending 无法启动，未取得截图或 instrumentation 证据 |
 | `V4-SIMP-001` | `PASS / COMPONENT_VERIFIED` | 代码简化已完成：`EditorScreen.kt` 拆分为同包 8 文件（2365 → 290 行）并修复 4 处乱码文案，41 处 `private` → `internal`，契约测试改为 ui 目录拼接文本且断言强度不降低；行为不变，不影响后续阶段合同 |
 | `V4-E2E-001` | `WAITING_DEVICE_AUTHORIZATION` | 真实相册导入、ASR、AI、编辑、恢复、导出与 Media3 回放验收 |
+| `V4-SIMP-002` | `MATRIX_DEFINED / IN_PROGRESS` | v4.4.0 发布后删除已证明无生产消费者的仓库负担、测试遗留、死代码、依赖与失效文档；行为、合同和技术路线不变 |
 
 发布后的 `CODEX-HYGIENE-001` 已完成，只调整 Codex 项目规则与 repo Skill，不改变 V4 阶段顺序、产品实现或 V5 路线。
 

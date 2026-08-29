@@ -1,10 +1,10 @@
 # LyricCaptioner V4 Project State
 
-- `STATE_REV: 2026-08-30.002`
+- `STATE_REV: 2026-08-30.003`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
 - Branch: `main`（V4.4 收尾后与 `feature/ai-enhancement-search-scheduler` 快进合并）
 - Release: `v4.4.0`（V4 系列功能全部完成并通过验收的正式发布）
-- Current task: 无活动任务（`CODEX-HYGIENE-001 / PASS / REPO_CONFIG_VERIFIED`，V5 阶段未启动）
+- Current task: `V4-SIMP-002 / MATRIX_DEFINED / IN_PROGRESS`（v4.4.0 发布后行为保持的仓库精简，V5 阶段未启动）
 - Product status: `V4_RELEASED`
 - Evidence ceiling: `DEVICE_VERIFIED`（真机识别、真实 API 增强、三视频沙箱验证证据留存于本地 `test-artifacts/`，V4.4 起不入库）
 - Last state sync: 2026-08-30
@@ -21,6 +21,7 @@
 - 不新增依赖，不更换模型，不修改 AI Prompt、歌词检索、响应合同或 cue 时间戳合同。
 - 简单变更按 S0 只检查精确 diff；普通功能按 S1 聚焦验证；复杂故障按 S2 证据优先。三次修复失败后冻结修改并只运行一个最小判别实验。
 - `CODEX-HYGIENE-001` 已引入针对最终 diff、注释和变更说明的项目级规则与 `.agents/skills/final-diff-hygiene`；未恢复 V4.4 已迁出的 Multi-Agent 角色体系，也未启动 V5。
+- `V4-SIMP-002` 只删除已证明无生产消费者的仓库负担、测试遗留、死代码、直接依赖和完全失效文档；不改变产品行为、技术路线、持久化、安全或运行时合同。
 
 ## 当前验收门禁
 
@@ -29,6 +30,7 @@
 - 收尾矩阵：ASR Python 6/6；JVM 352/352；lint、普通/Native Debug、普通/Native AndroidTest 构建全部成功。
 - `V4-SIMP-001` 已完成并达到 `PASS / COMPONENT_VERIFIED`：`EditorScreen.kt` 拆分为同包 8 文件（2365 → 290 行，主入口保留）并修复 4 处乱码文案；41 处 `private` → `internal`；2 个源码契约测试改为读取 ui 目录拼接文本，断言强度不降低；JVM 352/352、lint、普通/Native Debug 与 AndroidTest 构建、ASR Python 6/6 全部通过；纯机械搬移，行为与语义契约完全不变。
 - `CODEX-HYGIENE-001` 达到 `PASS / REPO_CONFIG_VERIFIED`：repo Skill 通过 `quick_validate.py`，`git diff --check` 通过，且 `AGENTS.md` 保持在默认 32 KiB 指令上限以内。
+- `V4-SIMP-002` 已冻结验收矩阵，当前证据上限为 `BUILD_VERIFIED`，阶段内不操作模拟器或真机。
 - 当前禁止真机操作，最高只能记录 `COMPONENT_VERIFIED`；真实 AI、真实设备、真实导出与回放证据仍未获得。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
