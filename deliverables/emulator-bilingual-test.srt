@@ -1,9 +1,0 @@
-1
-00:00:00,000 --> 00:00:04,500
-We will test bilingual captions.
-我们将测试双语字幕。
-
-2
-00:00:04,500 --> 00:00:09,000
-This exported video has sound.
-导出的视频包含声音。

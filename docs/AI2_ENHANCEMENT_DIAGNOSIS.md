@@ -44,7 +44,7 @@
 ### 2.1 Whisper RAW 质量层(已确认,输入侧先天缺陷)
 
 - `RAW 证据`:两组均有明显错词("come too"、"shanning"、"fom")、合句(cue 内两句歌词)与低置信段(0.63–0.70)。
-- `代码事实`:Whisper small 模型对歌声素材的识别质量是既有已知问题(见 `docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`),本层不由 AI2 负责修复,但 AI2 的所有下游环节都必须以此为输入前提设计。
+- `代码事实`:Whisper small 模型对歌声素材的识别质量是既有已知问题(见 `docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`,V4.4 已移出仓库,可从 git 历史找回),本层不由 AI2 负责修复,但 AI2 的所有下游环节都必须以此为输入前提设计。
 - 结论:AI2 的目标不是"完美还原",而是"在错词+合句+低置信输入下仍然收敛到正确歌曲与正确双语"。当前实现对此前提的防护不足(见 2.2–2.4)。
 
 ### 2.2 信息面:AI 请求合同丢弃了 confidence 与素材时长(代码事实,影响最大)

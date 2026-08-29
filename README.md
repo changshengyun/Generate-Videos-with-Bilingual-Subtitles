@@ -125,9 +125,9 @@ V1 原型                    V2 移动端编辑台               V3 云端增强
 
 | 阶段 | 目标 | 完成内容与结果 |
 |---|---|---|
-| V1 | 验证「给视频加双语字幕」技术可行性 | 桌面侧用 FFmpeg 脚本跑通双语字幕烧录，产物留存于 `deliverables/` |
+| V1 | 验证「给视频加双语字幕」技术可行性 | 桌面侧用 FFmpeg 脚本跑通双语字幕烧录（样例产物曾留存于 `deliverables/`，V4.4 精简时移出仓库，可在 git 历史中找回） |
 | V2 | 把能力搬到 Android 移动端 | Compose 紧凑编辑工作台、全屏字幕预览、导入导出加固（V2-IMPORT-002 / V2-UI-002），打标 `v2.0.0` |
-| V3 | 产品化：云端增强 + 安全 + 渲染质量 | 安全 BYOK（Keystore 加密、异常消息脱敏）、字幕增强合同、Whisper 进程级会话缓存、逐字幕样式卡片、Media3 渲染语义修复 r1–r4、系统相册统一导入导出、产品级 UI、DeepSeek 增强生产链路、整首歌词检索；每个子阶段都有冻结验收矩阵（`docs/archive/v3/`） |
+| V3 | 产品化：云端增强 + 安全 + 渲染质量 | 安全 BYOK（Keystore 加密、异常消息脱敏）、字幕增强合同、Whisper 进程级会话缓存、逐字幕样式卡片、Media3 渲染语义修复 r1–r4、系统相册统一导入导出、产品级 UI、DeepSeek 增强生产链路、整首歌词检索；每个子阶段都有冻结验收矩阵（V4.4 精简时移出仓库，见 git 历史） |
 | V4 主链路 | 一次点击走完全流程 | `V4-FLOW-001` 串联本地 ASR + AI 增强 + 自动进编辑器；`V4-EDITOR-001` 按播放位置新增双语字幕；`V4-UI-001` 分离字幕与播放控制；`V4-SIMP-001` 把 2365 行 EditorScreen 拆为同包 8 模块（行为不变） |
 | V4.1 | 字幕质量与编辑能力成型 | 字幕质量整合、置信度门槛、样式锁/布局锁、拆分合并、逐条 AI 建议；发布基线提交 `47c7077`，回归 379/382 |
 | V4.2 | AI 增强链路修根因 + 导出补齐 | AI2 增强链路六项根因修复（请求合同、Prompt、歌词检索、验证器等）并接线 SRT 导出，打标 `v4.2`；单测 361/361 |
@@ -286,12 +286,12 @@ AI 增强是一条「把 Whisper 识别出的带错英文歌词，变成准确�
 |---|---|---|
 | `app/` | 应用源码与测试 | 是 |
 | `docs/` | 活动文档：路线、任务、状态、架构方案 | 是 |
-| `docs/archive/` | V3 历史证据 | 是（仅追溯） |
 | `tools/` | 稳定工具：ASR 评估、Whisper 原生依赖恢复脚本 | 是 |
 | `test-artifacts/` | 验收证据与调试产物（见下表） | 部分（超大原始日志仅本地） |
-| `deliverables/` | V1/V2 时期历史交付样例 | 是（仅追溯） |
 | `dist/` | 本地构建的 APK 发布产物 | 否（.gitignore） |
-| `docs-BK/`、`.emulator-test-assets/`、`.env` 等 | 本地备份/密钥/测试资产 | 否（.gitignore） |
+| `docs-BK/`、`.env` 等 | 本地备份/密钥等 | 否（.gitignore） |
+
+> **V4.4 精简说明**：`deliverables/`、`docs-v2/`、`docs/archive/`、`docs/debug/`、`.agents/`、`.codex/`、`.kotlin/`、`.emulator-test-assets/` 已从仓库移除。其中 `.agents/` 与 `.codex/skills/` 已整理迁入 [DEV-SKILL 仓库](https://github.com/changshengyun/DEV-SKILL)（`projects/lyric-captioner-android/` 与根级 `.codex/skills/`）；其余内容仍可在 git 历史（`v4.4.0` 及更早）中找回。
 
 `test-artifacts/` 内部分类：
 
@@ -315,6 +315,5 @@ AI 增强是一条「把 Whisper 识别出的带错英文歌词，变成准确�
 - [当前任务](docs/CURRENT_TASK.md)
 - [项目状态](docs/PROJECT_STATE.md)（状态唯一权威来源）
 - [V4 产品架构](docs/V4_PRODUCT_ARCHITECTURE.md)
-- [V3 产品架构](docs/V3_PRODUCT_ARCHITECTURE.md)
-- [AI 增强流程介绍](test-artifacts/ai-enhancement/ai-enhancement-flows-intro.md)
+- [V3 产品架构](docs/V3_PRODUCT_ARCHITECTURE.md)- [AI 增强流程介绍](test-artifacts/ai-enhancement/ai-enhancement-flows-intro.md)
 - [AI 增强 Prompt 全文](test-artifacts/ai-enhancement/ai-enhancement-prompts.md)

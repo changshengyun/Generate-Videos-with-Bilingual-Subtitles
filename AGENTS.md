@@ -65,8 +65,8 @@
 
 ## 7. Multi-Agent orchestration / Multi-Agent 编排
 
-- This section applies only when the user explicitly enables Multi-Agent mode. By default the repository runs the Section 9 stage contract; the governance documents referenced by `.agents/` prompts (`MULTI_AGENT_WORKFLOW.md`, `DECISIONS.md`, `governance/*`, `IMPLEMENTATION_HANDOFF.md`, `REVIEW_REPORT.md`) are archived read-only under `docs-BK/` and must be restored or re-approved before Multi-Agent roles run.
-  本节仅在用户显式启用 Multi-Agent 模式时生效；默认运行第 9 节阶段契约。`.agents/` 提示词引用的治理文档已作为只读历史归档于 `docs-BK/`，启用 Multi-Agent 角色前必须先恢复或重新获得用户批准。
+- This section applies only when the user explicitly enables Multi-Agent mode. By default the repository runs the Section 9 stage contract; the `.agents/` role prompts were migrated out to the DEV-SKILL repository (`projects/lyric-captioner-android/.agents/`, github.com/changshengyun/DEV-SKILL) during the V4.4 slim-down, and the governance documents they reference (`MULTI_AGENT_WORKFLOW.md`, `DECISIONS.md`, `governance/*`, `IMPLEMENTATION_HANDOFF.md`, `REVIEW_REPORT.md`) are archived read-only under `docs-BK/`; both must be restored or re-approved before Multi-Agent roles run.
+  本节仅在用户显式启用 Multi-Agent 模式时生效；默认运行第 9 节阶段契约。`.agents/` 角色提示词已在 V4.4 精简时迁出至 DEV-SKILL 仓库（`projects/lyric-captioner-android/.agents/`），其引用的治理文档仍作为只读历史归档于 `docs-BK/`；启用 Multi-Agent 角色前必须先恢复两者或重新获得用户批准。
 - The Orchestrator Agent is the only role that assigns work, advances workflow state, aggregates results, and requests human approval. Subagents do not dispatch one another.
   Orchestrator Agent 是唯一负责分配任务、推进工作流状态、汇总结果和请求人工审批的角色；子 Agent 不得相互调度。
 - Agents must not rely on chat history for handoff. Before acting, read `docs/DEVELOPMENT_ROADMAP.md`, `docs/PROJECT_STATE.md`, and `docs/CURRENT_TASK.md`; write every result needed by the next role back to the current task or project-state document.
@@ -114,7 +114,7 @@
 
 - 收到用户或 Brain 明确交付的可执行阶段任务后，立即执行，不复述任务、不等待二次确认。该交付视为对任务范围内业务代码、测试、构建和允许运行环境操作的授权，但不授权本节规定的 `HUMAN_DECISION` 事项。
 - 执行前必须读取根目录 `AGENTS.md`、`docs/DEVELOPMENT_ROADMAP.md`、`docs/CURRENT_TASK.md`、`docs/PROJECT_STATE.md`，核对 Git 根目录、分支、HEAD、工作树和当前运行环境门禁。
-- 上述三份活动文档是 Brain 与 Developer 唯一共享状态面；`docs-BK`、`docs/archive` 和历史聊天只用于追溯，不参与当前调度。若活动文档互相矛盾，先在允许范围内依据最新已验证证据统一状态；无法安全统一时才返回 `HUMAN_DECISION`。
+- 上述三份活动文档是 Brain 与 Developer 唯一共享状态面；`docs-BK` 和历史聊天只用于追溯（V3 历史证据目录 `docs/archive` 已于 V4.4 移出仓库，需要时从 git 历史找回），不参与当前调度。若活动文档互相矛盾，先在允许范围内依据最新已验证证据统一状态；无法安全统一时才返回 `HUMAN_DECISION`。
 - 同一时间只执行一个活动模块。不得重新安排已经完成的阶段，也不得把历史 Prompt 当作当前授权。
 
 ### 9.2 Acceptance matrix gate / 验收矩阵门禁
@@ -161,7 +161,7 @@
 - 严格区分 `BUILD_VERIFIED`、`COMPONENT_VERIFIED`、`SIMULATOR_VERIFIED`、`DEVICE_VERIFIED` 和正式验收。模拟器证据不得写成真机证据；Demo、固定探针、mock、空结果或 fallback 不得写成真实产品成功。
 - 设备边界以三份活动文档为准。处于 simulator-only 门禁时，禁止连接或测试真机，最终证据最高只能到对应的 `*_SIMULATOR_VERIFIED`，并把真机验证明确延后到后续设备门禁阶段。
 - 验收证据必须报告实际命令结果、测试数量、模拟器或设备标识、关键产物路径及大小/时长/编码等适用数据；UI 阶段必须提供可复核截图，并检查系统栏 Insets、裁切、重叠、滚动、触控区域和关键无障碍描述。
-- 新产生的截图、视频、导出物等二进制验收证据统一存放于 `.emulator-test-assets/` 或后续设备门禁指定的证据目录，git 只记录路径引用，不再新增二进制证据文件入库；`deliverables/` 视为只读历史，不再追加。
+- 新产生的截图、视频、导出物等二进制验收证据统一存放于本地证据目录（如 `test-artifacts/device-capture/raw-logs/` 等 `.gitignore` 覆盖位置），git 只记录路径引用，不再新增二进制证据文件入库；历史交付样例目录 `deliverables/` 已于 V4.4 移出仓库。
 
 ### 9.7 Documentation / 文档维护
 

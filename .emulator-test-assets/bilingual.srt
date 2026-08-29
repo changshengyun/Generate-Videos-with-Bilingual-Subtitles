@@ -1,9 +1,0 @@
-1
-00:00:00,000 --> 00:00:02,000
-Hello from the emulator
-来自模拟器的测试
-
-2
-00:00:02,000 --> 00:00:04,000
-字幕烧录验证完成
-Subtitle burn-in verification

@@ -2,7 +2,7 @@
 
 - `ROADMAP_REV: 2026-08-26.008`
 - 当前任务：`V4-E2E-001 / WAITING_DEVICE_AUTHORIZATION`
-- V3 历史摘要：[`archive/v3/V3_STAGE_HISTORY_2026-08-12.md`](archive/v3/V3_STAGE_HISTORY_2026-08-12.md)
+- V3 历史摘要：原 `archive/v3/V3_STAGE_HISTORY_2026-08-12.md`（V4.4 已移出仓库，可从 git 历史找回）
 
 ## 文档职责
 

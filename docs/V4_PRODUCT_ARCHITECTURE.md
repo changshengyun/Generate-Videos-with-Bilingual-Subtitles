@@ -145,5 +145,5 @@
 ## 已知边界与证据缺口
 
 - 真机 E2E(`V4-E2E-001`)尚未获得设备授权,真实 AI、真实导出、回放证据未取得;本文架构描述达到 `COMPONENT_VERIFIED` 证据等级。
-- ASR 侧 small/base 与 runtime 差异的既有诊断见 `docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`;本文不重复结论。
+- ASR 侧 small/base 与 runtime 差异的既有诊断见 `docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`（V4.4 已移出仓库，可从 git 历史找回）;本文不重复结论。
 - AI 增强效果问题与 Prompt 优化分析见 `AI2_ENHANCEMENT_DIAGNOSIS.md`;SRT 输出缺口见 `SRT_OUTPUT_GAPS.md`。

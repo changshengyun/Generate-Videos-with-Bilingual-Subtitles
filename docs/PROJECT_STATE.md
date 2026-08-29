@@ -33,13 +33,14 @@
 
 ## 受保护工作树
 
-保留所有进入 V4 前的未跟踪或脏内容，包括 `.emulator-test-assets/`、`.env`、`dist/`、`docs/debug/ASR_SMALL_BASE_VERSION_COMPARISON.md`、`tools/opus-mt-en-zh/` 和未知内容。不得 reset、clean、覆盖、批量暂存或 push。
+保留所有进入 V4 前的未跟踪或脏本地内容，包括 `.env`、`dist/`、`tools/opus-mt-en-zh/` 和未知内容（`.emulator-test-assets/` 与 `docs/debug/` 已于 V4.4 移出仓库，本地副本仍受保护）。不得 reset、clean、覆盖、批量暂存或 push。
 
 ## V4.4 收尾记录（2026-08-29）
 
 - V4 全部功能（V4.1 编辑套件、V4.2 AI 增强链路与 SRT 导出、V4.3 一致性恢复、V4.3.x 修复与 SearchScheduler 双路检索）已完成并通过验收，验收证据见 `test-artifacts/`。
 - 临时调试脚本、截图、UI dump、trace 已从 `tools/` 抽离至 `test-artifacts/debug-session-v4.3/`；超大原始 logcat 移入 `test-artifacts/device-capture/raw-logs/` 并加入 `.gitignore` 仅本地保留。
 - 版本号升至 `versionName 4.4.0 / versionCode 4400`，README 重写为项目入口与发布说明，打标签 `v4.4.0` 并推送。
+- 仓库精简：`.agents/` 与 `.codex/skills/` 迁入 DEV-SKILL 仓库；`deliverables/`、`docs-v2/`、`docs/archive/`、`docs/debug/`、`.kotlin/`、`.emulator-test-assets/` 移出仓库（均可从 git 历史找回）；相关文档引用已同步更新。
 - 后续若进入 V5 新阶段，另行立项；当前不提前声明任何 V5 内容。
 
 
@@ -48,4 +49,4 @@
 - 路线：`docs/DEVELOPMENT_ROADMAP.md`
 - 唯一活动任务与冻结矩阵：`docs/CURRENT_TASK.md`
 - 既有 AI 需求与路线背景：`docs/REQUIREMENTS.md`、`docs/TECH_OPTIONS.md`、`docs/ENVIRONMENT_REPORT.md`、`docs/SPIKE_PLAN.md`
-- V3 历史证据：`docs/archive/v3/`
+- V3 历史证据：已于 V4.4 移出仓库（原 `docs/archive/v3/`），需要时从 git 历史（`v4.4.0` 及更早）找回
