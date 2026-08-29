@@ -1,11 +1,11 @@
 # LyricCaptioner Project State
 
-- `STATE_REV: 2026-08-30.006`
+- `STATE_REV: 2026-08-30.007`
 - Repository: `D:\DevEnv\Projects\lyric-captioner-android`
-- Branch: `dev`（从精简基线 `716f2f4` 创建;远端 `origin/dev` 尚不存在）
-- Release: `v5.0.0` 本地构建已验证（`versionName 5.0.0 / versionCode 5000`;待推送 `origin/dev`）
-- Current task: `V5-RELEASE-001 / IMPLEMENTED / BUILD_VERIFIED / PUSH_PENDING`
-- Product status: `V5_BUILD_VERIFIED`
+- Branch: `dev`（跟踪 `origin/dev`;由精简基线 `716f2f4` 建立）
+- Release: `v5.0.0` 已发布到开发分支（`versionName 5.0.0 / versionCode 5000`）
+- Current task: `V5-RELEASE-001 / PASS / BUILD_VERIFIED / PUSHED`
+- Product status: `V5_DEV_PUBLISHED`
 - Evidence ceiling: `BUILD_VERIFIED`（本阶段不操作设备;V4.4 既有设备证据不改写）
 - Last state sync: 2026-08-30
 
@@ -33,7 +33,7 @@
 - `CODEX-HYGIENE-001` 达到 `PASS / REPO_CONFIG_VERIFIED`：repo Skill 通过 `quick_validate.py`，`git diff --check` 通过，且 `AGENTS.md` 保持在默认 32 KiB 指令上限以内。
 - `V4-SIMP-002` 达到 `PASS / BUILD_VERIFIED`:跟踪项 `126 → 116`,工作树字节 `115,160,329 → 27,124,073`,Kotlin `15,905 → 14,235` 行,Markdown `1,678 → 1,610` 行;ASR Python 6/6、lint、普通/Native Debug 与普通/Native AndroidTest 构建均成功;测试任务如实为 `NO-SOURCE`。
 - `V4-SIMP-002` 当前禁止真机操作，因此本阶段最高记录 `BUILD_VERIFIED`；这不改写 V4.4 发布前已经取得并本地留存的设备与真实 API 证据。
-- `V5-RELEASE-001` 已同步 `5.0.0 / 5000` 并完成本地门禁：ASR Python 6/6，`testDebugUnitTest` 成功且为 `NO-SOURCE`，lint、普通/Native Debug、普通/Native AndroidTest 构建成功；Native APK 为 397,816,816 bytes，含 arm64-v8a 与 x86_64 Whisper 库。只有 `origin/dev` 指向最终提交后才能记录 `PASS / BUILD_VERIFIED / PUSHED`。
+- `V5-RELEASE-001` 达到 `PASS / BUILD_VERIFIED / PUSHED`：已同步 `5.0.0 / 5000`；ASR Python 6/6，`testDebugUnitTest` 成功且为 `NO-SOURCE`，lint、普通/Native Debug、普通/Native AndroidTest 构建成功；Native APK 为 397,816,816 bytes，含 arm64-v8a 与 x86_64 Whisper 库；发布提交 `74a2c40` 已推送 `origin/dev`。
 - 阶段实现与构建成功不等于完整 V4 产品 PASS。
 
 ## 受保护工作树

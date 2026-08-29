@@ -1,9 +1,9 @@
 # Current Task: V5-RELEASE-001
 
-- `STATE_REV: 2026-08-30.006`
-- `TASK_REV: V5-RELEASE-001.002`
-- Stage state: `IMPLEMENTED / BUILD_VERIFIED / PUSH_PENDING`
-- Product status: `V5_BUILD_VERIFIED`
+- `STATE_REV: 2026-08-30.007`
+- `TASK_REV: V5-RELEASE-001.003`
+- Stage state: `PASS / BUILD_VERIFIED / PUSHED`
+- Product status: `V5_DEV_PUBLISHED`
 - Evidence ceiling: `BUILD_VERIFIED`
 - Device gate: `NO_DEVICE_ACTION`
 - Push gate: `PUSH_AUTHORIZED_ORIGIN_DEV_ONLY`
@@ -42,7 +42,7 @@
 
 ## 5. 下一动作
 
-精确提交本阶段五个允许文件,推送新建的 `origin/dev`,再核对远端提交并同步最终状态。
+阶段完成。后续 V5 功能或正式发布需另立阶段与验收矩阵;不得把本次 `BUILD_VERIFIED` 扩写为新的设备验收。
 
 ## 6. 本地实现与验证结果
 
@@ -59,3 +59,4 @@
 | APK 版本核对 | `aapt dump badging`: `versionCode='5000' versionName='5.0.0'` |
 | 已知警告 | Android Gradle Plugin 8.7.3 对 compileSdk 36 给出兼容范围警告;不在本次版本发布范围内升级依赖 |
 | 设备证据 | 未操作设备;本阶段证据上限为 `BUILD_VERIFIED` |
+| Git 发布 | checkpoint `87c945f`;V5 发布提交 `74a2c40`;已创建并推送 `origin/dev` |
